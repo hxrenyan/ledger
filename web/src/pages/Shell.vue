@@ -11,7 +11,7 @@ const route = useRoute()
 const router = useRouter()
 const session = useSession()
 
-/** 加号浮层：先选「手写 / 语音」，语音在本层展开录音，不跳页。 */
+/** 加号浮层：标题标明记什么，按钮只选手写或语音；语音在本层展开，不跳页。 */
 const addOpen = ref(false)
 const voiceScope = ref<VoiceScope | null>(null)
 const toast = ref('')
@@ -89,13 +89,28 @@ onMounted(async () => {
     <div v-if="addOpen" class="sheet-mask" @click="close">
       <div class="sheet" @click.stop>
         <template v-if="!voiceScope">
-          <button class="btn" type="button" @click="writeManual">
-            {{ inFavor ? '手写记人情' : '手写记一笔' }}
-          </button>
-          <button class="btn ghost" type="button" @click="openVoice">
-            {{ inFavor ? '语音记人情' : '语音记一笔' }}
-          </button>
-          <button class="btn ghost" type="button" @click="close">取消</button>
+          <p class="add-title">{{ inFavor ? '记人情' : '记一笔' }}</p>
+          <div class="add-pick">
+            <button type="button" :aria-label="inFavor ? '手写记人情' : '手写记一笔'" @click="writeManual">
+              <span class="add-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3Z" />
+                  <path d="m13.5 6.5 3 3" />
+                </svg>
+              </span>
+              手写
+            </button>
+            <button type="button" :aria-label="inFavor ? '语音记人情' : '语音记一笔'" @click="openVoice">
+              <span class="add-ico" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                  <path d="M12 15a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
+                  <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+                </svg>
+              </span>
+              语音
+            </button>
+          </div>
+          <button class="add-cancel" type="button" @click="close">取消</button>
         </template>
         <VoiceSheet v-else :scope="voiceScope" @close="close" @done="onVoiceDone" />
       </div>

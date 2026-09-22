@@ -15,7 +15,7 @@ const {
   isFavorRow, checkSpeech, release, toggleMic, parseSpoken, commit,
 } = useVoice(props.scope)
 
-const title = computed(() => (props.scope === 'favor' ? '语音记人情' : '语音记一笔'))
+const title = computed(() => (props.scope === 'favor' ? '记人情' : '记一笔'))
 const placeholder = computed(() =>
   props.scope === 'favor'
     ? '给张三结婚随了 500'
