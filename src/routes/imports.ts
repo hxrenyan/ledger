@@ -37,8 +37,8 @@ export function registerImportRoutes(app: Hono<AppEnv>) {
     const body = await c.req.json().catch(() => ({}))
     const text = typeof body?.text === 'string' ? body.text : ''
     if (text.length > 8000) throw badRequest('文本过长')
-    const items = await previewUtterances(c.get('db'), c.get('ledgerId'), text)
-    return c.json({ items })
+    const preview = await previewUtterances(c.get('db'), c.get('ledgerId'), text)
+    return c.json(preview)
   })
 
   app.post('/api/v1/imports/suggest', async (c) => {

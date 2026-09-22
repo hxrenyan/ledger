@@ -429,6 +429,103 @@ export async function aiSuggestCategories(
   return { ok: true, data: out }
 }
 
+export type AiUtteranceItem = {
+  date: string
+  amount_cents: number
+  direction: 'expense' | 'income'
+  note: string
+  category_name: string
+  account_name: string
+  source: string
+  favor_contact: string
+  favor_kind: '' | 'give' | 'receive'
+  favor_occasion: string
+}
+
+const UTTERANCE_SYSTEM = `你是记账助手。用户用口语记了若干笔账，可能有多句。
+只输出 JSON：{"items":[{"date":"YYYY-MM-DD","amount":35.5,"direction":"expense","note":"午饭","category":"餐饮","account":"","source":"原句","favor_contact":"","favor_kind":"","favor_occasion":""}]}
+规则：
+- 一句一笔。认不出金额的不要输出。
+- amount 是人民币元，正数，最多两位小数。
+- direction 只能是 expense 或 income。收到、工资、退款、报销是 income，其余默认 expense。随礼送出是 expense，收到礼金是 income。
+- date 用 YYYY-MM-DD。用户说昨天、前天、今天时，按消息里给出的「今天」换算。没说日期就用今天。
+- note 写成简短备注，不要整句照抄。
+- category 必须从参考分类里选，且和方向一致；不确定就留空字符串。
+- account 必须从参考账户里选；不确定就留空字符串。
+- 随礼、礼金、份子、压岁钱、红包给人：favor_contact 写对方姓名（2到4个汉字），favor_kind 写 give 或 receive，favor_occasion 写结婚、满月、搬家、寿宴、升学、丧事、过年、生日之一，没有就留空。
+- 微信、支付宝、美团、银行不是人名，不要写进 favor_contact。普通消费这三个字段都留空。
+- source 填对应的原句。
+- 不要编造金额。`
+
+/** 把口语交给模型拆成流水。失败由调用方退回规则解析。 */
+export async function aiParseUtterances(
+  configs: AiConfig[],
+  text: string,
+  ctx: { today: string; categories: string[]; accounts: string[] },
+): Promise<AiResult<AiUtteranceItem[]>> {
+  if (!configs.some(aiReady)) return { ok: false, error: 'AI 未启用' }
+  const clipped = text.trim().slice(0, 4000)
+  if (!clipped) return { ok: true, data: [] }
+  const reference = [
+    `今天是 ${ctx.today}`,
+    ctx.categories.length ? `参考分类：${ctx.categories.join('、')}` : '',
+    ctx.accounts.length ? `参考账户：${ctx.accounts.join('、')}` : '',
+    `原话：\n${clipped}`,
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  const res = await withAiFailover(configs, async (cfg) => {
+    const chatRes = await chat(
+      cfg,
+      [
+        { role: 'system', content: UTTERANCE_SYSTEM },
+        { role: 'user', content: reference },
+      ],
+      { timeoutMs: 25_000 },
+    )
+    if (!chatRes.ok) return chatRes
+    const parsed = extractJson(chatRes.data)
+    const list = (parsed as { items?: unknown })?.items
+    if (!Array.isArray(list)) return { ok: false, error: 'AI 输出格式不符合预期' }
+    return { ok: true, data: list }
+  })
+  if (!res.ok) return res
+
+  const out: AiUtteranceItem[] = []
+  for (const item of res.data.slice(0, 50)) {
+    const shaped = shapeUtterance(item, ctx.today)
+    if (shaped) out.push(shaped)
+  }
+  if (!out.length) return { ok: false, error: 'AI 没有解析出可入账的句子' }
+  return { ok: true, data: out }
+}
+
+function shapeUtterance(item: unknown, today: string): AiUtteranceItem | null {
+  if (!item || typeof item !== 'object') return null
+  const o = item as Record<string, unknown>
+  const amount = parseAmountCents(typeof o.amount === 'number' ? o.amount : String(o.amount ?? ''))
+  if (amount === null || amount === 0) return null
+  const rawDate = o.date
+  const date = rawDate instanceof Date ? parseDateYmd(rawDate) : parseDateYmd(String(rawDate ?? ''))
+  const direction = o.direction === 'income' ? 'income' : 'expense'
+  const favorKind = o.favor_kind === 'give' || o.favor_kind === 'receive' ? o.favor_kind : ''
+  const note = str(o.note).slice(0, 80) || str(o.source).slice(0, 80)
+  if (!note) return null
+  return {
+    date: date ?? (/^\d{4}-\d{2}-\d{2}$/.test(today) ? today : ''),
+    amount_cents: Math.abs(amount),
+    direction,
+    note,
+    category_name: str(o.category),
+    account_name: str(o.account),
+    source: str(o.source).slice(0, 200),
+    favor_contact: str(o.favor_contact).slice(0, 8),
+    favor_kind: favorKind,
+    favor_occasion: str(o.favor_occasion).slice(0, 16),
+  }
+}
+
 /** 连通性测试：最小请求，返回耗时与模型回显。 */
 export async function testAi(cfg: AiConfig): Promise<AiResult<{ latencyMs: number; sample: string }>> {
   if (!aiReady(cfg)) return { ok: false, error: '请先填写 base_url、api_key、model 并启用' }

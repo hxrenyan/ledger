@@ -139,6 +139,7 @@ describe('自然语言入账', () => {
     expect(item.favor_contact).toBe('张三')
     expect(item.favor_kind).toBe('give')
     expect(item.favor_occasion).toBe('结婚')
+    expect(preview.body).toMatchObject({ parser: 'rules', ai_error: '' })
     const created = await json(app, '/api/v1/imports/commit', {
       method: 'POST',
       headers,
@@ -151,5 +152,71 @@ describe('自然语言入账', () => {
     const tables = await db.all<{ name: string }>("SELECT name FROM sqlite_master WHERE type = 'table'")
     expect(tables.map((row) => row.name)).not.toContain('speech_audio')
     expect(tables.map((row) => row.name)).not.toContain('import_files')
+  })
+
+  it('配置了 AI 时用模型结果，模型失败则退回规则', async () => {
+    const original = globalThis.fetch
+    const { app, db } = await setup()
+    const reg = await json(app, '/api/v1/auth/register', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'speakerai', password: 'password1' }),
+    })
+    const token = (reg.body as { token: string; ledgers: { id: string }[] }).token
+    const ledgerId = (reg.body as { ledgers: { id: string }[] }).ledgers[0].id
+    const headers = { authorization: `Bearer ${token}`, 'x-ledger-id': ledgerId, 'content-type': 'application/json' }
+    await db.run(
+      `INSERT INTO ai_settings (id, name, enabled, base_url, api_key, model, sort_order, updated_at)
+       VALUES ('default', '测', 1, 'https://example.com/v1', 'sk-test', 'demo', 0, 1)`,
+    )
+    globalThis.fetch = async () =>
+      new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  items: [
+                    {
+                      date: '2026-09-22',
+                      amount: 35,
+                      direction: 'expense',
+                      note: '午饭',
+                      category: '餐饮',
+                      account: '',
+                      source: '午饭35',
+                      favor_contact: '',
+                      favor_kind: '',
+                      favor_occasion: '',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200 },
+      )
+    const ok = await json(app, '/api/v1/imports/utterances', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ text: '午饭35' }),
+    })
+    expect(ok.body).toMatchObject({ parser: 'ai', ai_error: '' })
+    expect((ok.body as { items: { note: string; amount_cents: number }[] }).items[0]).toMatchObject({
+      note: '午饭',
+      amount_cents: 3500,
+    })
+
+    globalThis.fetch = async () => new Response('nope', { status: 500 })
+    const fallback = await json(app, '/api/v1/imports/utterances', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ text: '给张三结婚随了500' }),
+    })
+    expect(fallback.body).toMatchObject({ parser: 'rules' })
+    expect((fallback.body as { items: { favor_contact: string }[] }).items[0].favor_contact).toBe('张三')
+    expect((fallback.body as { ai_error: string }).ai_error).toContain('500')
+    globalThis.fetch = original
   })
 })

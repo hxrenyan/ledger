@@ -13,9 +13,10 @@ import type { Db, Stmt } from '../db/types.ts'
 import { badRequest } from '../http.ts'
 import { assertAmountCents } from '../money.ts'
 import { newId } from '../seed.ts'
-import { dateToOccurredAt } from '../time.ts'
+import { dateToOccurredAt, shanghaiDate } from '../time.ts'
 import {
   aiParseTable,
+  aiParseUtterances,
   aiReady,
   aiSuggestCategories,
   readAiConfigs,
@@ -23,7 +24,7 @@ import {
   type SuggestItem,
 } from './ai.ts'
 import { accountNameBySource, suggestAccount, suggestCategory, type AccountLite, type CategoryLite, type Suggestion } from './match.ts'
-import { detectFavor, parseUtterances } from './favor.ts'
+import { detectFavor, isPersonName, parseUtterances } from './favor.ts'
 import { detectTable, normalizeRow, type ParsedRow, type Source } from './mapping.ts'
 import { MAX_ROWS, textToTable } from './text.ts'
 import { parseDateYmd } from './values.ts'
@@ -645,8 +646,13 @@ function normalizeSource(source: unknown): string {
   return ['wechat', 'alipay', 'bank', 'generic', 'json', 'ai', 'utterance'].includes(s) ? s : 'generic'
 }
 
-export async function previewUtterances(db: Db, ledgerId: string, text: string): Promise<PreviewRow[]> {
-  const parsed = parseUtterances(text).slice(0, 50)
+export type UtterancePreview = {
+  items: PreviewRow[]
+  parser: 'ai' | 'rules'
+  ai_error: string
+}
+
+export async function previewUtterances(db: Db, ledgerId: string, text: string): Promise<UtterancePreview> {
   const accounts = await db.all<{ id: string; name: string }>(
     `SELECT id, name FROM accounts WHERE ledger_id = ? AND archived = 0 ORDER BY sort_order ASC, created_at ASC`,
     [ledgerId],
@@ -660,32 +666,76 @@ export async function previewUtterances(db: Db, ledgerId: string, text: string):
     name: c.name,
     kind: c.kind === 'income' ? 'income' : 'expense',
   }))
-  return parsed.map((item, index) => {
-    if (item.kind === 'skip') return blankPreview(index + 1, item.raw, 'skip', item.reason)
+  const byRules = (): PreviewRow[] =>
+    parseUtterances(text)
+      .slice(0, 50)
+      .map((item, index) => {
+        if (item.kind === 'skip') return blankPreview(index + 1, item.raw, 'skip', item.reason)
+        const row = withSuggestions(
+          {
+            row: index + 1,
+            status: 'ok',
+            reason: '',
+            date: item.date,
+            amount_cents: item.amountCents,
+            direction: item.direction,
+            note: item.note,
+            counterparty: item.favor?.contactName ?? '',
+            category_name: '',
+            account_name: '',
+          },
+          accounts,
+          catList,
+          'generic',
+        )
+        if (item.favor) {
+          row.favor_contact = item.favor.contactName
+          row.favor_kind = item.favor.giftKind
+          row.favor_occasion = item.favor.occasion
+        }
+        return row
+      })
+
+  const configs = await readAiConfigs(db)
+  if (!configs.some(aiReady)) return { items: byRules(), parser: 'rules', ai_error: '' }
+  const ai = await aiParseUtterances(configs, text, {
+    today: shanghaiDate(),
+    categories: catList.map((c) => `${c.name}(${c.kind === 'income' ? '收入' : '支出'})`),
+    accounts: accounts.map((a) => a.name),
+  })
+  if (!ai.ok) return { items: byRules(), parser: 'rules', ai_error: ai.error }
+
+  const items = ai.data.map((item, index) => {
     const row = withSuggestions(
       {
         row: index + 1,
-        status: 'ok',
-        reason: '',
+        status: item.date ? 'ok' : 'error',
+        reason: item.date ? '' : 'AI 未给出日期',
         date: item.date,
-        amount_cents: item.amountCents,
+        amount_cents: item.amount_cents,
         direction: item.direction,
         note: item.note,
-        counterparty: item.favor?.contactName ?? '',
-        category_name: '',
-        account_name: '',
+        counterparty: item.favor_contact,
+        category_name: item.category_name,
+        account_name: item.account_name,
       },
       accounts,
       catList,
-      'generic',
+      'utterance',
     )
-    if (item.favor) {
-      row.favor_contact = item.favor.contactName
-      row.favor_kind = item.favor.giftKind
-      row.favor_occasion = item.favor.occasion
+    const fromText = detectFavor([item.source, item.note].filter(Boolean).join(' '), item.direction)
+    if (isPersonName(item.favor_contact) && item.favor_kind) {
+      row.favor_contact = item.favor_contact
+      row.favor_kind = item.favor_kind
+      row.favor_occasion = item.favor_occasion
+    } else if (fromText) {
+      row.favor_contact = fromText.contactName
+      row.favor_kind = fromText.giftKind
+      row.favor_occasion = fromText.occasion
     }
     return row
   })
+  return { items, parser: 'ai', ai_error: '' }
 }
 
 function blankPreview(row: number, note: string, status: PreviewRow['status'], reason: string): PreviewRow {

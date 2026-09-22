@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * 语音 / 自然语言记账。
- * 录音只在当次请求里转成文字，不保存音频，也不保存原文。确认后才写入流水或人情。
+ * 语音录入：先识别成文字，再用 AI 拆成流水，确认后才入账。
+ * 录音和原文都不保存。没配 AI 时退回规则解析。
  */
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -10,10 +10,12 @@ import { formatYuan } from '../money.ts'
 
 const router = useRouter()
 const spoken = ref('')
+const parsedText = ref('')
 const rows = ref<ImportPreviewRow[]>([])
 const speechOn = ref(false)
 const recording = ref(false)
 const busy = ref(false)
+const phase = ref<'idle' | 'hear' | 'parse'>('idle')
 const err = ref('')
 const msg = ref('')
 let recorder: MediaRecorder | null = null
@@ -55,36 +57,47 @@ async function toggleMic() {
     const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' })
     const fd = new FormData()
     fd.append('file', blob, 'speech.webm')
+    phase.value = 'hear'
     busy.value = true
     try {
-      const data = await api<{ text: string; profile: string }>('/api/v1/speech/transcribe', { method: 'POST', body: fd })
-      spoken.value = spoken.value ? `${spoken.value}\n${data.text}` : data.text
-      msg.value = `已识别（${data.profile}）。确认文字后点解析。`
+      const data = await api<{ text: string }>('/api/v1/speech/transcribe', { method: 'POST', body: fd })
+      spoken.value = data.text
+      await parseSpoken()
     } catch (e2) {
       err.value = e2 instanceof Error ? e2.message : '识别失败'
-    } finally {
+      phase.value = 'idle'
       busy.value = false
     }
   }
   rec.start()
   recording.value = true
+  phase.value = 'hear'
   recordTimer = window.setTimeout(() => rec.stop(), 60_000)
 }
 
 async function parseSpoken() {
-  if (!spoken.value.trim()) return
+  if (!spoken.value.trim()) {
+    phase.value = 'idle'
+    busy.value = false
+    return
+  }
   busy.value = true
+  phase.value = 'parse'
   err.value = ''
   msg.value = ''
   try {
-    const data = await api<{ items: ImportPreviewRow[] }>('/api/v1/imports/utterances', {
-      method: 'POST',
-      body: JSON.stringify({ text: spoken.value }),
-    })
+    const data = await api<{ items: ImportPreviewRow[]; parser: 'ai' | 'rules'; ai_error: string }>(
+      '/api/v1/imports/utterances',
+      { method: 'POST', body: JSON.stringify({ text: spoken.value }) },
+    )
     rows.value = data.items
+    parsedText.value = spoken.value
+    if (data.parser === 'ai') msg.value = '已用 AI 解析。核对后记入。'
+    else msg.value = data.ai_error ? `AI 不可用，已改用规则解析：${data.ai_error}` : '未配置 AI，已用规则解析。'
   } catch (e2) {
     err.value = e2 instanceof Error ? e2.message : '解析失败'
   } finally {
+    phase.value = 'idle'
     busy.value = false
   }
 }
@@ -115,6 +128,7 @@ async function commitSpoken() {
       body: JSON.stringify({ source: 'utterance', filename: '', rows: payload }),
     })
     spoken.value = ''
+    parsedText.value = ''
     rows.value = []
     const gifts = data.gifts ? `，人情 ${data.gifts} 笔` : ''
     msg.value = `已记入 ${data.imported} 笔${gifts}`
@@ -132,21 +146,43 @@ async function commitSpoken() {
       <button class="back" type="button" @click="router.back()">←</button>
       <h1 style="margin:0">语音录入</h1>
     </div>
-    <p class="muted">说一句话，或直接打字。录音和原文都不保存，确认后才入账。</p>
+
+    <div class="speak-stage">
+      <button class="mic" type="button" :class="{ on: recording }" :disabled="busy || !speechOn" @click="toggleMic">
+        {{ recording ? '停止' : '说话' }}
+      </button>
+      <p class="muted">
+        <template v-if="!speechOn">语音未配置。可先打字，管理后台「语音识别」配好后再用麦克风。</template>
+        <template v-else-if="recording">正在听，再点一次停止，最长 60 秒。</template>
+        <template v-else-if="phase === 'hear'">正在识别…</template>
+        <template v-else-if="phase === 'parse'">正在用 AI 解析…</template>
+        <template v-else>说完自动解析。录音和原文都不保存。</template>
+      </p>
+    </div>
+
     <p v-if="err" class="err">{{ err }}</p>
     <p v-if="msg" class="muted">{{ msg }}</p>
 
     <div class="card">
-      <button class="btn" type="button" :disabled="busy || !speechOn" @click="toggleMic">
-        {{ recording ? '停止录音' : speechOn ? '按住说话（点一下开始）' : '语音未配置' }}
-      </button>
-      <p v-if="!speechOn" class="muted">请先在管理后台「语音识别」里配好硅基流动或其他识别接口。</p>
-      <p v-else-if="recording" class="muted">正在听，最长 60 秒。再说一次按钮即可停止。</p>
-      <div class="field">
-        <span>识别结果，可改</span>
-        <textarea v-model="spoken" rows="4" placeholder="例如：昨天午饭 35；给张三结婚随了 500"></textarea>
+      <div class="row" style="margin-bottom:8px">
+        <span class="muted">识别结果，可改</span>
+        <button
+          v-if="spoken.trim() && spoken !== parsedText"
+          class="btn ghost compact"
+          type="button"
+          :disabled="busy"
+          @click="parseSpoken"
+        >重新解析</button>
       </div>
-      <button class="btn" type="button" :disabled="busy || !spoken.trim()" @click="parseSpoken">解析</button>
+      <textarea v-model="spoken" rows="3" placeholder="也可以直接打字，例如：昨天午饭 35；给张三结婚随了 500"></textarea>
+      <button
+        v-if="!parsedText && spoken.trim()"
+        class="btn ghost"
+        style="margin-top:12px"
+        type="button"
+        :disabled="busy"
+        @click="parseSpoken"
+      >解析</button>
     </div>
 
     <div v-if="rows.length" class="card" style="margin-top:12px">
@@ -158,6 +194,7 @@ async function commitSpoken() {
               {{ r.date }} · {{ r.category_name || '未分类' }} · {{ r.account_name || '未选账户' }}
               <template v-if="r.favor_contact"> · 人情 {{ r.favor_kind === 'give' ? '送出' : '收入' }} {{ r.favor_contact }} {{ r.favor_occasion }}</template>
             </div>
+            <div class="muted" v-else-if="r.status === 'error'">{{ r.reason }}</div>
           </div>
           <div v-if="r.status === 'ok'" class="amount" :class="r.direction === 'expense' ? 'expense' : 'income'">
             {{ r.direction === 'expense' ? '-' : '+' }}{{ formatYuan(r.amount_cents) }}

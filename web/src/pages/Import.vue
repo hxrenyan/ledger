@@ -232,10 +232,6 @@ onMounted(loadBatches)
     <p v-if="err" class="err">{{ err }}</p>
     <p v-if="msg" class="muted">{{ msg }}</p>
 
-    <div v-if="!preview" class="card" style="margin-bottom:12px">
-      <div class="row" @click="router.push('/speak')">改用语音录入</div>
-    </div>
-
     <!-- 1. 选文件 -->
     <div v-if="!preview" class="card">
       <div class="field">

@@ -44,7 +44,7 @@
 | 方法 | 路径 | 说明 |
 |------|------|------|
 | POST | `/api/v1/imports/preview` | 解析预览，**不写库**。body：`{kind:'text',text}` 或 `{kind:'rows',rows}`，可带 `filename` / `sheet` / `use_ai`。不接收原始文件 |
-| POST | `/api/v1/imports/utterances` | 自然语言预览，**不写库**。body：`{text}`。随礼/礼金会带上 `favor_*` |
+| POST | `/api/v1/imports/utterances` | 自然语言预览，**不写库**。body：`{text}`。已配置 AI 时先用模型拆句，失败再退回规则。返回 `{items,parser,ai_error}`。随礼/礼金会带上 `favor_*` |
 | GET | `/api/v1/speech/status` | 是否已有可用语音配置 |
 | POST | `/api/v1/speech/transcribe` | `multipart` 字段 `file`。只返回 `{text,profile}`，不保存音频 |
 | POST | `/api/v1/imports/suggest` | AI 批量建议分类，body `{rows:[{i,note,counterparty,direction,amount_cents}]}` |

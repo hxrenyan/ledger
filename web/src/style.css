@@ -190,6 +190,45 @@ input.bare {
   line-height: 1;
   box-shadow: 0 8px 20px rgba(59, 91, 219, 0.35);
 }
+.sheet-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 20, 40, 0.35);
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.sheet {
+  width: min(480px, 100%);
+  background: #fff;
+  border-radius: 20px 20px 0 0;
+  padding: 16px 16px calc(16px + var(--safe-b));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.speak-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 8px 0 16px;
+  text-align: center;
+}
+.mic {
+  width: 96px;
+  height: 96px;
+  border: 0;
+  border-radius: 48px;
+  background: var(--brand);
+  color: #fff;
+  font-size: 18px;
+  font-weight: 600;
+  box-shadow: 0 10px 24px rgba(59, 91, 219, 0.28);
+}
+.mic.on { background: var(--expense); }
+.mic:disabled { opacity: 0.45; }
 .ledger-bar {
   max-width: 42%;
   border: 1px solid var(--line);
