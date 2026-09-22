@@ -25,6 +25,12 @@ const err = ref('')
 const msg = ref('')
 const visible = ref(60)
 const editing = ref<number | null>(null)
+const spoken = ref('')
+const spokenRows = ref<ImportPreviewRow[]>([])
+const speechOn = ref(false)
+const recording = ref(false)
+let recorder: MediaRecorder | null = null
+let recordTimer = 0
 
 const importable = computed(() => rows.value.filter((r) => r.status === 'ok' && r.direction !== 'skip').length)
 const problemCount = computed(() => rows.value.filter((r) => r.status === 'error').length)
@@ -140,6 +146,9 @@ async function commit() {
       note: r.note,
       category_id: r.category_id,
       account_id: r.account_id,
+      favor_contact: r.favor_contact,
+      favor_kind: r.favor_kind,
+      favor_occasion: r.favor_occasion,
     }))
   if (!payload.length) {
     err.value = '没有可导入的行'
@@ -216,7 +225,108 @@ function when(ms: number) {
   return new Date(ms + 8 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ')
 }
 
-onMounted(loadBatches)
+onMounted(async () => {
+  await loadBatches()
+  try {
+    speechOn.value = (await api<{ available: boolean }>('/api/v1/speech/status')).available
+  } catch {
+    speechOn.value = false
+  }
+})
+
+async function toggleMic() {
+  if (!speechOn.value || busy.value) return
+  if (recording.value) {
+    recorder?.stop()
+    return
+  }
+  err.value = ''
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true }).catch(() => null)
+  if (!stream) {
+    err.value = '无法使用麦克风'
+    return
+  }
+  const chunks: Blob[] = []
+  const rec = new MediaRecorder(stream)
+  recorder = rec
+  rec.ondataavailable = (e) => {
+    if (e.data.size) chunks.push(e.data)
+  }
+  rec.onstop = async () => {
+    stream.getTracks().forEach((track) => track.stop())
+    recording.value = false
+    window.clearTimeout(recordTimer)
+    const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' })
+    const fd = new FormData()
+    fd.append('file', blob, 'speech.webm')
+    busy.value = true
+    try {
+      const data = await api<{ text: string }>('/api/v1/speech/transcribe', { method: 'POST', body: fd })
+      spoken.value = spoken.value ? `${spoken.value}\n${data.text}` : data.text
+    } catch (e2) {
+      err.value = e2 instanceof Error ? e2.message : '识别失败'
+    } finally {
+      busy.value = false
+    }
+  }
+  rec.start()
+  recording.value = true
+  recordTimer = window.setTimeout(() => rec.stop(), 60_000)
+}
+
+async function parseSpoken() {
+  if (!spoken.value.trim()) return
+  busy.value = true
+  err.value = ''
+  msg.value = ''
+  try {
+    const data = await api<{ items: ImportPreviewRow[] }>('/api/v1/imports/utterances', {
+      method: 'POST',
+      body: JSON.stringify({ text: spoken.value }),
+    })
+    spokenRows.value = data.items
+  } catch (e2) {
+    err.value = e2 instanceof Error ? e2.message : '解析失败'
+  } finally {
+    busy.value = false
+  }
+}
+
+async function commitSpoken() {
+  const payload = spokenRows.value
+    .filter((r) => r.status === 'ok' && r.direction !== 'skip')
+    .map((r) => ({
+      date: r.date,
+      amount_cents: r.amount_cents,
+      direction: r.direction,
+      note: r.note,
+      category_id: r.category_id,
+      account_id: r.account_id,
+      favor_contact: r.favor_contact,
+      favor_kind: r.favor_kind,
+      favor_occasion: r.favor_occasion,
+    }))
+  if (!payload.length) {
+    err.value = '没有可入账的句子'
+    return
+  }
+  busy.value = true
+  err.value = ''
+  try {
+    const data = await api<ImportCommitResult>('/api/v1/imports/commit', {
+      method: 'POST',
+      body: JSON.stringify({ source: 'utterance', filename: '', rows: payload }),
+    })
+    result.value = data
+    spoken.value = ''
+    spokenRows.value = []
+    await loadBatches()
+  } catch (e2) {
+    err.value = e2 instanceof Error ? e2.message : '入账失败'
+  } finally {
+    busy.value = false
+  }
+}
 </script>
 
 <template>
@@ -228,6 +338,25 @@ onMounted(loadBatches)
 
     <p v-if="err" class="err">{{ err }}</p>
     <p v-if="msg" class="muted">{{ msg }}</p>
+
+    <div v-if="!preview" class="card" style="margin-bottom:12px">
+      <div class="field">
+        <span>说一句话或打字。语音只用于当次识别，不保存录音，也不保存原文。</span>
+        <textarea v-model="spoken" rows="3" placeholder="例如：昨天给张三结婚随了500；午饭 35"></textarea>
+      </div>
+      <div class="inline">
+        <button class="btn ghost" style="width:auto" type="button" :disabled="busy || !speechOn" @click="toggleMic">
+          {{ recording ? '停止' : speechOn ? '语音' : '语音未配置' }}
+        </button>
+        <button class="btn" style="width:auto" type="button" :disabled="busy || !spoken.trim()" @click="parseSpoken">解析</button>
+      </div>
+      <div v-for="r in spokenRows" :key="r.row" class="row" style="display:block">
+        <div>{{ r.status === 'skip' ? r.reason : `${r.date} · ${r.note}` }}</div>
+        <div class="muted" v-if="r.favor_contact">人情 · {{ r.favor_kind === 'give' ? '送出' : '收入' }} · {{ r.favor_contact }} {{ r.favor_occasion }}</div>
+        <div class="muted" v-else-if="r.status === 'ok'">{{ r.category_name || '未分类' }} · {{ r.account_name || '未选账户' }}</div>
+      </div>
+      <button v-if="spokenRows.length" class="btn" type="button" :disabled="busy" @click="commitSpoken">记入账本</button>
+    </div>
 
     <!-- 1. 选文件 -->
     <div v-if="!preview" class="card">
@@ -294,6 +423,7 @@ onMounted(loadBatches)
                 <template v-else-if="r.direction === 'skip'">跳过 · {{ r.reason }}</template>
                 <template v-else>
                   {{ r.category_name || '未分类' }} · {{ r.account_name || '未选账户' }}
+                  <span v-if="r.favor_contact"> · 人情 {{ r.favor_kind === 'give' ? '送出' : '收入' }} {{ r.favor_contact }} {{ r.favor_occasion }}</span>
                   <span v-if="r.duplicate" class="expense"> · 疑似重复</span>
                 </template>
                 <span> · 第 {{ r.row }} 行</span>
@@ -327,6 +457,10 @@ onMounted(loadBatches)
             <div class="field">
               <span>备注</span>
               <input v-model="r.note" @click.stop />
+            </div>
+            <div class="field" v-if="r.direction !== 'skip'">
+              <span>人情往来（留空表示不记）</span>
+              <input v-model="r.favor_contact" placeholder="对方姓名" @click.stop />
             </div>
             <p class="muted" style="margin:0">第 {{ r.row }} 行原始候选：{{ r.counterparty || '（无）' }}</p>
           </div>

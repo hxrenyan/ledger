@@ -24,6 +24,7 @@ import {
   type SuggestItem,
 } from './ai.ts'
 import { accountNameBySource, suggestAccount, suggestCategory, type AccountLite, type CategoryLite, type Suggestion } from './match.ts'
+import { detectFavor, parseUtterances } from './favor.ts'
 import { detectTable, normalizeRow, type ParsedRow, type Source } from './mapping.ts'
 import { MAX_ROWS, textToTable } from './text.ts'
 import { parseDateYmd } from './values.ts'
@@ -54,6 +55,9 @@ export type PreviewRow = {
   status: 'ok' | 'skip' | 'error'
   reason: string
   duplicate: boolean
+  favor_contact: string
+  favor_kind: '' | 'give' | 'receive'
+  favor_occasion: string
 }
 
 export type PreviewResult = {
@@ -218,6 +222,10 @@ export type CommitRowInput = {
   category_id?: string
   account_id?: string
   note?: string
+  /** 未传则按备注自动识别；传空字符串表示用户明确不要记人情。 */
+  favor_contact?: string
+  favor_kind?: string
+  favor_occasion?: string
 }
 
 export type CommitInput = {
@@ -235,6 +243,7 @@ export type CommitResult = {
   duplicates: number
   skipped: number
   failed: { row: number; reason: string }[]
+  gifts: number
 }
 
 export async function commitImport(db: Db, ledgerId: string, userId: string, input: CommitInput): Promise<CommitResult> {
@@ -264,6 +273,7 @@ export async function commitImport(db: Db, ledgerId: string, userId: string, inp
     accountId: string
     categoryId: string
     note: string
+    favor: { contact: string; kind: 'give' | 'receive'; occasion: string } | null
   }
   const prepared: Prepared[] = []
   let skipped = 0
@@ -318,6 +328,7 @@ export async function commitImport(db: Db, ledgerId: string, userId: string, inp
       accountId: account.id,
       categoryId: category.id,
       note: (row.note ?? '').toString().trim().slice(0, 200),
+      favor: readFavor(row, direction),
     })
   })
 
@@ -365,13 +376,13 @@ export async function commitImport(db: Db, ledgerId: string, userId: string, inp
       }
       await db.batch(stmts)
     }
+    const gifts = await writeBatchGifts(db, ledgerId, userId, batchId, now, toInsert)
+    return { batch_id: batchId, imported: toInsert.length, duplicates, skipped, failed, gifts }
   } catch (e) {
-    // 写库中途失败：把这批已写入的流水和余额回滚掉，避免留下半截数据
+    // 写库中途失败：流水、余额、这次带上的人情一起回滚。原始文件本身没有入库。
     await rollbackInserted(db, ledgerId, batchId, insertedIds)
     throw e
   }
-
-  return { batch_id: batchId, imported: toInsert.length, duplicates, skipped, failed }
 }
 
 async function rollbackInserted(db: Db, ledgerId: string, batchId: string, ids: string[]) {
@@ -389,6 +400,7 @@ async function rollbackInserted(db: Db, ledgerId: string, batchId: string, ids: 
       }
     }
   } finally {
+    await db.run(`DELETE FROM gifts WHERE ledger_id = ? AND import_batch_id = ?`, [ledgerId, batchId])
     await db.run(`DELETE FROM import_batches WHERE id = ?`, [batchId])
   }
 }
@@ -458,6 +470,21 @@ export async function undoBatch(db: Db, ledgerId: string, batchId: string): Prom
     const stmts: Stmt[] = rows.flatMap((r) => balanceStmts({ ...r, amount_cents: Number(r.amount_cents) }, -1))
     stmts.push({ sql: `DELETE FROM transactions WHERE ledger_id = ? AND id IN (${chunk.map(() => '?').join(',')})`, params: [ledgerId, ...chunk] })
     await db.batch(stmts)
+  }
+  const touched = await db.all<{ contact_id: string }>(
+    `SELECT DISTINCT contact_id FROM gifts WHERE ledger_id = ? AND import_batch_id = ?`,
+    [ledgerId, batchId],
+  )
+  await db.run(`DELETE FROM gifts WHERE ledger_id = ? AND import_batch_id = ?`, [ledgerId, batchId])
+  const contactIds = touched.map((r) => r.contact_id).filter(Boolean)
+  if (contactIds.length) {
+    await db.run(
+      `DELETE FROM contacts
+       WHERE ledger_id = ? AND relation = '' AND note = ''
+         AND id IN (${contactIds.map(() => '?').join(',')})
+         AND id NOT IN (SELECT contact_id FROM gifts WHERE ledger_id = ?)`,
+      [ledgerId, ...contactIds, ledgerId],
+    )
   }
   await db.run(`UPDATE import_batches SET status = 'undone', undone_at = ? WHERE id = ?`, [Date.now(), batchId])
   return { removed: idList.length }
@@ -533,7 +560,11 @@ function withSuggestions(p: ParsedRow, accounts: AccountLite[], categories: Cate
     status: p.status,
     reason: p.reason,
     duplicate: false,
+    favor_contact: '',
+    favor_kind: '',
+    favor_occasion: '',
   }
+  attachFavor(base)
   if (p.status === 'error' || !accounts.length) return base
 
   const hay = [p.note, p.counterparty, p.category_name].filter(Boolean).join(' ')
@@ -612,5 +643,153 @@ async function loadExistingSignatures(db: Db, ledgerId: string, occurredAts: num
 
 function normalizeSource(source: unknown): string {
   const s = String(source ?? '').toLowerCase()
-  return ['wechat', 'alipay', 'bank', 'generic', 'json', 'ai'].includes(s) ? s : 'generic'
+  return ['wechat', 'alipay', 'bank', 'generic', 'json', 'ai', 'utterance'].includes(s) ? s : 'generic'
+}
+
+export async function previewUtterances(db: Db, ledgerId: string, text: string): Promise<PreviewRow[]> {
+  const parsed = parseUtterances(text).slice(0, 50)
+  const accounts = await db.all<{ id: string; name: string }>(
+    `SELECT id, name FROM accounts WHERE ledger_id = ? AND archived = 0 ORDER BY sort_order ASC, created_at ASC`,
+    [ledgerId],
+  )
+  const categories = await db.all<{ id: string; name: string; kind: string }>(
+    `SELECT id, name, kind FROM categories WHERE ledger_id = ? AND archived = 0 ORDER BY sort_order ASC, created_at ASC`,
+    [ledgerId],
+  )
+  const catList: CategoryLite[] = categories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    kind: c.kind === 'income' ? 'income' : 'expense',
+  }))
+  return parsed.map((item, index) => {
+    if (item.kind === 'skip') return blankPreview(index + 1, item.raw, 'skip', item.reason)
+    const row = withSuggestions(
+      {
+        row: index + 1,
+        status: 'ok',
+        reason: '',
+        date: item.date,
+        amount_cents: item.amountCents,
+        direction: item.direction,
+        note: item.note,
+        counterparty: item.favor?.contactName ?? '',
+        category_name: '',
+        account_name: '',
+      },
+      accounts,
+      catList,
+      'generic',
+    )
+    if (item.favor) {
+      row.favor_contact = item.favor.contactName
+      row.favor_kind = item.favor.giftKind
+      row.favor_occasion = item.favor.occasion
+    }
+    return row
+  })
+}
+
+function blankPreview(row: number, note: string, status: PreviewRow['status'], reason: string): PreviewRow {
+  return {
+    row,
+    date: '',
+    amount_cents: 0,
+    direction: 'skip',
+    note,
+    counterparty: '',
+    category_id: '',
+    category_name: '',
+    account_id: '',
+    account_name: '',
+    status,
+    reason,
+    duplicate: false,
+    favor_contact: '',
+    favor_kind: '',
+    favor_occasion: '',
+  }
+}
+
+function attachFavor(row: PreviewRow) {
+  const favor = detectFavor(
+    [row.note, row.counterparty, row.category_name].filter(Boolean).join(' '),
+    row.direction === 'income' ? 'income' : 'expense',
+  )
+  row.favor_contact = favor?.contactName ?? ''
+  row.favor_kind = favor?.giftKind ?? ''
+  row.favor_occasion = favor?.occasion ?? ''
+}
+
+function readFavor(
+  row: CommitRowInput,
+  direction: 'expense' | 'income',
+): { contact: string; kind: 'give' | 'receive'; occasion: string } | null {
+  if (typeof row.favor_contact === 'string') {
+    const contact = row.favor_contact.trim().slice(0, 32)
+    const kind = row.favor_kind === 'give' || row.favor_kind === 'receive' ? row.favor_kind : ''
+    if (!contact || !kind) return null
+    return {
+      contact,
+      kind,
+      occasion: typeof row.favor_occasion === 'string' ? row.favor_occasion.trim().slice(0, 16) : '',
+    }
+  }
+  const hit = detectFavor(String(row.note ?? ''), direction)
+  return hit ? { contact: hit.contactName, kind: hit.giftKind, occasion: hit.occasion } : null
+}
+
+async function writeBatchGifts(
+  db: Db,
+  ledgerId: string,
+  userId: string,
+  batchId: string,
+  now: number,
+  rows: { favor: { contact: string; kind: 'give' | 'receive'; occasion: string } | null; amountCents: number; occurredAt: number; note: string }[],
+): Promise<number> {
+  const favors = rows.filter((row) => row.favor)
+  if (!favors.length) return 0
+  const names = [...new Set(favors.map((row) => row.favor!.contact))]
+  const existing = await db.all<{ id: string; name: string }>(
+    `SELECT id, name FROM contacts WHERE ledger_id = ? AND archived = 0 AND name IN (${names.map(() => '?').join(',')})`,
+    [ledgerId, ...names],
+  )
+  const map = new Map(existing.map((row) => [row.name, row.id]))
+  const created: string[] = []
+  const create: Stmt[] = []
+  for (const name of names) {
+    if (map.has(name)) continue
+    const id = newId()
+    map.set(name, id)
+    created.push(id)
+    create.push({
+      sql: `INSERT INTO contacts (id, ledger_id, name, relation, note, archived, created_at) VALUES (?, ?, ?, '', '', 0, ?)`,
+      params: [id, ledgerId, name, now],
+    })
+  }
+  try {
+    if (create.length) await db.batch(create)
+    const stmts: Stmt[] = []
+    for (const row of favors) {
+      const contactId = map.get(row.favor!.contact)
+      if (!contactId) continue
+      stmts.push({
+        sql: `INSERT INTO gifts (id, ledger_id, contact_id, kind, amount_cents, occasion, occurred_at, note, created_by, created_at, updated_at, import_batch_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [newId(), ledgerId, contactId, row.favor!.kind, row.amountCents, row.favor!.occasion, row.occurredAt, row.note, userId, now, now, batchId],
+      })
+    }
+    for (let offset = 0; offset < stmts.length; offset += COMMIT_CHUNK) {
+      await db.batch(stmts.slice(offset, offset + COMMIT_CHUNK))
+    }
+    return stmts.length
+  } catch (error) {
+    if (created.length) {
+      await db.run(
+        `DELETE FROM contacts WHERE ledger_id = ? AND id IN (${created.map(() => '?').join(',')})
+         AND id NOT IN (SELECT contact_id FROM gifts WHERE ledger_id = ?)`,
+        [ledgerId, ...created, ledgerId],
+      )
+    }
+    throw error
+  }
 }

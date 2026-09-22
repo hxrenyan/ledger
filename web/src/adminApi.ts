@@ -13,7 +13,8 @@ export function setAdminToken(token: string) {
 
 export async function adminApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers)
-  if (!headers.has('content-type') && init.body) headers.set('content-type', 'application/json')
+  const isFD = typeof FormData !== 'undefined' && init.body instanceof FormData
+  if (!isFD && !headers.has('content-type') && init.body) headers.set('content-type', 'application/json')
   const token = getAdminToken()
   if (token) headers.set('authorization', `Bearer ${token}`)
   const res = await fetch(path, { ...init, headers })

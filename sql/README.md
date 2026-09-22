@@ -43,6 +43,7 @@ npm run db:migrate-all-remote
 | `recurrences` | TEXT | 周期记账 |
 | `import_batches` | TEXT | 账单导入批次台账（回溯 / 撤销） |
 | `ai_settings` | TEXT | AI 解析配置，全局单行（`id='default'`） |
+| `asr_profiles` | TEXT | 语音识别配置，多套按 `sort_order` 接力；不保存录音 |
 
 新环境只用 `schema.sql`。线上已有数据只追加 `sql/migrations/`，不要对生产库重跑全量 schema。
 

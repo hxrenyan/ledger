@@ -6,6 +6,7 @@ export async function patchSchema(db: Db) {
   await ensureColumn(db, 'transactions', 'excluded', 'INTEGER NOT NULL DEFAULT 0')
   await ensureColumn(db, 'transactions', 'has_receipt', 'INTEGER NOT NULL DEFAULT 0')
   await ensureColumn(db, 'transactions', 'import_batch_id', 'TEXT')
+  await ensureColumn(db, 'gifts', 'import_batch_id', 'TEXT')
   await db.run(
     `CREATE TABLE IF NOT EXISTS recurrences (
       id TEXT PRIMARY KEY,
@@ -53,10 +54,26 @@ export async function patchSchema(db: Db) {
     )`,
   )
   await db.run(
+    `CREATE TABLE IF NOT EXISTS asr_profiles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
+      enabled INTEGER NOT NULL DEFAULT 0,
+      protocol TEXT NOT NULL DEFAULT 'openai-audio',
+      base_url TEXT NOT NULL DEFAULT '',
+      api_key TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    )`,
+  )
+  await db.run(
     `CREATE INDEX IF NOT EXISTS idx_import_batches_ledger ON import_batches (ledger_id, created_at)`,
   )
   await db.run(
     `CREATE INDEX IF NOT EXISTS idx_tx_import_batch ON transactions (import_batch_id) WHERE import_batch_id IS NOT NULL`,
+  )
+  await db.run(
+    `CREATE INDEX IF NOT EXISTS idx_gifts_import_batch ON gifts (import_batch_id) WHERE import_batch_id IS NOT NULL`,
   )
 }
 

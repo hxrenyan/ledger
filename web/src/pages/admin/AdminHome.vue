@@ -3,13 +3,14 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { adminApi, setAdminToken } from '../../adminApi.ts'
 import AdminAi from './AdminAi.vue'
+import AdminAsr from './AdminAsr.vue'
 
 type Overview = { users: number; ledgers: number; transactions: number; disabled_users: number }
 type UserRow = { id: string; username: string; nickname: string; disabled: boolean; created_at: number; ledger_count: number }
 type LedgerRow = { id: string; name: string; owner_username: string; member_count: number; tx_count: number; created_at: number }
 
 const router = useRouter()
-const tab = ref<'users' | 'ledgers' | 'ai'>('users')
+const tab = ref<'users' | 'ledgers' | 'ai' | 'asr'>('users')
 const overview = ref<Overview>({ users: 0, ledgers: 0, transactions: 0, disabled_users: 0 })
 const users = ref<UserRow[]>([])
 const ledgers = ref<LedgerRow[]>([])
@@ -75,6 +76,7 @@ onMounted(load)
       <button :class="{ on: tab === 'users' }" @click="tab = 'users'">用户</button>
       <button :class="{ on: tab === 'ledgers' }" @click="tab = 'ledgers'">账本</button>
       <button :class="{ on: tab === 'ai' }" @click="tab = 'ai'">AI 配置</button>
+      <button :class="{ on: tab === 'asr' }" @click="tab = 'asr'">语音识别</button>
     </div>
     <p v-if="err" class="err">{{ err }}</p>
     <div v-if="tab === 'users'" class="card">
@@ -102,6 +104,7 @@ onMounted(load)
         </div>
       </div>
     </div>
-    <AdminAi v-else />
+    <AdminAi v-else-if="tab === 'ai'" />
+    <AdminAsr v-else />
   </div>
 </template>

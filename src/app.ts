@@ -14,6 +14,7 @@ import { registerAdminRoutes } from './routes/admin.ts'
 import { registerFavorRoutes } from './routes/favors.ts'
 import { registerRecurrenceRoutes } from './routes/recurrences.ts'
 import { registerImportRoutes } from './routes/imports.ts'
+import { registerSpeechRoutes } from './routes/speech.ts'
 
 export type AppEnv = {
   Variables: {
@@ -145,6 +146,7 @@ export function createApp(cfg: AppConfig) {
   registerFavorRoutes(app)
   registerRecurrenceRoutes(app)
   registerImportRoutes(app)
+  registerSpeechRoutes(app)
   registerAdminRoutes(app)
 
   return app

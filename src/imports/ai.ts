@@ -164,6 +164,7 @@ const PARSE_SYSTEM = `你是账单表格解析助手。输入是从账单文件�
 - amount 为元、正数、最多两位小数，无法判断就留空字符串
 - direction 只能是 expense（支出）或 income（收入）或 skip（不计收支/转账/中性）
 - note、counterparty、category、account 尽力提取，没有就留空字符串
+- 随礼、礼金、份子、压岁钱、人情：对方姓名写入 counterparty，事由留在 note，不要把人名丢掉
 - category 优先从参考分类里挑；account 优先从参考账户里挑
 - 跳过表头、说明、合计、分隔等非流水行，不要为它们输出
 - 不要编造数据，不确定就留空`

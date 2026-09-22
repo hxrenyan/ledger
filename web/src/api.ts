@@ -73,6 +73,9 @@ export type ImportPreviewRow = {
   status: 'ok' | 'skip' | 'error'
   reason: string
   duplicate: boolean
+  favor_contact: string
+  favor_kind: '' | 'give' | 'receive'
+  favor_occasion: string
 }
 
 export type ImportPreview = {
@@ -97,6 +100,7 @@ export type ImportCommitResult = {
   duplicates: number
   skipped: number
   failed: { row: number; reason: string }[]
+  gifts: number
 }
 
 export type ImportBatch = {

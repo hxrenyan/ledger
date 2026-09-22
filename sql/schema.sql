@@ -15,6 +15,7 @@
 --   recurrences    周期记账
 --   import_batches 账单导入批次（回溯 / 撤销）
 --   ai_settings    AI 解析配置（全局单行）
+--   asr_profiles   语音识别配置（多套，按 sort_order 接力）
 --
 -- 约定：表之间只保留逻辑关联字段，不定义数据库外键；
 --       关联完整性由应用层校验，多语句写入走 D1 batch。
@@ -153,7 +154,8 @@ CREATE TABLE IF NOT EXISTS gifts (
   note TEXT NOT NULL DEFAULT '',
   created_by TEXT NOT NULL,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  import_batch_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS recurrences (
@@ -203,6 +205,22 @@ CREATE TABLE IF NOT EXISTS ai_settings (
 );
 
 -- ---------------------------------------------------------------------------
+-- asr_profiles（语音识别，可多套；按 sort_order 从小到大尝试，失败换下一套）
+-- protocol 预留接入方式：目前只实现 openai-audio（硅基流动 / OpenAI 兼容 /audio/transcriptions）
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS asr_profiles (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT '',
+  enabled INTEGER NOT NULL DEFAULT 0,
+  protocol TEXT NOT NULL DEFAULT 'openai-audio',
+  base_url TEXT NOT NULL DEFAULT '',
+  api_key TEXT NOT NULL DEFAULT '',
+  model TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
 -- 索引（对应列表/统计查询，不重复主键与 UNIQUE）
 -- ---------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_tx_ledger_occurred ON transactions (ledger_id, occurred_at);
@@ -214,3 +232,4 @@ CREATE INDEX IF NOT EXISTS idx_gifts_contact ON gifts (ledger_id, contact_id, oc
 CREATE INDEX IF NOT EXISTS idx_recurrences_next ON recurrences (ledger_id, enabled, next_at);
 CREATE INDEX IF NOT EXISTS idx_import_batches_ledger ON import_batches (ledger_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_tx_import_batch ON transactions (import_batch_id) WHERE import_batch_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_gifts_import_batch ON gifts (import_batch_id) WHERE import_batch_id IS NOT NULL;

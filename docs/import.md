@@ -43,7 +43,10 @@
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/v1/imports/preview` | 解析预览，**不写库**。body：`{kind:'text',text}` 或 `{kind:'rows',rows}`，可带 `filename` / `sheet` / `use_ai` |
+| POST | `/api/v1/imports/preview` | 解析预览，**不写库**。body：`{kind:'text',text}` 或 `{kind:'rows',rows}`，可带 `filename` / `sheet` / `use_ai`。不接收原始文件 |
+| POST | `/api/v1/imports/utterances` | 自然语言预览，**不写库**。body：`{text}`。随礼/礼金会带上 `favor_*` |
+| GET | `/api/v1/speech/status` | 是否已有可用语音配置 |
+| POST | `/api/v1/speech/transcribe` | `multipart` 字段 `file`。只返回 `{text,profile}`，不保存音频 |
 | POST | `/api/v1/imports/suggest` | AI 批量建议分类，body `{rows:[{i,note,counterparty,direction,amount_cents}]}` |
 | POST | `/api/v1/imports/commit` | 提交落库，body `{source,filename,sheet,ai_used,dedupe,rows:[…]}`，返回 `{batch_id,imported,duplicates,skipped,failed}` |
 | GET | `/api/v1/imports/batches` | 最近导入批次（`limit` 默认 20） |
@@ -56,6 +59,8 @@
 | GET | `/api/v1/admin/ai` | 读配置，`api_key` 只回显掩码 `key_hint` |
 | PUT | `/api/v1/admin/ai` | 写配置；`api_key` 留空＝不改，`clear_key:true`＝清空；启用时三项必填 |
 | POST | `/api/v1/admin/ai/test` | 连通性测试，可用表单里的临时参数 |
+| GET/PUT | `/api/v1/admin/asr` | 语音配置列表。`items` 顺序即接力顺序，最多 8 套；密钥只回显掩码 |
+| POST | `/api/v1/admin/asr/test` | 测其中一套，需上传音频，音频不保存 |
 
 预览响应里的 `source` / `header_index` / `mapping` 会一并返回，方便排查「为什么这列没认出来」。
 
@@ -77,6 +82,10 @@
 | `import_batches` | 批次台账：来源、文件名、行数统计、AI 标记、状态、操作人 |
 | `transactions.import_batch_id` | 流水归属批次，为空表示手工录入；撤销按此列删除 |
 | `ai_settings` | AI 配置，全局单行（`id='default'`） |
+| `asr_profiles` | 语音识别配置，可多套。只存接口地址、模型和密钥，不存录音 |
+| `gifts.import_batch_id` | 导入时认出的人情往来，随批次撤销 |
+
+原始账单文件在浏览器里解析，服务端只收到文本或二维表，不保存文件正文。语音同样只在当次请求内存里转写，识别完即丢。批次表上的 `filename` 只是辨认用的文件名。
 
 去重：**同账本 + 同账户 + 同金额 + 同发生时间 + 同备注** 视为重复，提交时跳过并计入 `duplicates`（`dedupe:false` 可关闭）。
 撤销是物理删除 + 余额回滚，不保留流水快照，因此撤销后无法恢复。

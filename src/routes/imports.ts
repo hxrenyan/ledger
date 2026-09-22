@@ -1,9 +1,13 @@
 import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { badRequest } from '../http.ts'
-import { buildPreview, commitImport, listBatches, suggestWithAi, undoBatch } from '../imports/service.ts'
+import { buildPreview, commitImport, listBatches, previewUtterances, suggestWithAi, undoBatch } from '../imports/service.ts'
 
-/** 单次上传的文本上限：再大就该拆分导入，避免 Worker 内存与 CPU 打满。 */
+/**
+ * 单次上传的文本上限。原始文件和语音都不落库：
+ * 账单在浏览器里解析后只提交文本或二维表；语音只在识别接口的内存里转写。
+ * 这里保存的是解析后的流水 / 人情记录，以及批次上的文件名（方便辨认），没有文件正文。
+ */
 const MAX_TEXT_BYTES = 4 * 1024 * 1024
 
 export function registerImportRoutes(app: Hono<AppEnv>) {
@@ -27,6 +31,14 @@ export function registerImportRoutes(app: Hono<AppEnv>) {
       { useAi: body?.use_ai === true },
     )
     return c.json(result)
+  })
+
+  app.post('/api/v1/imports/utterances', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const text = typeof body?.text === 'string' ? body.text : ''
+    if (text.length > 8000) throw badRequest('文本过长')
+    const items = await previewUtterances(c.get('db'), c.get('ledgerId'), text)
+    return c.json({ items })
   })
 
   app.post('/api/v1/imports/suggest', async (c) => {

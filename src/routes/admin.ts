@@ -3,6 +3,8 @@ import type { AppEnv } from '../app.ts'
 import { signAdminToken } from '../auth/jwt.ts'
 import { badRequest, notFound, unauthorized } from '../http.ts'
 import { readAiConfig, resolveEndpoint, testAi } from '../imports/ai.ts'
+import { readAudio } from './speech.ts'
+import { readAsrProfiles, replaceAsrProfiles, toPublicAsr, transcribeOne, type AsrProfile } from '../speech/asr.ts'
 
 export function registerAdminRoutes(app: Hono<AppEnv>) {
   app.post('/api/v1/admin/login', async (c) => {
@@ -152,6 +154,48 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
       endpoint: resolveEndpoint(cfg.baseUrl),
     })
   })
+
+  // -----------------------------------------------------------------------
+  // 语音识别：多套，按数组顺序接力。api_key 只回显掩码。
+  // -----------------------------------------------------------------------
+  app.get('/api/v1/admin/asr', async (c) => {
+    const items = await readAsrProfiles(c.get('db'))
+    return c.json({ items: items.map(toPublicAsr) })
+  })
+
+  app.put('/api/v1/admin/asr', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const items = await replaceAsrProfiles(c.get('db'), body?.items)
+    return c.json({ ok: true, items: items.map(toPublicAsr) })
+  })
+
+  /** 测一套，不走接力。可以带未保存的表单值；密钥留空则用该 id 已存的。 */
+  app.post('/api/v1/admin/asr/test', async (c) => {
+    const form = await c.req.raw.formData().catch(() => null)
+    if (!form) throw badRequest('请上传音频')
+    const audio = await readAudio(form)
+    const id = typeof form.get('id') === 'string' ? String(form.get('id')) : ''
+    const stored = (await readAsrProfiles(c.get('db'))).find((p) => p.id === id)
+    const profile: AsrProfile = {
+      id: stored?.id ?? '',
+      name: typeof form.get('name') === 'string' ? String(form.get('name')) : (stored?.name ?? ''),
+      enabled: true,
+      protocol: 'openai-audio',
+      baseUrl: strField(form, 'base_url') || stored?.baseUrl || '',
+      apiKey: strField(form, 'api_key') || stored?.apiKey || '',
+      model: strField(form, 'model') || stored?.model || '',
+      sortOrder: 0,
+      updatedAt: 0,
+    }
+    const res = await transcribeOne(profile, audio)
+    if (!res.ok) return c.json({ ok: false, message: res.error })
+    return c.json({ ok: true, text: res.text })
+  })
+}
+
+function strField(form: FormData, key: string): string {
+  const v = form.get(key)
+  return typeof v === 'string' ? v.trim() : ''
 }
 
 function maskKey(key: string): string {
