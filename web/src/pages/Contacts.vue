@@ -62,7 +62,7 @@ onMounted(load)
     <div class="card" style="margin-bottom: 12px">
       <div class="inline">
         <input v-model="name" placeholder="姓名" @keyup.enter="add" />
-        <input v-model="relation" placeholder="关系" style="max-width: 88px" @keyup.enter="add" />
+        <input v-model="relation" class="slim" placeholder="关系" @keyup.enter="add" />
         <button class="btn" style="width: auto" :disabled="adding" @click="add">添加</button>
       </div>
       <p v-if="err" class="err">{{ err }}</p>

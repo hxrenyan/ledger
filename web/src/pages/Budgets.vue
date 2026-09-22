@@ -95,12 +95,14 @@ watch(month, load)
     <div class="card">
       <h2>分类预算</h2>
       <div class="row" v-for="c in expenseCats" :key="c.id">
-        <div style="flex:1;margin-right:8px">
+        <div>
           <div>{{ c.name }}</div>
           <div class="muted">已花 {{ formatYuan(stats.by_category.find(x => x.category_id === c.id)?.amount_cents ?? 0) }}</div>
         </div>
-        <input v-model="catYuan[c.id]" inputmode="decimal" placeholder="0.00" style="width:88px;border:1px solid var(--line);border-radius:10px;padding:8px" />
-        <button class="btn ghost" style="width:auto;margin-left:8px" @click="saveCat(c.id)">存</button>
+        <div class="inline">
+          <input v-model="catYuan[c.id]" class="slim" inputmode="decimal" placeholder="0.00" />
+          <button class="btn ghost" type="button" @click="saveCat(c.id)">存</button>
+        </div>
       </div>
     </div>
   </div>

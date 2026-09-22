@@ -8,17 +8,29 @@
   --income: #1f9d55;
   --brand: #3b5bdb;
   --shadow: 0 8px 24px rgba(20, 20, 40, 0.06);
+  --safe-t: env(safe-area-inset-top);
   --safe-b: env(safe-area-inset-bottom);
+  --safe-l: env(safe-area-inset-left);
+  --safe-r: env(safe-area-inset-right);
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; }
+html, body {
+  margin: 0;
+  min-height: 100%;
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
+}
 body {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", sans-serif;
   background: var(--bg);
   color: var(--text);
+  overflow-wrap: break-word;
 }
 button, input, select, textarea { font: inherit; }
+input, select, textarea { font-size: 16px; }
+button, a, .row { -webkit-tap-highlight-color: transparent; }
+button { touch-action: manipulation; }
 a { color: inherit; text-decoration: none; }
 
 #app { min-height: 100dvh; }
@@ -26,7 +38,7 @@ a { color: inherit; text-decoration: none; }
 .page {
   max-width: 480px;
   margin: 0 auto;
-  padding: max(16px, env(safe-area-inset-top)) 16px calc(80px + var(--safe-b));
+  padding: max(16px, var(--safe-t)) max(16px, var(--safe-r)) calc(96px + var(--safe-b)) max(16px, var(--safe-l));
 }
 
 .card {
@@ -60,9 +72,9 @@ h2 { font-size: 16px; margin: 0 0 12px; }
   min-width: 0;
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 8px 10px;
+  padding: 10px;
   background: #fff;
-  font-size: 13px;
+  font-size: 16px;
 }
 .day-h {
   display: flex;
@@ -77,22 +89,29 @@ h2 { font-size: 16px; margin: 0 0 12px; }
 .back {
   border: 0;
   background: #fff;
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
   box-shadow: var(--shadow);
-  font-size: 20px;
+  font-size: 22px;
   line-height: 1;
+  flex: none;
 }
-.inline { display: flex; gap: 8px; align-items: center; }
+.inline { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .inline input, .inline select {
-  flex: 1;
+  flex: 1 1 7rem;
   min-width: 0;
+  width: auto;
+  max-width: none;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 10px 12px;
   background: #fff;
 }
+.inline > .slim { flex: 0 0 4.5rem; width: 4.5rem; }
+.inline > .btn { width: auto; flex: 0 0 auto; min-height: 44px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.actions .btn { width: auto; flex: 1 1 9rem; min-height: 44px; }
 input.bare {
   width: 100%;
   border: 0;
@@ -117,6 +136,7 @@ input.bare {
   background: var(--brand);
   color: #fff;
   width: 100%;
+  min-height: 44px;
   font-weight: 600;
 }
 .btn.ghost { background: #eef0ff; color: var(--brand); }
@@ -148,12 +168,14 @@ input.bare {
 
 .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
 .tabs button {
-  flex: 1;
+  flex: 1 1 0;
+  min-width: 0;
   border: 0;
   background: #eceef5;
-  padding: 10px;
+  padding: 10px 4px;
   border-radius: 12px;
   color: var(--muted);
+  font-size: 14px;
 }
 .tabs button.on { background: #fff; color: var(--text); font-weight: 600; }
 
@@ -166,14 +188,20 @@ input.bare {
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--line);
   display: flex;
+  align-items: flex-end;
   max-width: 480px;
   margin: 0 auto;
-  padding-bottom: var(--safe-b);
+  padding: 0 max(0px, var(--safe-r)) var(--safe-b) max(0px, var(--safe-l));
+  min-height: calc(56px + var(--safe-b));
 }
 .nav a {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
   text-align: center;
-  padding: 10px 0 8px;
+  padding: 8px 0 10px;
   font-size: 12px;
   color: var(--muted);
 }
@@ -203,7 +231,7 @@ input.bare {
   width: min(480px, 100%);
   background: #fff;
   border-radius: 20px 20px 0 0;
-  padding: 16px 16px calc(16px + var(--safe-b));
+  padding: 16px max(16px, var(--safe-r)) calc(16px + var(--safe-b)) max(16px, var(--safe-l));
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -249,6 +277,7 @@ input.bare {
 .cal-d {
   border: 0;
   background: transparent;
+  min-height: 40px;
   padding: 8px 0;
   border-radius: 10px;
 }
@@ -277,10 +306,14 @@ input.bare {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   padding: 12px 0;
   border-bottom: 1px solid var(--line);
   cursor: pointer;
 }
+.row > :first-child { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.row > .btn, .row > .inline, .row .amount { flex: none; }
+.row .amount { white-space: nowrap; }
 .row:last-child { border-bottom: 0; }
 .muted { color: var(--muted); font-size: 12px; }
 .expense { color: var(--expense); }
@@ -295,7 +328,13 @@ input.bare {
 }
 .summary .card { padding: 14px; }
 .summary .k { font-size: 12px; color: var(--muted); }
-.summary .v { font-size: 22px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.summary .v {
+  font-size: clamp(18px, 5.2vw, 22px);
+  margin-top: 6px;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
 
 .month {
   display: flex;
@@ -305,8 +344,8 @@ input.bare {
 .month button {
   border: 0;
   background: #fff;
-  width: 36px; height: 36px;
-  border-radius: 18px;
+  width: 44px; height: 44px;
+  border-radius: 22px;
   box-shadow: var(--shadow);
 }
 

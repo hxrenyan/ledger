@@ -91,7 +91,7 @@ onMounted(load)
       </div>
       <div class="inline">
         <input v-model="amount" inputmode="decimal" placeholder="金额" />
-        <input v-model.number="day" type="number" min="1" max="28" style="max-width: 64px" />
+        <input v-model.number="day" class="slim" type="number" min="1" max="28" />
         <span class="muted">日</span>
       </div>
       <label class="field" style="margin-top: 8px">

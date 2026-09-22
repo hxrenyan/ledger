@@ -278,10 +278,10 @@ onMounted(loadBatches)
           <template v-if="preview.filename"> · {{ preview.filename }}</template>
         </p>
         <p v-if="preview.ai.error" class="err" style="margin:8px 0 0">AI：{{ preview.ai.error }}</p>
-        <div class="inline" style="margin-top:10px">
-          <button class="btn ghost" style="width:auto" :disabled="busy || !preview.ai.available" @click="suggest">AI 建议分类</button>
-          <button class="btn ghost" style="width:auto" :disabled="busy" @click="doPreview(true)">用 AI 重解析</button>
-          <button class="btn ghost" style="width:auto" :disabled="busy" @click="reset">重选文件</button>
+        <div class="actions">
+          <button class="btn ghost" type="button" :disabled="busy || !preview.ai.available" @click="suggest">AI 建议分类</button>
+          <button class="btn ghost" type="button" :disabled="busy" @click="doPreview(true)">用 AI 重解析</button>
+          <button class="btn ghost" type="button" :disabled="busy" @click="reset">重选文件</button>
         </div>
       </div>
 

@@ -78,8 +78,8 @@ watch(() => session.ledgerId, load)
     <div class="card" style="margin-bottom: 12px">
       <div class="inline">
         <input v-model="name" placeholder="账户名" />
-        <input v-model="openYuan" inputmode="decimal" placeholder="余额" style="max-width: 88px" />
-        <select v-model="type" style="max-width: 96px">
+        <input v-model="openYuan" class="slim" inputmode="decimal" placeholder="余额" />
+        <select v-model="type">
           <option value="cash">现金</option>
           <option value="alipay">支付宝</option>
           <option value="wechat">微信</option>
