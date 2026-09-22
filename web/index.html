@@ -2,7 +2,23 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, viewport-fit=cover" />
+    <script>
+      /* 部分手机浏览器会忽略不认识的 viewport 参数，退回约 980px 的桌面宽度，整页就被缩小。这里按屏幕宽度再写一次。 */
+      (function () {
+        var meta = document.querySelector('meta[name="viewport"]')
+        if (!meta || !window.screen || !screen.width) return
+        function fit() {
+          var sw = Math.min(screen.width, screen.height || screen.width)
+          var cw = document.documentElement.clientWidth
+          if (cw > sw + 40) {
+            meta.setAttribute('content', 'width=' + sw + ', initial-scale=1, minimum-scale=1, viewport-fit=cover')
+          }
+        }
+        fit()
+        document.addEventListener('DOMContentLoaded', fit)
+      })()
+    </script>
     <meta name="theme-color" content="#f4f5f8" />
     <title>记账</title>
   </head>

@@ -17,9 +17,12 @@
 * { box-sizing: border-box; }
 html, body {
   margin: 0;
+  width: 100%;
+  max-width: 100%;
   min-height: 100%;
-  overflow-x: clip;
+  overflow-x: hidden;
   -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 body {
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", sans-serif;
