@@ -355,11 +355,78 @@ input.bare {
 }
 .cal-d.has { font-weight: 700; color: var(--brand); }
 .cal-d.on { background: var(--brand); color: #fff; }
-.trend { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
-.trend-bars { flex: 1; }
-.trend-bars i { display: block; height: 6px; border-radius: 4px; margin: 2px 0; }
-.trend-bars i.income { background: var(--income); }
-.trend-bars i.expense { background: var(--expense); }
+/* 统计页（明细 → 统计） */
+.stat-hero { padding: 16px; }
+.stat-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.stat-net {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+  margin: 6px 0 8px;
+}
+.stat-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); }
+.legend .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  margin-right: 5px;
+}
+.legend .dot.income { background: var(--income); }
+.legend .dot.expense { background: var(--expense); }
+.chart { display: flex; align-items: flex-end; gap: 6px; margin-top: 14px; }
+.chart-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.chart-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  width: 100%;
+  height: 96px;
+}
+.chart-bars i { flex: 1; border-radius: 4px 4px 2px 2px; opacity: 0.85; }
+.chart-bars i.income { background: var(--income); }
+.chart-bars i.expense { background: var(--expense); }
+.chart-col.on .chart-bars i { opacity: 1; }
+.chart-x { font-size: 11px; color: var(--muted); }.chart-col.on .chart-x { color: var(--text); font-weight: 600; }
+.stat-foot { margin: 10px 0 0; }
+.cat { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.cat:last-child { border-bottom: 0; padding-bottom: 0; }
+.cat-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+.cat-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cat-top .amount { flex: none; white-space: nowrap; }
+.cat .bar { margin-bottom: 6px; }
+.cat-note { font-size: 12px; color: var(--muted); }
+.bar.share > i { background: var(--expense); opacity: 0.75; }
+.bar.budget > i { background: var(--brand); }
+.bar.income > i { background: var(--income); }
 
 /* 底部加号浮层里的语音（components/VoiceSheet.vue） */
 .voice-sheet {

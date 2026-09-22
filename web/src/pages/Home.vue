@@ -8,6 +8,7 @@ import { addMonth, daysInShanghaiMonth, occurredAtToDate, shanghaiDate, shanghai
 import { onDataChange } from '../refresh.ts'
 import { useSession } from '../stores/session.ts'
 
+type CategoryStat = { category_id: string; name: string; kind: string; amount_cents: number; budget_cents: number }
 type Overview = {
   income_cents: number
   expense_cents: number
@@ -15,8 +16,9 @@ type Overview = {
   budget_used_cents: number
   year_income_cents: number
   year_expense_cents: number
+  year_net_cents: number
   net_worth_cents: number
-  by_category: { category_id: string; name: string; kind: string; amount_cents: number }[]
+  by_category: CategoryStat[]
   trend: { month: string; income_cents: number; expense_cents: number }[]
 }
 
@@ -38,6 +40,7 @@ const stats = ref<Overview>({
   budget_used_cents: 0,
   year_income_cents: 0,
   year_expense_cents: 0,
+  year_net_cents: 0,
   net_worth_cents: 0,
   by_category: [],
   trend: [],
@@ -51,7 +54,44 @@ const budgetPct = computed(() => {
   return Math.min(100, Math.round((stats.value.budget_used_cents / stats.value.budget_cents) * 100))
 })
 const maxTrend = computed(() => Math.max(1, ...stats.value.trend.flatMap((t) => [t.income_cents, t.expense_cents])))
-const maxCat = computed(() => Math.max(1, ...stats.value.by_category.filter((c) => c.kind === 'expense').map((c) => c.amount_cents)))
+const expenseCats = computed(() => stats.value.by_category.filter((c) => c.kind === 'expense' && c.amount_cents > 0))
+const incomeCats = computed(() => stats.value.by_category.filter((c) => c.kind === 'income' && c.amount_cents > 0))
+const expenseTotal = computed(() => expenseCats.value.reduce((s, c) => s + c.amount_cents, 0))
+const trendExpense = computed(() => stats.value.trend.reduce((s, t) => s + t.expense_cents, 0))
+const trendIncome = computed(() => stats.value.trend.reduce((s, t) => s + t.income_cents, 0))
+const netCents = computed(() => stats.value.income_cents - stats.value.expense_cents)
+const netText = computed(() => {
+  const n = netCents.value
+  return `${n > 0 ? '+' : n < 0 ? '-' : ''}${formatYuan(Math.abs(n))}`
+})
+const hasData = computed(() => stats.value.income_cents > 0 || stats.value.expense_cents > 0)
+const monthAvgExpense = computed(() => Math.round(trendExpense.value / 6))
+const monthAvgIncome = computed(() => Math.round(trendIncome.value / 6))
+/** 本月已过天数，用来算日均；看历史月份时按整月算。 */
+const daysElapsed = computed(() => {
+  const days = daysInShanghaiMonth(month.value)
+  if (month.value !== shanghaiMonth()) return days
+  return Math.max(1, Number(shanghaiDate().slice(8, 10)))
+})
+const dailyExpense = computed(() => Math.round(stats.value.expense_cents / daysElapsed.value))
+
+/** 柱状图高度：按 6 个月里的最大值归一；非零值给最小高度，免得看不见。 */
+function barPct(v: number) {
+  if (!v) return 0
+  return Math.max(4, Math.round((v / maxTrend.value) * 100))
+}
+function sharePct(amount: number, total: number) {
+  if (!total) return 0
+  return Math.round((amount / total) * 100)
+}
+/** 有分类预算就按预算进度画，否则按占本月支出的比例画。 */
+function catPct(c: CategoryStat) {
+  if (c.budget_cents > 0) return Math.min(100, sharePct(c.amount_cents, c.budget_cents))
+  return sharePct(c.amount_cents, expenseTotal.value)
+}
+function catOver(c: CategoryStat) {
+  return c.budget_cents > 0 && c.amount_cents > c.budget_cents
+}
 
 const byDay = computed(() => {
   const set = new Set<string>()
@@ -234,26 +274,93 @@ watch([month, () => session.ledgerId], () => {
     </template>
 
     <template v-else>
-      <div class="card" style="margin-bottom: 12px">
-        <h2>近 6 个月</h2>
-        <div v-for="t in stats.trend" :key="t.month" class="trend">
-          <span class="muted">{{ t.month.slice(5) }}</span>
-          <div class="trend-bars">
-            <i class="income" :style="{ width: (t.income_cents / maxTrend * 100) + '%' }"></i>
-            <i class="expense" :style="{ width: (t.expense_cents / maxTrend * 100) + '%' }"></i>
+      <div v-if="!hasData" class="card muted">{{ label(month) }}还没有记录，记一笔就能看到统计。</div>
+      <template v-else>
+        <div class="card stat-hero">
+          <div class="stat-line">
+            <span>结余</span>
+            <span>日均支出 {{ formatYuan(dailyExpense) }}</span>
+          </div>
+          <div class="stat-net" :class="netCents >= 0 ? 'income' : 'expense'">{{ netText }}</div>
+          <div class="stat-line">
+            <span>收入 {{ formatYuan(stats.income_cents) }} · 支出 {{ formatYuan(stats.expense_cents) }}</span>
+            <span>已过 {{ daysElapsed }} 天</span>
           </div>
         </div>
-      </div>
-      <div class="card">
-        <h2>本月分类</h2>
-        <div v-for="c in stats.by_category.filter(x => x.kind === 'expense')" :key="c.category_id" class="row">
-          <div>{{ c.name }}</div>
-          <div class="amount expense">{{ formatYuan(c.amount_cents) }}</div>
+
+        <div class="card" style="margin-bottom: 12px">
+          <div class="stat-h">
+            <h2 style="margin:0">近 6 个月</h2>
+            <span class="muted">月均支出 {{ formatYuan(monthAvgExpense) }}</span>
+          </div>
+          <div class="legend">
+            <span><i class="dot income"></i>收入 {{ formatYuan(monthAvgIncome) }}/月</span>
+            <span><i class="dot expense"></i>支出 {{ formatYuan(monthAvgExpense) }}/月</span>
+          </div>
+          <div class="chart">
+            <div
+              v-for="t in stats.trend"
+              :key="t.month"
+              class="chart-col"
+              :class="{ on: t.month === month }"
+            >
+              <div class="chart-bars">
+                <i class="income" :style="{ height: barPct(t.income_cents) + '%' }"></i>
+                <i class="expense" :style="{ height: barPct(t.expense_cents) + '%' }"></i>
+              </div>
+              <span class="chart-x">{{ Number(t.month.slice(5)) }}月</span>
+            </div>
+          </div>
+          <p class="muted stat-foot">
+            近 6 个月收入 {{ formatYuan(trendIncome) }} · 支出 {{ formatYuan(trendExpense) }} · 结余
+            {{ formatYuan(trendIncome - trendExpense) }}
+          </p>
         </div>
-        <div v-for="c in stats.by_category.filter(x => x.kind === 'expense')" :key="c.category_id + 'b'" class="bar" style="margin-bottom: 8px">
-          <i :style="{ width: (c.amount_cents / maxCat * 100) + '%' }"></i>
+
+        <div class="card">
+          <div class="stat-h">
+            <h2 style="margin:0">支出排行</h2>
+            <span class="muted">合计 {{ formatYuan(expenseTotal) }}</span>
+          </div>
+          <p v-if="!expenseCats.length" class="muted">本月还没有支出。</p>
+          <div v-for="c in expenseCats" :key="c.category_id" class="cat">
+            <div class="cat-top">
+              <span class="cat-name">{{ c.name }}</span>
+              <span class="amount expense">{{ formatYuan(c.amount_cents) }}</span>
+            </div>
+            <div class="bar" :class="[c.budget_cents ? 'budget' : 'share', { over: catOver(c) }]">
+              <i :style="{ width: catPct(c) + '%' }"></i>
+            </div>
+            <div class="cat-note">
+              <template v-if="c.budget_cents">
+                预算 {{ formatYuan(c.budget_cents) }} ·
+                <template v-if="catOver(c)">
+                  <b class="expense">超支 {{ formatYuan(c.amount_cents - c.budget_cents) }}</b>
+                </template>
+                <template v-else>已用 {{ sharePct(c.amount_cents, c.budget_cents) }}%</template>
+              </template>
+              <template v-else>占本月支出 {{ sharePct(c.amount_cents, expenseTotal) }}%</template>
+            </div>
+          </div>
         </div>
-      </div>
+
+        <div v-if="incomeCats.length" class="card" style="margin-top: 12px">
+          <div class="stat-h">
+            <h2 style="margin:0">收入来源</h2>
+            <span class="muted">合计 {{ formatYuan(stats.income_cents) }}</span>
+          </div>
+          <div v-for="c in incomeCats" :key="c.category_id" class="cat">
+            <div class="cat-top">
+              <span class="cat-name">{{ c.name }}</span>
+              <span class="amount income">{{ formatYuan(c.amount_cents) }}</span>
+            </div>
+            <div class="bar income">
+              <i :style="{ width: sharePct(c.amount_cents, stats.income_cents) + '%' }"></i>
+            </div>
+            <div class="cat-note">占收入 {{ sharePct(c.amount_cents, stats.income_cents) }}%</div>
+          </div>
+        </div>
+      </template>
     </template>
   </div>
 </template>
