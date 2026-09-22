@@ -2,7 +2,6 @@ import type { Db } from './types.ts'
 
 /**
  * 旧库收成 schema.sql 的形状。新库上全部是空操作。
- * Worker 不能读 sql 文件，所以这里和 sql/migrations/005_schema_tidy.sql 各写一份，语义要保持一致。
  * 建表 / 删表分步执行，中断后下次进来能接着做完（users_new、attachments_new 残留会改名回去）。
  * 用 run 而不是 exec：D1 的 exec 会按行切开，多行 DDL 会报 incomplete input。
  */
