@@ -1,0 +1,38 @@
+name = "ledger"
+main = "src/index.ts"
+compatibility_date = "2025-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+# 静态页在 public/（Vue 构建产物）；/api/* 必须先走 Worker
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+# D1：先执行 npm run db:create，把返回的 database_id 填到下面两处
+[[d1_databases]]
+binding = "DB"
+database_name = "ledger-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+preview_database_id = "00000000-0000-0000-0000-000000000000"
+
+# 非敏感配置；JWT_SECRET / ADMIN_TOKEN 放 .dev.vars / wrangler secret
+[vars]
+
+# ---------------------------------------------------------------------------
+# 本地开发：npm run dev → wrangler dev --env local
+# ---------------------------------------------------------------------------
+[env.local]
+name = "ledger"
+
+
+
+
+[[env.local.d1_databases]]
+binding = "DB"
+database_name = "ledger-db"
+database_id = "00000000-0000-0000-0000-000000000000"
+preview_database_id = "00000000-0000-0000-0000-000000000000"
+
+[env.local.vars]

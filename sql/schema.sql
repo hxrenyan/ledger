@@ -1,0 +1,180 @@
+-- 记账 · 权威全量建表
+-- 用途：新库初始化 / 本地 reset。已有数据勿直接 DROP 后重跑。
+--
+-- 表一览：
+--   users          用户（一人一号）
+--   ledgers        账本
+--   members        账本成员（逻辑关联 ledger_id / user_id）
+--   accounts       账户
+--   categories     分类
+--   transactions   流水（含转账、收据标记）
+--   budgets        月预算
+--   attachments    收据二进制
+--   contacts       人情往来联系人
+--   gifts          人情往来记录
+--   recurrences    周期记账
+--
+-- 约定：表之间只保留逻辑关联字段，不定义数据库外键；
+--       关联完整性由应用层校验，多语句写入走 D1 batch。
+
+-- ---------------------------------------------------------------------------
+-- users
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT,
+  wx_openid TEXT UNIQUE,
+  wx_unionid TEXT,
+  nickname TEXT NOT NULL DEFAULT '',
+  disabled INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- ledgers
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ledgers (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  owner_id TEXT NOT NULL,
+  invite_code TEXT,
+  created_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- members
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS members (
+  ledger_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (ledger_id, user_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- accounts
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS accounts (
+  id TEXT PRIMARY KEY,
+  ledger_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0,
+  current_cents INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- categories
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS categories (
+  id TEXT PRIMARY KEY,
+  ledger_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- transactions
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS transactions (
+  id TEXT PRIMARY KEY,
+  ledger_id TEXT NOT NULL,
+  account_id TEXT NOT NULL,
+  to_account_id TEXT,
+  category_id TEXT,
+  kind TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  occurred_at INTEGER NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  has_receipt INTEGER NOT NULL DEFAULT 0,
+  excluded INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- budgets
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS budgets (
+  id TEXT PRIMARY KEY,
+  ledger_id TEXT NOT NULL,
+  category_id TEXT NOT NULL DEFAULT '',
+  month TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (ledger_id, month, category_id)
+);
+
+-- ---------------------------------------------------------------------------
+-- attachments
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS attachments (
+  id TEXT PRIMARY KEY,
+  transaction_id TEXT NOT NULL UNIQUE,
+  ledger_id TEXT NOT NULL,
+  mime TEXT NOT NULL,
+  bytes BLOB NOT NULL,
+  size INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- contacts / gifts（人情往来）
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS contacts (
+  id TEXT PRIMARY KEY,
+  ledger_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  relation TEXT NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
+  archived INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS gifts (
+  id TEXT PRIMARY KEY,
+  ledger_id TEXT NOT NULL,
+  contact_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  occasion TEXT NOT NULL DEFAULT '',
+  occurred_at INTEGER NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  created_by TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS recurrences (
+  id TEXT PRIMARY KEY,
+  ledger_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL,
+  account_id TEXT NOT NULL,
+  to_account_id TEXT,
+  category_id TEXT,
+  note TEXT NOT NULL DEFAULT '',
+  day_of_month INTEGER NOT NULL,
+  next_at INTEGER NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- 索引（对应列表/统计查询，不重复主键与 UNIQUE）
+-- ---------------------------------------------------------------------------
+CREATE INDEX IF NOT EXISTS idx_tx_ledger_occurred ON transactions (ledger_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_tx_ledger_category ON transactions (ledger_id, category_id);
+CREATE INDEX IF NOT EXISTS idx_members_user ON members (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ledgers_invite ON ledgers (invite_code) WHERE invite_code IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_contacts_ledger ON contacts (ledger_id, name);
+CREATE INDEX IF NOT EXISTS idx_gifts_contact ON gifts (ledger_id, contact_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_recurrences_next ON recurrences (ledger_id, enabled, next_at);

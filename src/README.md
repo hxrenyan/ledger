@@ -1,0 +1,20 @@
+# 后端模块结构
+
+```text
+src/
+  index.ts                 # Worker 入口
+  app.ts                   # Hono 路由组装与鉴权中间件
+  node.ts                  # Sealos / 本地 Node 兜底（非默认启动）
+  shared/                  # 金额、时间、HTTP 错误
+  auth/                    # 口令哈希、JWT
+  db/                      # D1 / SQLite 适配
+  routes/                  # 登录、账本、流水、预算、人情、管理后台
+  seed.ts                  # 注册时默认账户与分类
+```
+
+约定：
+
+- 业务逻辑放在对应模块内，`routes/*.ts` 只做参数校验与编排
+- 跨模块复用放到 `auth/`、`db/`、金额时间工具
+- 静态前端源码在 `web/`，构建产物在 `public/`
+- 数据库脚本在 `sql/`

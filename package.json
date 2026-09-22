@@ -1,0 +1,42 @@
+{
+  "name": "ledger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npm run build:web && wrangler dev --env local",
+    "dev:web": "vite --config web/vite.config.ts",
+    "deploy": "npm run build:web && wrangler deploy --env=\"\"",
+    "build:web": "vite build --config web/vite.config.ts",
+    "db:create": "wrangler d1 create ledger-db",
+    "db:local": "wrangler d1 execute ledger-db --local --env local --file=./sql/schema.sql",
+    "db:remote": "wrangler d1 execute ledger-db --remote --file=./sql/schema.sql",
+    "db:reset-local": "rm -rf .wrangler/state/v3/d1 && wrangler d1 execute ledger-db --local --env local --file=./sql/schema.sql",
+    "db:migrate-all-local": "node scripts/d1-migrate.mjs --local --env local",
+    "db:migrate-all-remote": "node scripts/d1-migrate.mjs --remote",
+    "start:node": "tsx src/node.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "better-sqlite3": "^13.0.3",
+    "hono": "^4.13.8",
+    "jose": "^6.2.12",
+    "tsx": "^4.23.15"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260810.1",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.13.0",
+    "@vitejs/plugin-vue": "^6.0.9",
+    "pinia": "^4.0.3",
+    "typescript": "^5.7.3",
+    "vite": "^8.3.0",
+    "vitest": "^3.2.4",
+    "vue": "^3.5.43",
+    "vue-router": "^5.3.1",
+    "wrangler": "^4.135.0"
+  }
+}
