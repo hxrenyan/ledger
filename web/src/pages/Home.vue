@@ -148,6 +148,7 @@ watch([month, () => session.ledgerId], () => {
   <div class="page">
     <div class="head">
       <h1>明细</h1>
+      <button class="btn ghost compact" type="button" @click="router.push('/speak')">语音录入</button>
       <LedgerName />
     </div>
     <div class="month">
