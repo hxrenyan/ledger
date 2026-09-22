@@ -3,7 +3,7 @@
  * 语音录入：先识别成文字，再用 AI 拆成流水，确认后才入账。
  * 录音和原文都不保存。没配 AI 时退回规则解析。
  */
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, type ImportCommitResult, type ImportPreviewRow } from '../api.ts'
 import { formatYuan } from '../money.ts'
@@ -22,6 +22,14 @@ let recorder: MediaRecorder | null = null
 let recordTimer = 0
 
 const importable = () => rows.value.filter((r) => r.status === 'ok' && r.direction !== 'skip').length
+const statusText = computed(() => {
+  if (!speechOn.value) return '语音还没配置，可以先打字'
+  if (recording.value) return '正在听，再点一次结束'
+  if (phase.value === 'hear') return '正在识别'
+  if (phase.value === 'parse') return '正在整理成账'
+  if (msg.value) return msg.value
+  return '点一下开始说'
+})
 
 onMounted(async () => {
   try {
@@ -92,8 +100,7 @@ async function parseSpoken() {
     )
     rows.value = data.items
     parsedText.value = spoken.value
-    if (data.parser === 'ai') msg.value = '已用 AI 解析。核对后记入。'
-    else msg.value = data.ai_error ? `AI 不可用，已改用规则解析：${data.ai_error}` : '未配置 AI，已用规则解析。'
+    msg.value = data.parser === 'ai' || !data.ai_error ? '核对后记入' : '已按规则整理，核对后记入'
   } catch (e2) {
     err.value = e2 instanceof Error ? e2.message : '解析失败'
   } finally {
@@ -147,62 +154,47 @@ async function commitSpoken() {
       <h1 style="margin:0">语音录入</h1>
     </div>
 
-    <div class="speak-stage">
+    <div class="speak-hero">
       <button class="mic" type="button" :class="{ on: recording }" :disabled="busy || !speechOn" @click="toggleMic">
-        {{ recording ? '停止' : '说话' }}
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 15a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
+          <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+        </svg>
       </button>
-      <p class="muted">
-        <template v-if="!speechOn">语音未配置。可先打字，管理后台「语音识别」配好后再用麦克风。</template>
-        <template v-else-if="recording">正在听，再点一次停止，最长 60 秒。</template>
-        <template v-else-if="phase === 'hear'">正在识别…</template>
-        <template v-else-if="phase === 'parse'">正在用 AI 解析…</template>
-        <template v-else>说完自动解析。录音和原文都不保存。</template>
-      </p>
+      <p class="speak-status">{{ statusText }}</p>
     </div>
 
     <p v-if="err" class="err">{{ err }}</p>
-    <p v-if="msg" class="muted">{{ msg }}</p>
 
-    <div class="card">
-      <div class="row" style="margin-bottom:8px">
-        <span class="muted">识别结果，可改</span>
+    <div class="card speak-card">
+      <div class="speak-label">
+        <span>说的话，可以改</span>
         <button
           v-if="spoken.trim() && spoken !== parsedText"
-          class="btn ghost compact"
+          class="text-btn"
           type="button"
           :disabled="busy"
           @click="parseSpoken"
-        >重新解析</button>
+        >重新整理</button>
       </div>
-      <textarea v-model="spoken" rows="3" placeholder="也可以直接打字，例如：昨天午饭 35；给张三结婚随了 500"></textarea>
-      <button
-        v-if="!parsedText && spoken.trim()"
-        class="btn ghost"
-        style="margin-top:12px"
-        type="button"
-        :disabled="busy"
-        @click="parseSpoken"
-      >解析</button>
+      <textarea v-model="spoken" rows="3" placeholder="昨天午饭 35，给张三结婚随了 500"></textarea>
     </div>
 
     <div v-if="rows.length" class="card" style="margin-top:12px">
-      <div v-for="r in rows" :key="r.row" class="row" style="display:block">
-        <div style="display:flex;justify-content:space-between;gap:8px">
-          <div>
-            <div>{{ r.status === 'skip' ? r.reason : r.note }}</div>
-            <div class="muted" v-if="r.status === 'ok'">
-              {{ r.date }} · {{ r.category_name || '未分类' }} · {{ r.account_name || '未选账户' }}
-              <template v-if="r.favor_contact"> · 人情 {{ r.favor_kind === 'give' ? '送出' : '收入' }} {{ r.favor_contact }} {{ r.favor_occasion }}</template>
-            </div>
-            <div class="muted" v-else-if="r.status === 'error'">{{ r.reason }}</div>
-          </div>
-          <div v-if="r.status === 'ok'" class="amount" :class="r.direction === 'expense' ? 'expense' : 'income'">
-            {{ r.direction === 'expense' ? '-' : '+' }}{{ formatYuan(r.amount_cents) }}
+      <div v-for="r in rows" :key="r.row" class="row">
+        <div>
+          <div>{{ r.status === 'ok' ? r.note : r.reason }}</div>
+          <div class="muted" v-if="r.status === 'ok'">
+            {{ r.date }} · {{ r.category_name || '未分类' }} · {{ r.account_name || '未选账户' }}
+            <template v-if="r.favor_contact"> · {{ r.favor_contact }} {{ r.favor_occasion }}</template>
           </div>
         </div>
+        <div v-if="r.status === 'ok'" class="amount" :class="r.direction === 'expense' ? 'expense' : 'income'">
+          {{ r.direction === 'expense' ? '-' : '+' }}{{ formatYuan(r.amount_cents) }}
+        </div>
       </div>
-      <button class="btn" type="button" style="margin-top:12px" :disabled="busy || !importable()" @click="commitSpoken">
-        {{ busy ? '入账中…' : `记入 ${importable()} 笔` }}
+      <button class="btn" type="button" style="margin-top:8px" :disabled="busy || !importable()" @click="commitSpoken">
+        {{ busy ? '记入中…' : `记入 ${importable()} 笔` }}
       </button>
     </div>
   </div>

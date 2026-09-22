@@ -270,27 +270,65 @@ input.bare {
   flex-direction: column;
   gap: 8px;
 }
-.speak-stage {
+.speak-hero {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  margin: 8px 0 16px;
-  text-align: center;
+  padding: 8px 0 20px;
+}
+.speak-status {
+  margin: 16px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+.speak-card textarea {
+  border: 0;
+  padding: 0;
+  min-height: 72px;
+  resize: none;
+  background: transparent;
+}
+.speak-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.text-btn {
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
 }
 .mic {
-  width: 96px;
-  height: 96px;
+  width: 84px;
+  height: 84px;
   border: 0;
-  border-radius: 48px;
+  border-radius: 42px;
   background: var(--brand);
   color: #fff;
-  font-size: 18px;
-  font-weight: 600;
-  box-shadow: 0 10px 24px rgba(59, 91, 219, 0.28);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 12px 28px rgba(59, 91, 219, 0.28);
 }
-.mic.on { background: var(--expense); }
-.mic:disabled { opacity: 0.45; }
+.mic svg {
+  width: 30px;
+  height: 30px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.mic.on {
+  background: var(--expense);
+  box-shadow: 0 0 0 10px rgba(229, 72, 77, 0.16);
+}
+.mic:disabled { opacity: 0.4; }
 .ledger-bar {
   max-width: 42%;
   border: 1px solid var(--line);
