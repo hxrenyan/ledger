@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api.ts'
 import { formatYuan } from '../money.ts'
+import { onDataChange } from '../refresh.ts'
 import { occurredAtToDate } from '@server/time.ts'
 
 type Gift = {
@@ -38,6 +39,8 @@ async function load() {
 }
 
 watch(() => route.params.id, load, { immediate: true })
+// 加号浮层里记完人情后，这里跟着刷新
+onDataChange(load)
 </script>
 
 <template>

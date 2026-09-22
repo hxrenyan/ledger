@@ -5,6 +5,7 @@ import LedgerName from '../components/LedgerName.vue'
 import { api, type Account, type Category, type Tx } from '../api.ts'
 import { formatYuan } from '../money.ts'
 import { addMonth, daysInShanghaiMonth, occurredAtToDate, shanghaiDate, shanghaiMonth } from '@server/time.ts'
+import { onDataChange } from '../refresh.ts'
 import { useSession } from '../stores/session.ts'
 
 type Overview = {
@@ -138,6 +139,8 @@ async function load() {
 }
 
 onMounted(load)
+// 加号浮层里语音记完账后，这里跟着刷新
+onDataChange(load)
 watch([month, () => session.ledgerId], () => {
   syncCalDay()
   load()

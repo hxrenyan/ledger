@@ -361,17 +361,50 @@ input.bare {
 .trend-bars i.income { background: var(--income); }
 .trend-bars i.expense { background: var(--expense); }
 
-.fab {
-  position: fixed;
-  right: max(16px, calc(50vw - 240px + 16px));
-  bottom: calc(72px + var(--safe-b));
-  width: 56px; height: 56px;
+/* 底部加号浮层里的语音（components/VoiceSheet.vue） */
+.voice-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: min(74vh, 620px);
+  overflow-y: auto;
+}
+.voice-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+}
+.voice-mic {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+}
+.voice-mic .speak-status { margin: 10px 0 0; text-align: center; }
+.mic-sm {
+  width: 56px;
+  height: 56px;
   border-radius: 28px;
-  border: 0;
-  background: var(--brand);
+  box-shadow: 0 8px 20px rgba(59, 91, 219, 0.25);
+}
+.mic-sm svg { width: 24px; height: 24px; }
+.voice-rows { display: flex; flex-direction: column; }
+
+/* 记完一笔后的轻提示 */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(84px + var(--safe-b));
+  transform: translateX(-50%);
+  z-index: 30;
+  max-width: min(440px, calc(100% - 32px));
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: rgba(24, 24, 40, 0.92);
   color: #fff;
-  font-size: 28px;
-  box-shadow: 0 10px 24px rgba(59, 91, 219, 0.35);
+  font-size: 13px;
+  text-align: center;
 }
 
 .row {
