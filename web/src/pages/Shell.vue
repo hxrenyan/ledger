@@ -30,8 +30,10 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
-    <router-view />
+  <div class="shell">
+    <div class="shell-body">
+      <router-view />
+    </div>
     <nav class="nav">
       <router-link to="/" :class="{ on: route.path === '/' }">明细</router-link>
       <router-link to="/favors" :class="{ on: route.path.startsWith('/favors') }">人情</router-link>

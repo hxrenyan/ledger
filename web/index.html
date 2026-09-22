@@ -2,21 +2,21 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, viewport-fit=cover" />
     <script>
-      /* 部分手机浏览器会忽略不认识的 viewport 参数，退回约 980px 的桌面宽度，整页就被缩小。这里按屏幕宽度再写一次。 */
+      /* 系统浏览器有的把 screen.width 报成物理像素，再按约 980px 缩小整页。
+         必须在首次排版前写上视口，事后改 meta 往往已经来不及。 */
       (function () {
-        var meta = document.querySelector('meta[name="viewport"]')
-        if (!meta || !window.screen || !screen.width) return
-        function fit() {
-          var sw = Math.min(screen.width, screen.height || screen.width)
-          var cw = document.documentElement.clientWidth
-          if (cw > sw + 40) {
-            meta.setAttribute('content', 'width=' + sw + ', initial-scale=1, minimum-scale=1, viewport-fit=cover')
-          }
-        }
-        fit()
-        document.addEventListener('DOMContentLoaded', fit)
+        var dpr = window.devicePixelRatio || 1
+        var w = screen.width || 0
+        var h = screen.height || 0
+        if (dpr >= 2 && w > 800) w = Math.round(w / dpr)
+        if (dpr >= 2 && h > 800) h = Math.round(h / dpr)
+        var css = Math.min(w || 0, h || w || 0)
+        var phone = navigator.maxTouchPoints > 0 && css >= 320 && css <= 540
+        var content = phone
+          ? 'width=' + css + ', initial-scale=1, viewport-fit=cover'
+          : 'width=device-width, initial-scale=1, viewport-fit=cover'
+        document.write('<meta name="viewport" content="' + content + '">')
       })()
     </script>
     <meta name="theme-color" content="#f4f5f8" />
