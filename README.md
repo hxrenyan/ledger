@@ -1,10 +1,11 @@
 # 记账
 
-基于 **Cloudflare Workers + D1** 的个人/家庭记账。一人一号；微信小程序放到迁 Sealos 后再做。
+基于 **Cloudflare Workers + D1** 的个人/家庭记账。网页用户名密码和小程序微信登录各自是一个账号；微信登录后可以绑定已有密码账号，绑定后合成一个，两种方式都能登，数据并在一起。
 
 ## 功能概览
 
 - **账号登录**（用户名密码 + Bearer JWT）
+- **微信小程序登录**（`wx.login` 的 code 换 openid；可再绑定已有账号）
 - **多账本 / 家庭成员**（邀请码）
 - 账户、分类、收支、转账
 - 月预算、收据图
@@ -72,6 +73,8 @@ ledger/
 |------|------|------|
 | `JWT_SECRET` | 是 | 签 JWT |
 | `ADMIN_TOKEN` | 管理后台需要 | 管理员口令，登录后换管理员 JWT |
+| `WX_APPID` | 小程序登录需要 | 小程序 AppId |
+| `WX_SECRET` | 小程序登录需要 | 小程序 AppSecret，只放服务端 |
 
 本地：
 
@@ -85,6 +88,8 @@ cp .dev.vars.example .dev.vars
 ```bash
 npx wrangler secret put JWT_SECRET
 npx wrangler secret put ADMIN_TOKEN
+npx wrangler secret put WX_APPID
+npx wrangler secret put WX_SECRET
 ```
 
 表结构以 `sql/schema.sql` 为准。
@@ -170,3 +175,7 @@ routes = [
 健康检查：`GET /api/health`  
 金额：整数分  
 时间：UTC 毫秒，月份 `Asia/Shanghai`
+
+小程序登录：`POST /api/v1/auth/wechat`，body `{ "code" }`。新 openid 建一个可单独使用的微信账号（201），已绑定过则直接进入合并后的账号（200）。会话里的 `user.has_password` / `user.wechat_bound` 用来决定要不要显示「绑定已有账号」。未配置 `WX_APPID` / `WX_SECRET` 时返回 503。`session_key` 不落库。
+
+绑定已有账号：小程序登录后 `POST /api/v1/me/wechat/bind`，body `{ "username", "password" }`，带当前 Bearer，不需要 `X-Ledger-Id`。密码正确后两个账号合成一个：留下被绑定账号的用户名和密码，挂上当前微信。只有自己的账本并进对方最早的那个账本（同名账户、分类、联系人合并，余额和预算相加，流水、人情、周期记账、收据都保留）。还有别人的共享账本不搬流水，只把所有者改成合并后的这个人。返回**新 token**（必须替换本地旧 token）。之后微信登录和密码登录进入同一个账号。目标账号已绑过别的微信则 409，不覆盖。

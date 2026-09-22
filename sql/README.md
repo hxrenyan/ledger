@@ -32,7 +32,8 @@ npm run db:migrate-all-remote
 
 | 表 | PK | 说明 |
 |----|-----|------|
-| `users` | TEXT | 用户；`disabled` 停用 |
+| `users` | TEXT | 用户；`disabled` 停用；`password_hash` 为空表示只有微信登录 |
+| `user_identities` | `(provider, openid)` | 第三方身份。目前 `provider=wechat`；一个用户至多一条，见 `idx_user_identities_user` |
 | `ledgers` | TEXT | 账本；`invite_code` 邀请 |
 | `members` | `(ledger_id, user_id)` | 账本成员 |
 | `accounts` | TEXT | 账户 |

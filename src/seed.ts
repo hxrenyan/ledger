@@ -41,7 +41,7 @@ export function bootstrapLedgerStmts(opts: {
   userId: string
   username: string
   nickname: string
-  passwordHash: string
+  passwordHash: string | null
   now: number
 }): { stmts: Stmt[]; ledgerId: string; userId: string } {
   const { userId, username, nickname, passwordHash, now } = opts

@@ -28,7 +28,7 @@ database_name = "ledger-db"
 database_id = "080ebddc-4649-4970-8bf9-b9b95c199c8b"
 preview_database_id = "080ebddc-4649-4970-8bf9-b9b95c199c8b"
 
-# 非敏感配置；JWT_SECRET / ADMIN_TOKEN 放 .dev.vars / wrangler secret
+# 非敏感配置；JWT_SECRET / ADMIN_TOKEN / WX_APPID / WX_SECRET 放 .dev.vars / wrangler secret
 [vars]
 
 # ---------------------------------------------------------------------------

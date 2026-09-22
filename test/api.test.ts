@@ -303,7 +303,7 @@ describe('auth & isolation', () => {
 })
 
 describe('transactions & stats', () => {
-  it('记账后月统计正确，微信登录预留 501', async () => {
+  it('记账后月统计正确，未配置微信登录时返回 503', async () => {
     const { app } = await setup()
     const reg = await json(app, '/api/v1/auth/register', {
       method: 'POST',
@@ -355,7 +355,7 @@ describe('transactions & stats', () => {
     expect(s.net_cents).toBe(97700)
 
     const wx = await json(app, '/api/v1/auth/wechat', { method: 'POST' })
-    expect(wx.status).toBe(501)
+    expect(wx.status).toBe(503)
 
     const csvRes = await app.request('/api/v1/export', { headers })
     expect(csvRes.status).toBe(200)

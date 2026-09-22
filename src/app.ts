@@ -15,6 +15,7 @@ import { registerFavorRoutes } from './routes/favors.ts'
 import { registerRecurrenceRoutes } from './routes/recurrences.ts'
 import { registerImportRoutes } from './routes/imports.ts'
 import { registerSpeechRoutes } from './routes/speech.ts'
+import { resolveWechatExchange, type WechatCodeExchange } from './auth/wechat.ts'
 
 export type AppEnv = {
   Variables: {
@@ -25,6 +26,7 @@ export type AppEnv = {
     ledgerId: string
     memberRole: string
     isAdmin: boolean
+    exchangeWechatCode: WechatCodeExchange | null
   }
 }
 
@@ -32,10 +34,15 @@ export type AppConfig = {
   db: Db
   jwtSecret: string
   adminToken?: string
+  wechatAppId?: string
+  wechatAppSecret?: string
+  /** 测试注入。不传则用 wechatAppId / wechatAppSecret 调微信。 */
+  exchangeWechatCode?: WechatCodeExchange
 }
 
 const LEDGER_OPTIONAL = new Set([
   '/api/v1/me',
+  '/api/v1/me/wechat/bind',
   '/api/v1/ledgers',
   '/api/v1/ledgers/join',
 ])
@@ -49,6 +56,7 @@ export function createApp(cfg: AppConfig) {
     c.set('jwtSecret', cfg.jwtSecret)
     c.set('adminToken', adminToken)
     c.set('isAdmin', false)
+    c.set('exchangeWechatCode', resolveWechatExchange(cfg))
     await next()
   })
 

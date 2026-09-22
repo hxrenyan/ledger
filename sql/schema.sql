@@ -2,8 +2,9 @@
 -- 用途：新库初始化 / 本地 reset。已有数据勿直接 DROP 后重跑。
 --
 -- 表一览：
---   users          用户（一人一号）
---   ledgers        账本
+--   users            用户（一人一号）
+--   user_identities  第三方登录身份（目前只有微信小程序 openid）
+--   ledgers          账本
 --   members        账本成员（逻辑关联 ledger_id / user_id）
 --   accounts       账户
 --   categories     分类
@@ -21,6 +22,7 @@
 
 -- ---------------------------------------------------------------------------
 -- users
+-- password_hash 为空：微信登录新建的账号，还没有密码。绑定已有账号后，数据并入对方，这个用户删除。
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
@@ -29,6 +31,20 @@ CREATE TABLE IF NOT EXISTS users (
   nickname TEXT NOT NULL DEFAULT '',
   disabled INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- user_identities
+-- 不把 openid 放回 users：一个用户至多一个微信，后续其他登录方式也走这张表。
+-- 查询：登录按 (provider, openid)；绑定和 /me 按 (provider, user_id)。
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS user_identities (
+  provider TEXT NOT NULL,
+  openid TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  unionid TEXT,
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (provider, openid)
 );
 
 -- ---------------------------------------------------------------------------
@@ -218,3 +234,4 @@ CREATE INDEX IF NOT EXISTS idx_import_batches_ledger ON import_batches (ledger_i
 CREATE INDEX IF NOT EXISTS idx_tx_import_batch ON transactions (import_batch_id) WHERE import_batch_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_gifts_import_batch ON gifts (import_batch_id) WHERE import_batch_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ai_profiles_order ON ai_profiles (kind, sort_order);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities (provider, user_id);

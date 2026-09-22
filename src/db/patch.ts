@@ -53,6 +53,20 @@ export async function patchSchema(db: Db) {
     `CREATE INDEX IF NOT EXISTS idx_gifts_import_batch ON gifts (import_batch_id) WHERE import_batch_id IS NOT NULL`,
   )
   await upgradeSchema(db)
+  // 与 sql/schema.sql、sql/migrations/006_user_identities.sql 保持一致。Worker 读不到 sql 文件。
+  await db.run(
+    `CREATE TABLE IF NOT EXISTS user_identities (
+      provider TEXT NOT NULL,
+      openid TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      unionid TEXT,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (provider, openid)
+    )`,
+  )
+  await db.run(
+    `CREATE UNIQUE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities (provider, user_id)`,
+  )
 }
 
 async function ensureColumn(db: Db, table: string, column: string, def: string) {

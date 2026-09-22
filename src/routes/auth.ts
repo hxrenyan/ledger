@@ -2,7 +2,8 @@ import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { hashPassword, assertNickname, assertPassword, assertUsername, verifyPassword } from '../auth/password.ts'
 import { signToken } from '../auth/jwt.ts'
-import { badRequest, conflict, unauthorized } from '../http.ts'
+import { bindWechatToExistingAccount, loginWithWechat } from '../auth/wechat.ts'
+import { HttpError, badRequest, conflict, unauthorized } from '../http.ts'
 import { bootstrapLedgerStmts, newId } from '../seed.ts'
 
 type UserRow = {
@@ -21,11 +22,27 @@ async function sessionPayload(db: AppEnv['Variables']['db'], user: { id: string;
      ORDER BY l.created_at ASC`,
     [user.id],
   )
+  const flags = await db.first<{ has_password: unknown; wechat_bound: unknown }>(
+    `SELECT password_hash IS NOT NULL AS has_password,
+            EXISTS(SELECT 1 FROM user_identities i WHERE i.provider = 'wechat' AND i.user_id = users.id) AS wechat_bound
+     FROM users WHERE id = ?`,
+    [user.id],
+  )
   return {
     token,
-    user: { id: user.id, username: user.username, nickname: user.nickname },
+    user: {
+      id: user.id,
+      username: user.username,
+      nickname: user.nickname,
+      has_password: flag(flags?.has_password),
+      wechat_bound: flag(flags?.wechat_bound),
+    },
     ledgers,
   }
+}
+
+function flag(v: unknown): boolean {
+  return v === true || v === 1
 }
 
 export function registerAuthRoutes(app: Hono<AppEnv>) {
@@ -83,9 +100,26 @@ export function registerAuthRoutes(app: Hono<AppEnv>) {
     return c.json(await sessionPayload(db, user, token))
   })
 
-  app.post('/api/v1/auth/wechat', (c) =>
-    c.json({ code: 'not_implemented', message: '微信登录将在迁移 Sealos 后开放' }, 501),
-  )
+  app.post('/api/v1/auth/wechat', async (c) => {
+    const exchange = c.get('exchangeWechatCode')
+    if (!exchange) throw new HttpError(503, 'wechat_unconfigured', '未配置微信小程序登录')
+    const body = await c.req.json().catch(() => ({}))
+    const code = typeof body.code === 'string' ? body.code.trim() : ''
+    if (!code || code.length > 128) throw badRequest('缺少微信登录码')
+    const { user, created } = await loginWithWechat(c.get('db'), await exchange(code))
+    const token = await signToken(c.get('jwtSecret'), user.id)
+    return c.json(await sessionPayload(c.get('db'), user, token), created ? 201 : 200)
+  })
+
+  app.post('/api/v1/me/wechat/bind', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const username = typeof body.username === 'string' ? body.username.trim() : ''
+    const password = typeof body.password === 'string' ? body.password : ''
+    if (!username || !password) throw badRequest('请输入用户名和密码')
+    const user = await bindWechatToExistingAccount(c.get('db'), c.get('userId'), username, password)
+    const token = await signToken(c.get('jwtSecret'), user.id)
+    return c.json(await sessionPayload(c.get('db'), user, token))
+  })
 
   app.get('/api/v1/me', async (c) => {
     const db = c.get('db')

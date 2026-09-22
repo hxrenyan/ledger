@@ -37,7 +37,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 export type Ledger = { id: string; name: string; role: string }
 export type SessionBody = {
   token: string
-  user: { id: string; username: string; nickname: string }
+  user: { id: string; username: string; nickname: string; has_password: boolean; wechat_bound: boolean }
   ledgers: Ledger[]
 }
 export type Account = { id: string; name: string; type: string; archived: boolean; current_cents: number }

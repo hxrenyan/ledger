@@ -6,7 +6,7 @@ src/
   app.ts                   # Hono 路由组装与鉴权中间件
   node.ts                  # Sealos / 本地 Node 兜底（非默认启动）
   money.ts / time.ts / http.ts  # 金额、时间、HTTP 错误
-  auth/                    # 口令哈希、JWT
+  auth/                    # 口令哈希、JWT、微信 code 换 openid 与绑定已有账号
   db/                      # D1 / SQLite 适配
   imports/                 # 账单导入：解析、建议、AI 兜底、提交与撤销
   speech/                  # 语音识别

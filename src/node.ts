@@ -13,7 +13,13 @@ const port = Number(process.env.PORT ?? 3000)
 const db = createSqliteDb(dbPath)
 await ensureMigrated(db)
 
-const app = createApp({ db, jwtSecret, adminToken })
+const app = createApp({
+  db,
+  jwtSecret,
+  adminToken,
+  wechatAppId: process.env.WX_APPID,
+  wechatAppSecret: process.env.WX_SECRET,
+})
 
 if (existsSync('public/index.html')) {
   app.use('/*', serveStatic({ root: './public' }))

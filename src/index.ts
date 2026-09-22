@@ -15,6 +15,8 @@ export default {
       db,
       jwtSecret: env.JWT_SECRET || 'dev-change-me',
       adminToken: env.ADMIN_TOKEN || '',
+      wechatAppId: env.WX_APPID,
+      wechatAppSecret: env.WX_SECRET,
     })
     const url = new URL(request.url)
     if (url.pathname.startsWith('/api')) {
