@@ -14,6 +14,7 @@ const overview = ref<Overview>({ users: 0, ledgers: 0, transactions: 0, disabled
 const users = ref<UserRow[]>([])
 const ledgers = ref<LedgerRow[]>([])
 const err = ref('')
+const busyId = ref('')
 
 async function load() {
   err.value = ''
@@ -27,11 +28,21 @@ async function load() {
 }
 
 async function toggle(u: UserRow) {
-  await adminApi(`/api/v1/admin/users/${u.id}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ disabled: !u.disabled }),
-  })
-  await load()
+  if (busyId.value) return
+  if (!u.disabled && !confirm(`停用 @${u.username}？停用后无法登录。`)) return
+  busyId.value = u.id
+  err.value = ''
+  try {
+    await adminApi(`/api/v1/admin/users/${u.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ disabled: !u.disabled }),
+    })
+    await load()
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : '操作失败'
+  } finally {
+    busyId.value = ''
+  }
 }
 
 function logout() {
@@ -48,9 +59,9 @@ onMounted(load)
 
 <template>
   <div class="page">
-    <div class="month">
-      <h1 style="margin:0">管理后台</h1>
-      <button class="btn ghost" style="width:auto" @click="logout">退出</button>
+    <div class="admin-head">
+      <h1>管理后台</h1>
+      <button class="btn ghost compact" type="button" @click="logout">退出</button>
     </div>
     <div class="summary">
       <div class="card"><div class="k">用户</div><div class="v">{{ overview.users }}</div></div>
@@ -72,7 +83,13 @@ onMounted(load)
           <div>{{ u.nickname || u.username }}</div>
           <div class="muted">@{{ u.username }} · {{ u.ledger_count }} 本账本 · {{ when(u.created_at) }}</div>
         </div>
-        <button class="btn" :class="u.disabled ? 'ghost' : 'danger'" style="width:auto" @click="toggle(u)">
+        <button
+          class="btn compact"
+          :class="u.disabled ? 'ghost' : 'danger'"
+          type="button"
+          :disabled="busyId === u.id"
+          @click="toggle(u)"
+        >
           {{ u.disabled ? '启用' : '停用' }}
         </button>
       </div>

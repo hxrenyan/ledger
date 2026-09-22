@@ -159,10 +159,10 @@ onMounted(load)
     <p v-if="err" class="err">{{ err }}</p>
     <p v-if="msg" class="muted">{{ msg }}</p>
 
-    <div class="inline" style="margin-top:8px">
-      <button class="btn" :disabled="busy" @click="save">保存</button>
-      <button class="btn ghost" :disabled="busy" @click="test">测试连通</button>
-      <button v-if="keyHint" class="btn danger" style="width:auto" :disabled="busy" @click="clearKey">清空密钥</button>
+    <button class="btn" type="button" :disabled="busy" @click="save">{{ busy ? '处理中…' : '保存配置' }}</button>
+    <div class="admin-actions">
+      <button class="btn ghost" type="button" :disabled="busy" @click="test">测试连通</button>
+      <button v-if="keyHint" class="btn danger" type="button" :disabled="busy" @click="clearKey">清空密钥</button>
     </div>
   </div>
 </template>

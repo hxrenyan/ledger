@@ -27,9 +27,11 @@ async function submit() {
     <h1>管理后台</h1>
     <p class="muted" style="margin-top:-8px;margin-bottom:20px">使用 ADMIN_TOKEN，与用户账本分离</p>
     <div class="card">
-      <label class="field"><span>管理员口令</span><input v-model="password" type="password" /></label>
-      <p v-if="err" class="err">{{ err }}</p>
-      <button class="btn" @click="submit">进入</button>
+      <form @submit.prevent="submit">
+        <label class="field"><span>管理员口令</span><input v-model="password" type="password" autocomplete="current-password" /></label>
+        <p v-if="err" class="err">{{ err }}</p>
+        <button class="btn" type="submit">登录</button>
+      </form>
     </div>
   </div>
 </template>

@@ -121,7 +121,30 @@ input.bare {
 }
 .btn.ghost { background: #eef0ff; color: var(--brand); }
 .btn.danger { background: var(--expense); }
+.btn.compact {
+  width: auto;
+  flex: none;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 14px;
+  white-space: nowrap;
+}
 .btn:disabled { opacity: 0.5; }
+
+.admin-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.admin-head h1 { margin: 0; }
+.admin-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.admin-actions .btn { width: auto; flex: 1; }
 
 .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
 .tabs button {
