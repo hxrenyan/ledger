@@ -67,6 +67,5 @@ watch(() => route.params.id, load, { immediate: true })
         </div>
       </div>
     </div>
-    <button class="fab" @click="router.push(`/favors/new?contact=${contactId}`)">+</button>
   </div>
 </template>
