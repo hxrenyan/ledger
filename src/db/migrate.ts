@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { randomInviteCode } from '../seed.ts'
 import type { Db } from './types.ts'
+import { upgradeSchema } from './upgrade.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -22,6 +23,7 @@ export async function ensureMigrated(db: Db) {
   if (indexSql.trim()) await db.exec(indexSql)
   await backfillInviteCodes(db)
   if (addedBalance) await backfillBalances(db)
+  await upgradeSchema(db)
 }
 
 async function ensureColumn(db: Db, table: string, column: string, def: string): Promise<boolean> {

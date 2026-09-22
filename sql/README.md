@@ -10,7 +10,9 @@
 - 项目不使用数据库外键，只保留 `*_id` 等逻辑关联字段。
 - 关联校验、级联删除和置空由应用层显式处理，多语句写入使用 D1 `batch`。
 - 索引必须服务于现有查询或排序；禁止重复索引主键、唯一约束，优先复用复合索引最左前缀。
-- 含表重建、触发器等不可拆分语句的迁移，在文件首行添加 `-- @execute-whole-file`，迁移脚本会整文件事务执行。
+- 含表重建、触发器等不可拆分语句的迁移，在文件首行添加 `-- @execute-whole-file`，迁移脚本会整文件执行。
+- `-- @when-column 表.列` / `-- @when-table 表` 到 `-- @end-when`：条件还成立才执行这一组，方便迁移重跑。
+- `ALTER TABLE ... DROP COLUMN` 在列已经不存在时跳过。
 
 ## 常用命令
 
@@ -37,13 +39,12 @@ npm run db:migrate-all-remote
 | `categories` | TEXT | 收支分类 |
 | `transactions` | TEXT | 流水；金额整数分；`import_batch_id` 归属导入批次（手工录入为空） |
 | `budgets` | TEXT | 月预算 |
-| `attachments` | TEXT | 收据图 |
+| `attachments` | `transaction_id` | 收据图，一笔流水一张 |
 | `contacts` | TEXT | 人情联系人 |
 | `gifts` | TEXT | 人情往来 |
-| `recurrences` | TEXT | 周期记账 |
+| `recurrences` | TEXT | 周期记账（只支持收入 / 支出） |
 | `import_batches` | TEXT | 账单导入批次台账（回溯 / 撤销） |
-| `ai_settings` | TEXT | AI 解析配置，多套按 `sort_order` 失败换下一套 |
-| `asr_profiles` | TEXT | 语音识别配置，多套按 `sort_order` 接力；不保存录音 |
+| `ai_profiles` | `(kind, id)` | 模型配置。`llm` 解析账单，`asr` 语音识别；同 kind 内按 `sort_order` 接力。不保存录音和账单原文 |
 
 新环境只用 `schema.sql`。线上已有数据只追加 `sql/migrations/`，不要对生产库重跑全量 schema。
 

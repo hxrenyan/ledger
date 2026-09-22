@@ -1,4 +1,5 @@
 import type { Db } from './types.ts'
+import { upgradeSchema } from './upgrade.ts'
 
 /** Worker 里不能读 sql 文件；只做缺列/缺表补丁，避免本地旧库 500。 */
 export async function patchSchema(db: Db) {
@@ -14,7 +15,6 @@ export async function patchSchema(db: Db) {
       kind TEXT NOT NULL,
       amount_cents INTEGER NOT NULL,
       account_id TEXT NOT NULL,
-      to_account_id TEXT,
       category_id TEXT,
       note TEXT NOT NULL DEFAULT '',
       day_of_month INTEGER NOT NULL,
@@ -44,33 +44,6 @@ export async function patchSchema(db: Db) {
     )`,
   )
   await db.run(
-    `CREATE TABLE IF NOT EXISTS ai_settings (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL DEFAULT '',
-      enabled INTEGER NOT NULL DEFAULT 0,
-      base_url TEXT NOT NULL DEFAULT '',
-      api_key TEXT NOT NULL DEFAULT '',
-      model TEXT NOT NULL DEFAULT '',
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL
-    )`,
-  )
-  await ensureColumn(db, 'ai_settings', 'name', "TEXT NOT NULL DEFAULT ''")
-  await ensureColumn(db, 'ai_settings', 'sort_order', 'INTEGER NOT NULL DEFAULT 0')
-  await db.run(
-    `CREATE TABLE IF NOT EXISTS asr_profiles (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL DEFAULT '',
-      enabled INTEGER NOT NULL DEFAULT 0,
-      protocol TEXT NOT NULL DEFAULT 'openai-audio',
-      base_url TEXT NOT NULL DEFAULT '',
-      api_key TEXT NOT NULL DEFAULT '',
-      model TEXT NOT NULL DEFAULT '',
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL
-    )`,
-  )
-  await db.run(
     `CREATE INDEX IF NOT EXISTS idx_import_batches_ledger ON import_batches (ledger_id, created_at)`,
   )
   await db.run(
@@ -79,6 +52,7 @@ export async function patchSchema(db: Db) {
   await db.run(
     `CREATE INDEX IF NOT EXISTS idx_gifts_import_batch ON gifts (import_batch_id) WHERE import_batch_id IS NOT NULL`,
   )
+  await upgradeSchema(db)
 }
 
 async function ensureColumn(db: Db, table: string, column: string, def: string) {

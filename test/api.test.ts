@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { createApp } from '../src/app.ts'
 import { ensureMigrated } from '../src/db/migrate.ts'
+import { patchSchema } from '../src/db/patch.ts'
 import { createSqliteDb } from '../src/db/sqlite.ts'
+import { upgradeSchema } from '../src/db/upgrade.ts'
 import { centsToYuan, yuanExprToCents, yuanToCents } from '../src/money.ts'
 import { addDays, shanghaiMonthRange } from '../src/time.ts'
 
@@ -71,6 +73,157 @@ describe('migrate old sqlite', () => {
     expect(txs.some((c) => c.name === 'has_receipt')).toBe(true)
     const row = await db.first<{ invite_code: string }>(`SELECT invite_code FROM ledgers WHERE id = 'l1'`)
     expect(row?.invite_code).toMatch(/^[A-Z0-9]{8}$/)
+  })
+
+  it('旧库合并模型配置，并去掉死字段', async () => {
+    const db = createSqliteDb(':memory:')
+    await db.exec(`
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        password_hash TEXT,
+        wx_openid TEXT UNIQUE,
+        wx_unionid TEXT,
+        nickname TEXT NOT NULL DEFAULT '',
+        disabled INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+      INSERT INTO users (id, username, password_hash, wx_openid, wx_unionid, nickname, disabled, created_at)
+      VALUES ('u1', 'old', 'hash', 'openid', 'union', '旧', 0, 1);
+
+      CREATE TABLE contacts (
+        id TEXT PRIMARY KEY,
+        ledger_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        relation TEXT NOT NULL DEFAULT '',
+        note TEXT NOT NULL DEFAULT '',
+        archived INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+      INSERT INTO contacts (id, ledger_id, name, relation, note, archived, created_at)
+      VALUES ('c1', 'l1', '张三', '同事', '备注', 0, 1);
+
+      CREATE TABLE recurrences (
+        id TEXT PRIMARY KEY,
+        ledger_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        amount_cents INTEGER NOT NULL,
+        account_id TEXT NOT NULL,
+        to_account_id TEXT,
+        category_id TEXT,
+        note TEXT NOT NULL DEFAULT '',
+        day_of_month INTEGER NOT NULL,
+        next_at INTEGER NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at INTEGER NOT NULL
+      );
+      INSERT INTO recurrences (
+        id, ledger_id, kind, amount_cents, account_id, to_account_id, category_id, note, day_of_month, next_at, enabled, created_at
+      ) VALUES ('r1', 'l1', 'expense', 100, 'a1', 'a2', 'cat', '房租', 1, 1, 1, 1);
+
+      CREATE TABLE attachments (
+        id TEXT PRIMARY KEY,
+        transaction_id TEXT NOT NULL UNIQUE,
+        ledger_id TEXT NOT NULL,
+        mime TEXT NOT NULL,
+        bytes BLOB NOT NULL,
+        size INTEGER NOT NULL,
+        created_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE ai_settings (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 0,
+        base_url TEXT NOT NULL DEFAULT '',
+        api_key TEXT NOT NULL DEFAULT '',
+        model TEXT NOT NULL DEFAULT '',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      );
+      INSERT INTO ai_settings (id, name, enabled, base_url, api_key, model, sort_order, updated_at)
+      VALUES ('same', '解析', 1, 'https://llm.example', 'k1', 'm1', 0, 1);
+
+      CREATE TABLE asr_profiles (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL DEFAULT '',
+        enabled INTEGER NOT NULL DEFAULT 0,
+        protocol TEXT NOT NULL DEFAULT 'openai-audio',
+        base_url TEXT NOT NULL DEFAULT '',
+        api_key TEXT NOT NULL DEFAULT '',
+        model TEXT NOT NULL DEFAULT '',
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        updated_at INTEGER NOT NULL
+      );
+      INSERT INTO asr_profiles (id, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
+      VALUES ('same', '语音', 1, 'openai-audio', 'https://asr.example', 'k2', 'm2', 1, 2);
+    `)
+    await db.run(
+      `INSERT INTO attachments (id, transaction_id, ledger_id, mime, bytes, size, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ['att', 'tx1', 'l1', 'image/png', Buffer.from('png-bytes'), 9, 1],
+    )
+
+    await ensureMigrated(db)
+    await ensureMigrated(db)
+    await patchSchema(db)
+
+    const userCols = (await db.all<{ name: string }>(`PRAGMA table_info(users)`)).map((col) => col.name)
+    expect(userCols).not.toContain('wx_openid')
+    expect(userCols).not.toContain('wx_unionid')
+    expect(await db.first(`SELECT username, password_hash FROM users WHERE id = 'u1'`)).toEqual({
+      username: 'old',
+      password_hash: 'hash',
+    })
+
+    const contactCols = (await db.all<{ name: string }>(`PRAGMA table_info(contacts)`)).map((col) => col.name)
+    expect(contactCols).not.toContain('note')
+    expect(await db.first(`SELECT name, relation FROM contacts WHERE id = 'c1'`)).toEqual({
+      name: '张三',
+      relation: '同事',
+    })
+
+    const recurrenceCols = (await db.all<{ name: string }>(`PRAGMA table_info(recurrences)`)).map((col) => col.name)
+    expect(recurrenceCols).not.toContain('to_account_id')
+    expect(await db.first<{ note: string }>(`SELECT note FROM recurrences WHERE id = 'r1'`)).toEqual({ note: '房租' })
+
+    const attachmentCols = await db.all<{ name: string; pk: number }>(`PRAGMA table_info(attachments)`)
+    expect(attachmentCols.find((col) => col.name === 'transaction_id')?.pk).toBe(1)
+    expect(attachmentCols.some((col) => col.name === 'id' || col.name === 'size')).toBe(false)
+    expect(await db.first(`SELECT mime, length(bytes) AS n FROM attachments WHERE transaction_id = 'tx1'`)).toEqual({
+      mime: 'image/png',
+      n: 9,
+    })
+
+    expect(
+      await db.all(`SELECT kind, id, name, api_key FROM ai_profiles ORDER BY kind`),
+    ).toEqual([
+      { kind: 'asr', id: 'same', name: '语音', api_key: 'k2' },
+      { kind: 'llm', id: 'same', name: '解析', api_key: 'k1' },
+    ])
+    const tables = (await db.all<{ name: string }>(`SELECT name FROM sqlite_master WHERE type = 'table'`)).map((row) => row.name)
+    expect(tables).not.toContain('ai_settings')
+    expect(tables).not.toContain('asr_profiles')
+    expect(tables).not.toContain('users_new')
+    expect(tables).not.toContain('attachments_new')
+  })
+
+  it('建表中断留下的 users_new 下次能改回 users', async () => {
+    const db = createSqliteDb(':memory:')
+    await db.exec(`CREATE TABLE users_new (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT,
+      nickname TEXT NOT NULL DEFAULT '',
+      disabled INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    )`)
+    await db.run(
+      `INSERT INTO users_new (id, username, nickname, disabled, created_at) VALUES ('u', 'a', 'n', 0, 1)`,
+    )
+    await upgradeSchema(db)
+    expect(await db.first(`SELECT username FROM users WHERE id = 'u'`)).toEqual({ username: 'a' })
+    await upgradeSchema(db)
+    expect(await db.first(`SELECT username FROM users WHERE id = 'u'`)).toEqual({ username: 'a' })
   })
 })
 

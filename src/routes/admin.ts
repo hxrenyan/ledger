@@ -172,9 +172,3 @@ function strField(form: FormData, key: string): string {
   const v = form.get(key)
   return typeof v === 'string' ? v.trim() : ''
 }
-
-function maskKey(key: string): string {
-  if (!key) return ''
-  if (key.length <= 8) return `${key.slice(0, 2)}****`
-  return `${key.slice(0, 4)}****${key.slice(-4)}`
-}

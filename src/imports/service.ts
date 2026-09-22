@@ -811,7 +811,7 @@ async function writeBatchGifts(
     map.set(name, id)
     created.push(id)
     create.push({
-      sql: `INSERT INTO contacts (id, ledger_id, name, relation, note, archived, created_at) VALUES (?, ?, ?, '', '', 0, ?)`,
+      sql: `INSERT INTO contacts (id, ledger_id, name, relation, archived, created_at) VALUES (?, ?, ?, '', 0, ?)`,
       params: [id, ledgerId, name, now],
     })
   }

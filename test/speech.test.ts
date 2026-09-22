@@ -114,7 +114,7 @@ describe('语音识别多套接力', () => {
     expect(JSON.stringify(saved.body)).not.toContain('sk-primary')
     expect(JSON.stringify(saved.body)).not.toContain('sk-backup')
 
-    const rows = await db.all<{ name: string }>('SELECT name FROM asr_profiles ORDER BY sort_order')
+    const rows = await db.all<{ name: string }>(`SELECT name FROM ai_profiles WHERE kind = 'asr' ORDER BY sort_order`)
     expect(rows.map((row) => row.name)).toEqual(['主', '备'])
   })
 })
@@ -166,8 +166,8 @@ describe('自然语言入账', () => {
     const ledgerId = (reg.body as { ledgers: { id: string }[] }).ledgers[0].id
     const headers = { authorization: `Bearer ${token}`, 'x-ledger-id': ledgerId, 'content-type': 'application/json' }
     await db.run(
-      `INSERT INTO ai_settings (id, name, enabled, base_url, api_key, model, sort_order, updated_at)
-       VALUES ('default', '测', 1, 'https://example.com/v1', 'sk-test', 'demo', 0, 1)`,
+      `INSERT INTO ai_profiles (kind, id, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
+       VALUES ('llm', 'default', '测', 1, '', 'https://example.com/v1', 'sk-test', 'demo', 0, 1)`,
     )
     globalThis.fetch = async () =>
       new Response(

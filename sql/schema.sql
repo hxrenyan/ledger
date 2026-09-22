@@ -9,13 +9,12 @@
 --   categories     分类
 --   transactions   流水（含转账、收据标记）
 --   budgets        月预算
---   attachments    收据二进制
+--   attachments    收据二进制（一笔流水一张，主键即 transaction_id）
 --   contacts       人情往来联系人
 --   gifts          人情往来记录
---   recurrences    周期记账
+--   recurrences    周期记账（只支持收入 / 支出）
 --   import_batches 账单导入批次（回溯 / 撤销）
---   ai_settings    AI 解析配置（多套，按 sort_order 失败换下一套）
---   asr_profiles   语音识别配置（多套，按 sort_order 接力）
+--   ai_profiles    模型配置（kind=llm 解析 / asr 语音，按 sort_order 接力）
 --
 -- 约定：表之间只保留逻辑关联字段，不定义数据库外键；
 --       关联完整性由应用层校验，多语句写入走 D1 batch。
@@ -27,8 +26,6 @@ CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT,
-  wx_openid TEXT UNIQUE,
-  wx_unionid TEXT,
   nickname TEXT NOT NULL DEFAULT '',
   disabled INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
@@ -121,12 +118,10 @@ CREATE TABLE IF NOT EXISTS budgets (
 -- attachments
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS attachments (
-  id TEXT PRIMARY KEY,
-  transaction_id TEXT NOT NULL UNIQUE,
+  transaction_id TEXT PRIMARY KEY,
   ledger_id TEXT NOT NULL,
   mime TEXT NOT NULL,
   bytes BLOB NOT NULL,
-  size INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );
 
@@ -138,7 +133,6 @@ CREATE TABLE IF NOT EXISTS contacts (
   ledger_id TEXT NOT NULL,
   name TEXT NOT NULL,
   relation TEXT NOT NULL DEFAULT '',
-  note TEXT NOT NULL DEFAULT '',
   archived INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
@@ -164,7 +158,6 @@ CREATE TABLE IF NOT EXISTS recurrences (
   kind TEXT NOT NULL,
   amount_cents INTEGER NOT NULL,
   account_id TEXT NOT NULL,
-  to_account_id TEXT,
   category_id TEXT,
   note TEXT NOT NULL DEFAULT '',
   day_of_month INTEGER NOT NULL,
@@ -193,33 +186,22 @@ CREATE TABLE IF NOT EXISTS import_batches (
 );
 
 -- ---------------------------------------------------------------------------
--- ai_settings（可多套；按 sort_order 从小到大尝试，失败换下一套。仅管理后台可读写）
+-- ai_profiles（解析与语音共用一张配置表）
+-- kind：llm = 账单解析；asr = 语音识别。同一 kind 内按 sort_order 失败换下一套。
+-- protocol：asr 目前只实现 openai-audio；llm 留空（走 chat/completions）。
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS ai_settings (
-  id TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS ai_profiles (
+  kind TEXT NOT NULL,
+  id TEXT NOT NULL,
   name TEXT NOT NULL DEFAULT '',
   enabled INTEGER NOT NULL DEFAULT 0,
+  protocol TEXT NOT NULL DEFAULT '',
   base_url TEXT NOT NULL DEFAULT '',
   api_key TEXT NOT NULL DEFAULT '',
   model TEXT NOT NULL DEFAULT '',
   sort_order INTEGER NOT NULL DEFAULT 0,
-  updated_at INTEGER NOT NULL
-);
-
--- ---------------------------------------------------------------------------
--- asr_profiles（语音识别，可多套；按 sort_order 从小到大尝试，失败换下一套）
--- protocol 预留接入方式：目前只实现 openai-audio（硅基流动 / OpenAI 兼容 /audio/transcriptions）
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS asr_profiles (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL DEFAULT '',
-  enabled INTEGER NOT NULL DEFAULT 0,
-  protocol TEXT NOT NULL DEFAULT 'openai-audio',
-  base_url TEXT NOT NULL DEFAULT '',
-  api_key TEXT NOT NULL DEFAULT '',
-  model TEXT NOT NULL DEFAULT '',
-  sort_order INTEGER NOT NULL DEFAULT 0,
-  updated_at INTEGER NOT NULL
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (kind, id)
 );
 
 -- ---------------------------------------------------------------------------
@@ -235,3 +217,4 @@ CREATE INDEX IF NOT EXISTS idx_recurrences_next ON recurrences (ledger_id, enabl
 CREATE INDEX IF NOT EXISTS idx_import_batches_ledger ON import_batches (ledger_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_tx_import_batch ON transactions (import_batch_id) WHERE import_batch_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_gifts_import_batch ON gifts (import_batch_id) WHERE import_batch_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_ai_profiles_order ON ai_profiles (kind, sort_order);

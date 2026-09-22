@@ -11,7 +11,6 @@ type ContactRow = {
   id: string
   name: string
   relation: string
-  note: string
   archived: number
 }
 
@@ -34,7 +33,7 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
     const rows = await db.all<
       ContactRow & { given_cents: number; received_cents: number }
     >(
-      `SELECT c.id, c.name, c.relation, c.note, c.archived,
+      `SELECT c.id, c.name, c.relation, c.archived,
               COALESCE(SUM(CASE WHEN g.kind = 'give' THEN g.amount_cents ELSE 0 END), 0) AS given_cents,
               COALESCE(SUM(CASE WHEN g.kind = 'receive' THEN g.amount_cents ELSE 0 END), 0) AS received_cents
        FROM contacts c
@@ -49,7 +48,6 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
         id: r.id,
         name: r.name,
         relation: r.relation,
-        note: r.note,
         archived: !!r.archived,
         given_cents: Number(r.given_cents) || 0,
         received_cents: Number(r.received_cents) || 0,
@@ -157,11 +155,10 @@ async function upsertContact(
 ) {
   const name = body.name != null ? assertName(body.name, '姓名') : ''
   const relation = typeof body.relation === 'string' ? body.relation.trim().slice(0, 16) : ''
-  const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : ''
   if (!id) {
     if (!name) throw badRequest('姓名须为 1–32 字')
     const existing = await db.first<ContactRow>(
-      `SELECT id, name, relation, note, archived FROM contacts
+      `SELECT id, name, relation, archived FROM contacts
        WHERE ledger_id = ? AND name = ? AND archived = 0`,
       [ledgerId, name],
     )
@@ -171,26 +168,25 @@ async function upsertContact(
     const cid = newId()
     const now = Date.now()
     await db.run(
-      `INSERT INTO contacts (id, ledger_id, name, relation, note, archived, created_at)
-       VALUES (?, ?, ?, ?, ?, 0, ?)`,
-      [cid, ledgerId, name, relation, note, now],
+      `INSERT INTO contacts (id, ledger_id, name, relation, archived, created_at)
+       VALUES (?, ?, ?, ?, 0, ?)`,
+      [cid, ledgerId, name, relation, now],
     )
-    return { id: cid, name, relation, note, archived: false }
+    return { id: cid, name, relation, archived: false }
   }
   const row = await db.first<ContactRow>(
-    `SELECT id, name, relation, note, archived FROM contacts WHERE id = ? AND ledger_id = ?`,
+    `SELECT id, name, relation, archived FROM contacts WHERE id = ? AND ledger_id = ?`,
     [id, ledgerId],
   )
   if (!row) throw notFound('联系人不存在')
   const nextName = name || row.name
   const nextRel = body.relation != null ? relation : row.relation
-  const nextNote = body.note != null ? note : row.note
   const archived = body.archived != null ? (body.archived ? 1 : 0) : row.archived
   await db.run(
-    `UPDATE contacts SET name = ?, relation = ?, note = ?, archived = ? WHERE id = ?`,
-    [nextName, nextRel, nextNote, archived, id],
+    `UPDATE contacts SET name = ?, relation = ?, archived = ? WHERE id = ?`,
+    [nextName, nextRel, archived, id],
   )
-  return { id, name: nextName, relation: nextRel, note: nextNote, archived: !!archived }
+  return { id, name: nextName, relation: nextRel, archived: !!archived }
 }
 
 async function upsertGift(c: Context<AppEnv>, id: string | null, body: Record<string, unknown>) {

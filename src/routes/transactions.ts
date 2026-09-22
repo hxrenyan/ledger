@@ -106,13 +106,12 @@ export function registerTransactionRoutes(app: Hono<AppEnv>) {
     const mime = file.type
     if (!RECEIPT_MIME.has(mime)) throw badRequest('仅支持 jpeg / png / webp')
     const bytes = new Uint8Array(await file.arrayBuffer())
-    const id = newId()
     await db.batch([
       { sql: `DELETE FROM attachments WHERE transaction_id = ?`, params: [txId] },
       {
-        sql: `INSERT INTO attachments (id, transaction_id, ledger_id, mime, bytes, size, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        params: [id, txId, ledgerId, mime, bytes, bytes.length, Date.now()],
+        sql: `INSERT INTO attachments (transaction_id, ledger_id, mime, bytes, created_at)
+              VALUES (?, ?, ?, ?, ?)`,
+        params: [txId, ledgerId, mime, bytes, Date.now()],
       },
       { sql: `UPDATE transactions SET has_receipt = 1 WHERE id = ?`, params: [txId] },
     ])

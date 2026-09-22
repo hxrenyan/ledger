@@ -9,7 +9,7 @@ import { dateToOccurredAt, nextMonthSameDay, shanghaiDate } from '../time.ts'
 export function registerRecurrenceRoutes(app: Hono<AppEnv>) {
   app.get('/api/v1/recurrences', async (c) => {
     const rows = await c.get('db').all(
-      `SELECT id, kind, amount_cents, account_id, to_account_id, category_id, note, day_of_month, next_at, enabled
+      `SELECT id, kind, amount_cents, account_id, category_id, note, day_of_month, next_at, enabled
        FROM recurrences WHERE ledger_id = ? ORDER BY day_of_month ASC`,
       [c.get('ledgerId')],
     )
@@ -34,8 +34,8 @@ export function registerRecurrenceRoutes(app: Hono<AppEnv>) {
     if (nextAt < Date.now() - 12 * 3600 * 1000) nextAt = nextMonthSameDay(nextAt)
     const id = newId()
     await c.get('db').run(
-      `INSERT INTO recurrences (id, ledger_id, kind, amount_cents, account_id, to_account_id, category_id, note, day_of_month, next_at, enabled, created_at)
-       VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, 1, ?)`,
+      `INSERT INTO recurrences (id, ledger_id, kind, amount_cents, account_id, category_id, note, day_of_month, next_at, enabled, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
       [id, c.get('ledgerId'), kind, amount, accountId, categoryId, note, day, nextAt, Date.now()],
     )
     return c.json({ id, kind, amount_cents: amount, account_id: accountId, category_id: categoryId, note, day_of_month: day, next_at: nextAt, enabled: true }, 201)
