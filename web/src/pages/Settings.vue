@@ -179,6 +179,7 @@ onMounted(async () => {
       <div class="row" @click="router.push('/budgets')">月预算</div>
       <div class="row" @click="router.push('/recurring')">周期记账</div>
       <div class="row" @click="router.push('/categories')">分类</div>
+      <div class="row" @click="router.push('/import')">导入账单（CSV / Excel / JSON）</div>
       <div class="row" @click="exportCsv">导出 CSV</div>
       <div class="row" @click="logout" style="color: var(--expense)">退出登录</div>
       <p v-if="err" class="err">{{ err }}</p>

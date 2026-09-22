@@ -24,6 +24,7 @@ export const router = createRouter({
         { path: 'favors/gift/:id', component: () => import('./pages/GiftForm.vue') },
         { path: 'favors/person/:id', component: () => import('./pages/FavorPerson.vue') },
         { path: 'recurring', component: () => import('./pages/Recurring.vue') },
+        { path: 'import', component: () => import('./pages/Import.vue') },
         { path: 'me', component: () => import('./pages/Settings.vue') },
       ],
     },

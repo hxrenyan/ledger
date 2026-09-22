@@ -6,6 +6,5 @@ declare module '*.vue' {
   export default component
 }
 
-declare module '@server/time.ts' {
-  export * from '../../src/time.ts'
-}
+// 注意：不要再给 '@server/*' 加 `declare module` 的影子声明。
+// web/tsconfig.json 里已有 paths 映射，影子声明会盖住真实解析（曾导致 @server/time.ts 全部报“无导出成员”）。

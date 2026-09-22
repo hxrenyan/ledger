@@ -13,6 +13,8 @@
 --   contacts       人情往来联系人
 --   gifts          人情往来记录
 --   recurrences    周期记账
+--   import_batches 账单导入批次（回溯 / 撤销）
+--   ai_settings    AI 解析配置（全局单行）
 --
 -- 约定：表之间只保留逻辑关联字段，不定义数据库外键；
 --       关联完整性由应用层校验，多语句写入走 D1 batch。
@@ -95,6 +97,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   note TEXT NOT NULL DEFAULT '',
   has_receipt INTEGER NOT NULL DEFAULT 0,
   excluded INTEGER NOT NULL DEFAULT 0,
+  import_batch_id TEXT,
   created_by TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
@@ -169,6 +172,37 @@ CREATE TABLE IF NOT EXISTS recurrences (
 );
 
 -- ---------------------------------------------------------------------------
+-- import_batches（账单导入批次；流水通过 transactions.import_batch_id 归属批次）
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS import_batches (
+  id TEXT PRIMARY KEY,
+  ledger_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  filename TEXT NOT NULL DEFAULT '',
+  parsed_rows INTEGER NOT NULL DEFAULT 0,
+  imported_rows INTEGER NOT NULL DEFAULT 0,
+  skipped_rows INTEGER NOT NULL DEFAULT 0,
+  duplicate_rows INTEGER NOT NULL DEFAULT 0,
+  ai_used INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'done',
+  created_by TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  undone_at INTEGER
+);
+
+-- ---------------------------------------------------------------------------
+-- ai_settings（全局单行，id 固定 'default'；仅管理后台可读写）
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS ai_settings (
+  id TEXT PRIMARY KEY,
+  enabled INTEGER NOT NULL DEFAULT 0,
+  base_url TEXT NOT NULL DEFAULT '',
+  api_key TEXT NOT NULL DEFAULT '',
+  model TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
 -- 索引（对应列表/统计查询，不重复主键与 UNIQUE）
 -- ---------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_tx_ledger_occurred ON transactions (ledger_id, occurred_at);
@@ -178,3 +212,5 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_ledgers_invite ON ledgers (invite_code) WH
 CREATE INDEX IF NOT EXISTS idx_contacts_ledger ON contacts (ledger_id, name);
 CREATE INDEX IF NOT EXISTS idx_gifts_contact ON gifts (ledger_id, contact_id, occurred_at);
 CREATE INDEX IF NOT EXISTS idx_recurrences_next ON recurrences (ledger_id, enabled, next_at);
+CREATE INDEX IF NOT EXISTS idx_import_batches_ledger ON import_batches (ledger_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_tx_import_batch ON transactions (import_batch_id) WHERE import_batch_id IS NOT NULL;

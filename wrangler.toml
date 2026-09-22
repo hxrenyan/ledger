@@ -3,6 +3,16 @@ main = "src/index.ts"
 compatibility_date = "2025-10-01"
 compatibility_flags = ["nodejs_compat"]
 
+# workers.dev 保留作为备用入口；关闭版本预览 URL（避免每个版本生成公开地址）
+workers_dev = true
+preview_urls = false
+
+# 自定义域名：zone hxsmj.top 在本账号下，deploy 时自动建 DNS 记录并签发证书
+# 注意：顶层键必须写在第一个表头（[assets]）之前，否则会被归入前面的表
+routes = [
+  { pattern = "ledger.hxsmj.top", custom_domain = true }
+]
+
 # 静态页在 public/（Vue 构建产物）；/api/* 必须先走 Worker
 [assets]
 directory = "./public"
@@ -10,12 +20,13 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api/*"]
 
+
 # D1：先执行 npm run db:create，把返回的 database_id 填到下面两处
 [[d1_databases]]
 binding = "DB"
 database_name = "ledger-db"
-database_id = "00000000-0000-0000-0000-000000000000"
-preview_database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "080ebddc-4649-4970-8bf9-b9b95c199c8b"
+preview_database_id = "080ebddc-4649-4970-8bf9-b9b95c199c8b"
 
 # 非敏感配置；JWT_SECRET / ADMIN_TOKEN 放 .dev.vars / wrangler secret
 [vars]
@@ -32,7 +43,7 @@ name = "ledger"
 [[env.local.d1_databases]]
 binding = "DB"
 database_name = "ledger-db"
-database_id = "00000000-0000-0000-0000-000000000000"
-preview_database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "080ebddc-4649-4970-8bf9-b9b95c199c8b"
+preview_database_id = "080ebddc-4649-4970-8bf9-b9b95c199c8b"
 
 [env.local.vars]

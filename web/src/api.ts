@@ -54,3 +54,62 @@ export type Tx = {
   has_receipt: boolean
   excluded?: boolean
 }
+
+// ---------------------------------------------------------------------------
+// 账单导入
+// ---------------------------------------------------------------------------
+
+export type ImportPreviewRow = {
+  row: number
+  date: string
+  amount_cents: number
+  direction: 'expense' | 'income' | 'skip'
+  note: string
+  counterparty: string
+  category_id: string
+  category_name: string
+  account_id: string
+  account_name: string
+  status: 'ok' | 'skip' | 'error'
+  reason: string
+  duplicate: boolean
+}
+
+export type ImportPreview = {
+  source: string
+  via: 'csv' | 'json'
+  sheet?: string
+  filename: string
+  header_index: number
+  header: string[]
+  mapping: Record<string, number>
+  stats: { total: number; ok: number; skip: number; failed: number; duplicate: number }
+  truncated: boolean
+  ai: { available: boolean; used: boolean; error?: string; truncated?: boolean }
+  rows: ImportPreviewRow[]
+  accounts: { id: string; name: string }[]
+  categories: Category[]
+}
+
+export type ImportCommitResult = {
+  batch_id: string
+  imported: number
+  duplicates: number
+  skipped: number
+  failed: { row: number; reason: string }[]
+}
+
+export type ImportBatch = {
+  id: string
+  source: string
+  filename: string
+  parsed_rows: number
+  imported_rows: number
+  skipped_rows: number
+  duplicate_rows: number
+  ai_used: boolean
+  status: string
+  created_at: number
+  undone_at: number | null
+  created_by_name: string
+}

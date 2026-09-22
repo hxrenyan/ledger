@@ -18,6 +18,7 @@ export async function ensureMigrated(db: Db) {
   await ensureColumn(db, 'ledgers', 'invite_code', 'TEXT')
   await ensureColumn(db, 'transactions', 'has_receipt', 'INTEGER NOT NULL DEFAULT 0')
   await ensureColumn(db, 'transactions', 'excluded', 'INTEGER NOT NULL DEFAULT 0')
+  await ensureColumn(db, 'transactions', 'import_batch_id', 'TEXT')
   if (indexSql.trim()) await db.exec(indexSql)
   await backfillInviteCodes(db)
   if (addedBalance) await backfillBalances(db)

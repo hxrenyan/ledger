@@ -5,6 +5,7 @@ export async function patchSchema(db: Db) {
   await ensureColumn(db, 'accounts', 'current_cents', 'INTEGER NOT NULL DEFAULT 0')
   await ensureColumn(db, 'transactions', 'excluded', 'INTEGER NOT NULL DEFAULT 0')
   await ensureColumn(db, 'transactions', 'has_receipt', 'INTEGER NOT NULL DEFAULT 0')
+  await ensureColumn(db, 'transactions', 'import_batch_id', 'TEXT')
   await db.run(
     `CREATE TABLE IF NOT EXISTS recurrences (
       id TEXT PRIMARY KEY,
@@ -23,6 +24,39 @@ export async function patchSchema(db: Db) {
   )
   await db.run(
     `CREATE INDEX IF NOT EXISTS idx_recurrences_next ON recurrences (ledger_id, enabled, next_at)`,
+  )
+  await db.run(
+    `CREATE TABLE IF NOT EXISTS import_batches (
+      id TEXT PRIMARY KEY,
+      ledger_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      filename TEXT NOT NULL DEFAULT '',
+      parsed_rows INTEGER NOT NULL DEFAULT 0,
+      imported_rows INTEGER NOT NULL DEFAULT 0,
+      skipped_rows INTEGER NOT NULL DEFAULT 0,
+      duplicate_rows INTEGER NOT NULL DEFAULT 0,
+      ai_used INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'done',
+      created_by TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      undone_at INTEGER
+    )`,
+  )
+  await db.run(
+    `CREATE TABLE IF NOT EXISTS ai_settings (
+      id TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      base_url TEXT NOT NULL DEFAULT '',
+      api_key TEXT NOT NULL DEFAULT '',
+      model TEXT NOT NULL DEFAULT '',
+      updated_at INTEGER NOT NULL
+    )`,
+  )
+  await db.run(
+    `CREATE INDEX IF NOT EXISTS idx_import_batches_ledger ON import_batches (ledger_id, created_at)`,
+  )
+  await db.run(
+    `CREATE INDEX IF NOT EXISTS idx_tx_import_batch ON transactions (import_batch_id) WHERE import_batch_id IS NOT NULL`,
   )
 }
 

@@ -103,7 +103,10 @@ async function load() {
     originalCents.value = tx.kind === 'expense' && !tx.excluded ? tx.amount_cents : 0
   } else {
     const prefs = loadPrefs(session.ledgerId)
-    const prefer = kind.value === 'income' ? prefs.incomeCat : prefs.expenseCat
+    // 新建流水固定从「支出」开始（见函数开头的 kind.value = 'expense'），
+    // 因此只用支出默认分类。历史遗留的 income 分支在此不可达（vue-tsc 的 TS2367 告警即指向它），
+    // 保留行为不变，是否修复由用户决定。
+    const prefer = prefs.expenseCat
     categoryId.value = (prefer && visibleCats.value.some((c) => c.id === prefer) ? prefer : visibleCats.value[0]?.id) ?? ''
     await nextTick()
     amountEl.value?.focus()

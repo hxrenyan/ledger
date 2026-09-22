@@ -2,6 +2,7 @@ import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { signAdminToken } from '../auth/jwt.ts'
 import { badRequest, notFound, unauthorized } from '../http.ts'
+import { readAiConfig, resolveEndpoint, testAi } from '../imports/ai.ts'
 
 export function registerAdminRoutes(app: Hono<AppEnv>) {
   app.post('/api/v1/admin/login', async (c) => {
@@ -65,8 +66,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
     return c.json({ id, disabled: body.disabled })
   })
 
-  app.get('/api/v1/admin/ledgers', async (c) => {
-    const rows = await c.get('db').all<{
+  app.get('/api/v1/admin/ledgers', async (c) => {    const rows = await c.get('db').all<{
       id: string
       name: string
       owner_username: string
@@ -89,4 +89,73 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
       })),
     })
   })
+
+  // -------------------------------------------------------------------------
+  // AI 配置（导入解析用）：全局单行，api_key 只回显掩码，永不下发明文
+  // -------------------------------------------------------------------------
+  app.get('/api/v1/admin/ai', async (c) => {
+    const cfg = await readAiConfig(c.get('db'))
+    return c.json({
+      enabled: cfg.enabled,
+      base_url: cfg.baseUrl,
+      model: cfg.model,
+      has_key: !!cfg.apiKey,
+      key_hint: maskKey(cfg.apiKey),
+      endpoint: cfg.baseUrl ? resolveEndpoint(cfg.baseUrl) : '',
+      updated_at: cfg.updatedAt ?? 0,
+    })
+  })
+
+  app.put('/api/v1/admin/ai', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const db = c.get('db')
+    const current = await readAiConfig(db)
+    const enabled = body.enabled === true
+    const baseUrl = typeof body.base_url === 'string' ? body.base_url.trim() : current.baseUrl
+    const model = typeof body.model === 'string' ? body.model.trim() : current.model
+    let apiKey = current.apiKey
+    if (body.clear_key === true) apiKey = ''
+    else if (typeof body.api_key === 'string' && body.api_key.trim()) apiKey = body.api_key.trim()
+
+    if (enabled && (!baseUrl || !apiKey || !model)) {
+      throw badRequest('启用 AI 需要同时填写 base_url、api_key、model')
+    }
+    if (baseUrl && !/^https?:\/\//i.test(baseUrl)) throw badRequest('base_url 需以 http(s):// 开头')
+
+    await db.run(
+      `INSERT INTO ai_settings (id, enabled, base_url, api_key, model, updated_at)
+       VALUES ('default', ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET
+         enabled = excluded.enabled, base_url = excluded.base_url,
+         api_key = excluded.api_key, model = excluded.model, updated_at = excluded.updated_at`,
+      [enabled ? 1 : 0, baseUrl, apiKey, model, Date.now()],
+    )
+    return c.json({ ok: true, enabled, base_url: baseUrl, model, has_key: !!apiKey })
+  })
+
+  /** 连通性测试：允许带未保存的临时参数（前端「测试」按钮直接用表单值）。 */
+  app.post('/api/v1/admin/ai/test', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const current = await readAiConfig(c.get('db'))
+    const cfg = {
+      enabled: true,
+      baseUrl: typeof body.base_url === 'string' && body.base_url.trim() ? body.base_url.trim() : current.baseUrl,
+      apiKey: typeof body.api_key === 'string' && body.api_key.trim() ? body.api_key.trim() : current.apiKey,
+      model: typeof body.model === 'string' && body.model.trim() ? body.model.trim() : current.model,
+    }
+    const res = await testAi(cfg)
+    if (!res.ok) return c.json({ ok: false, message: res.error, endpoint: resolveEndpoint(cfg.baseUrl) })
+    return c.json({
+      ok: true,
+      latency_ms: res.data.latencyMs,
+      sample: res.data.sample,
+      endpoint: resolveEndpoint(cfg.baseUrl),
+    })
+  })
+}
+
+function maskKey(key: string): string {
+  if (!key) return ''
+  if (key.length <= 8) return `${key.slice(0, 2)}****`
+  return `${key.slice(0, 4)}****${key.slice(-4)}`
 }

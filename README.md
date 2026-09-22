@@ -9,8 +9,9 @@
 - 账户、分类、收支、转账
 - 月预算、收据图
 - **人情往来**（按人记送出/收入、事由、差额）
+- **账单导入**：微信 / 支付宝 / 银行 / 通用 CSV、Excel、JSON，可选 AI 兜底解析（见 [docs/import.md](docs/import.md)）
 - CSV 导出
-- **管理后台** `/admin`：用户/账本概览、停用账号
+- **管理后台** `/admin`：用户/账本概览、停用账号、AI 配置
 
 管理员口令与用户账本分离（`ADMIN_TOKEN`）。
 
@@ -48,6 +49,7 @@ ledger/
 │   ├── index.ts            # Worker 入口
 │   ├── app.ts
 │   ├── auth/
+│   ├── imports/            # 账单导入：解析、建议、AI、编排
 │   ├── db/
 │   └── routes/
 ├── sql/
@@ -60,7 +62,7 @@ ledger/
 └── docs/
 ```
 
-模块说明见 `src/README.md`；SQL 说明见 `sql/README.md`。
+模块说明见 `src/README.md`；SQL 说明见 `sql/README.md`；账单导入见 `docs/import.md`。
 
 ---
 
@@ -135,6 +137,23 @@ H5 热更新可另开：`npm run dev:web`（代理 `/api` 到 8787）。
 3. `npm run db:remote`
 4. `npx wrangler secret put JWT_SECRET` 与 `ADMIN_TOKEN`
 5. `npm run deploy`
+
+### 自定义域名
+
+域名所在 zone 需在同一 Cloudflare 账号下。在 `wrangler.toml` 顶层加自定义域：
+
+```toml
+routes = [
+  { pattern = "ledger.example.com", custom_domain = true }
+]
+```
+
+再 `npm run deploy`：wrangler 会建好 DNS 记录并签发证书，输出里会出现 `xxx (custom domain)` 一行。
+
+> 注意：`wrangler.toml` 的顶层键（`routes`、`workers_dev`、`preview_urls`）必须写在第一个表头（如 `[assets]`）**之前**，
+> 否则会被归入前一个表，wrangler 只给 `Unexpected fields found in assets field` 警告且静默忽略路由。
+
+`workers_dev = true` 保留 `*.workers.dev` 备用入口；`preview_urls = false` 防止每个版本生成公开预览地址。
 
 ---
 

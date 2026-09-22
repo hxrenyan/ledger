@@ -35,11 +35,15 @@ npm run db:migrate-all-remote
 | `members` | `(ledger_id, user_id)` | 账本成员 |
 | `accounts` | TEXT | 账户 |
 | `categories` | TEXT | 收支分类 |
-| `transactions` | TEXT | 流水；金额整数分 |
+| `transactions` | TEXT | 流水；金额整数分；`import_batch_id` 归属导入批次（手工录入为空） |
 | `budgets` | TEXT | 月预算 |
 | `attachments` | TEXT | 收据图 |
 | `contacts` | TEXT | 人情联系人 |
 | `gifts` | TEXT | 人情往来 |
 | `recurrences` | TEXT | 周期记账 |
+| `import_batches` | TEXT | 账单导入批次台账（回溯 / 撤销） |
+| `ai_settings` | TEXT | AI 解析配置，全局单行（`id='default'`） |
 
 新环境只用 `schema.sql`。线上已有数据只追加 `sql/migrations/`，不要对生产库重跑全量 schema。
+
+导入与 AI 配置的字段语义见 [docs/import.md](../docs/import.md)。
