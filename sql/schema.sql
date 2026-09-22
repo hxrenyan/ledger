@@ -14,7 +14,7 @@
 --   gifts          人情往来记录
 --   recurrences    周期记账
 --   import_batches 账单导入批次（回溯 / 撤销）
---   ai_settings    AI 解析配置（全局单行）
+--   ai_settings    AI 解析配置（多套，按 sort_order 失败换下一套）
 --   asr_profiles   语音识别配置（多套，按 sort_order 接力）
 --
 -- 约定：表之间只保留逻辑关联字段，不定义数据库外键；
@@ -193,14 +193,16 @@ CREATE TABLE IF NOT EXISTS import_batches (
 );
 
 -- ---------------------------------------------------------------------------
--- ai_settings（全局单行，id 固定 'default'；仅管理后台可读写）
+-- ai_settings（可多套；按 sort_order 从小到大尝试，失败换下一套。仅管理后台可读写）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ai_settings (
   id TEXT PRIMARY KEY,
+  name TEXT NOT NULL DEFAULT '',
   enabled INTEGER NOT NULL DEFAULT 0,
   base_url TEXT NOT NULL DEFAULT '',
   api_key TEXT NOT NULL DEFAULT '',
   model TEXT NOT NULL DEFAULT '',
+  sort_order INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL
 );
 

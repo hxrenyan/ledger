@@ -56,9 +56,9 @@
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v1/admin/ai` | 读配置，`api_key` 只回显掩码 `key_hint` |
-| PUT | `/api/v1/admin/ai` | 写配置；`api_key` 留空＝不改，`clear_key:true`＝清空；启用时三项必填 |
-| POST | `/api/v1/admin/ai/test` | 连通性测试，可用表单里的临时参数 |
+| GET | `/api/v1/admin/ai` | 读 AI 配置列表。`items` 顺序就是失败后的接力顺序 |
+| PUT | `/api/v1/admin/ai` | 整表保存。`api_key` 留空＝不改，`clear_key:true`＝清空；参与接力时三项必填。最多 8 套 |
+| POST | `/api/v1/admin/ai/test` | 测其中一套，不走接力。可用表单里的临时参数 |
 | GET/PUT | `/api/v1/admin/asr` | 语音配置列表。`items` 顺序即接力顺序，最多 8 套；密钥只回显掩码 |
 | POST | `/api/v1/admin/asr/test` | 测其中一套，需上传音频，音频不保存 |
 
@@ -66,14 +66,14 @@
 
 ## AI 配置
 
-管理后台 → 「AI 配置」tab，按 OpenAI 兼容协议配置：
+管理后台 → 「AI 配置」可以保存多套 OpenAI 兼容接口。数组顺序就是调用顺序：上一套超时、HTTP 失败或返回无法解析的内容时，自动换下一套。未勾选「参与接力」的不调用。
 
 - `base_url`：`https://api.deepseek.com/v1`（带不带 `/v1` 都会归一化成 `.../v1/chat/completions`，也可以直接填完整 endpoint）
 - `api_key`：只写不读，保存后仅回显掩码
 - `model`：如 `deepseek-chat`
 
 只在两处调用模型：① 表格结构识别不出来时兜底转字段；② 用户点「AI 建议分类」或导入前需要建议时。
-调用失败只降级、不阻断——规则解析的结果照常可用。
+全部失败只降级、不阻断——规则解析的结果照常可用。
 
 ## 数据表
 
@@ -81,7 +81,7 @@
 |---------|------|
 | `import_batches` | 批次台账：来源、文件名、行数统计、AI 标记、状态、操作人 |
 | `transactions.import_batch_id` | 流水归属批次，为空表示手工录入；撤销按此列删除 |
-| `ai_settings` | AI 配置，全局单行（`id='default'`） |
+| `ai_settings` | AI 配置，可多套。按 `sort_order` 失败换下一套 |
 | `asr_profiles` | 语音识别配置，可多套。只存接口地址、模型和密钥，不存录音 |
 | `gifts.import_batch_id` | 导入时认出的人情往来，随批次撤销 |
 

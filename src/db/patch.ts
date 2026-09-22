@@ -46,13 +46,17 @@ export async function patchSchema(db: Db) {
   await db.run(
     `CREATE TABLE IF NOT EXISTS ai_settings (
       id TEXT PRIMARY KEY,
+      name TEXT NOT NULL DEFAULT '',
       enabled INTEGER NOT NULL DEFAULT 0,
       base_url TEXT NOT NULL DEFAULT '',
       api_key TEXT NOT NULL DEFAULT '',
       model TEXT NOT NULL DEFAULT '',
+      sort_order INTEGER NOT NULL DEFAULT 0,
       updated_at INTEGER NOT NULL
     )`,
   )
+  await ensureColumn(db, 'ai_settings', 'name', "TEXT NOT NULL DEFAULT ''")
+  await ensureColumn(db, 'ai_settings', 'sort_order', 'INTEGER NOT NULL DEFAULT 0')
   await db.run(
     `CREATE TABLE IF NOT EXISTS asr_profiles (
       id TEXT PRIMARY KEY,

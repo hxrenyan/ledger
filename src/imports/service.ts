@@ -18,8 +18,7 @@ import {
   aiParseTable,
   aiReady,
   aiSuggestCategories,
-  readAiConfig,
-  type AiConfig,
+  readAiConfigs,
   type AiParsedRow,
   type SuggestItem,
 } from './ai.ts'
@@ -98,8 +97,8 @@ export async function buildPreview(db: Db, ledgerId: string, input: PreviewInput
     }
   }
 
-  const aiCfg = await readAiConfig(db)
-  const aiAvailable = aiReady(aiCfg)
+  const aiConfigs = await readAiConfigs(db)
+  const aiAvailable = aiConfigs.some(aiReady)
   const okCount = parsed.filter((p) => p.status === 'ok').length
   const dataRows = parsed.filter((p) => p.status !== 'skip').length
   const needAi = opts.useAi === true || !shape || (dataRows > 0 && okCount / dataRows < 0.5) || (dataRows === 0 && table.rows.length > 0)
@@ -112,7 +111,7 @@ export async function buildPreview(db: Db, ledgerId: string, input: PreviewInput
     if (!aiAvailable) {
       if (!shape) aiError = '未识别出表格结构，且管理后台未启用 AI'
     } else {
-      const res = await aiParseTable(aiCfg, table.rows, {
+      const res = await aiParseTable(aiConfigs, table.rows, {
         startRowNo: 1,
         categories: catList.map((c) => c.name),
         accounts: accounts.map((a) => a.name),
@@ -199,15 +198,15 @@ export async function suggestWithAi(
   db: Db,
   rows: { i: number; note: string; counterparty: string; direction: 'expense' | 'income'; amount_cents: number }[],
 ): Promise<{ applied: Record<number, string>; error?: string }> {
-  const cfg = await readAiConfig(db)
-  if (!aiReady(cfg)) return { applied: {}, error: 'AI 未启用' }
+  const configs = await readAiConfigs(db)
+  if (!configs.some(aiReady)) return { applied: {}, error: 'AI 未启用' }
   const categories = await db.all<{ name: string; kind: string }>(
     `SELECT name, kind FROM categories WHERE archived = 0 ORDER BY sort_order ASC`,
   )
   const items: SuggestItem[] = rows.filter((r) => r.direction === 'expense' || r.direction === 'income')
   if (!items.length) return { applied: {} }
   const res = await aiSuggestCategories(
-    cfg,
+    configs,
     items,
     categories.map((c) => c.name),
   )

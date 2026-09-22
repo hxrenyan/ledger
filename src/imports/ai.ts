@@ -8,14 +8,21 @@
  * 没配置 AI 时一切照常：规则解析先跑，AI 只是补位，失败也只降级不报错。
  */
 
-import type { Db } from '../db/types.ts'
+import type { Db, Stmt } from '../db/types.ts'
+import { badRequest } from '../http.ts'
+import { newId } from '../seed.ts'
 import { parseAmountCents, parseDateYmd, parseDirection, type Direction } from './values.ts'
 
+export const MAX_AI_PROFILES = 8
+
 export type AiConfig = {
+  id: string
+  name: string
   enabled: boolean
   baseUrl: string
   apiKey: string
   model: string
+  sortOrder: number
   updatedAt?: number
 }
 
@@ -25,24 +32,139 @@ const AI_CHUNK = 50
 const CELL_LIMIT = 60
 const REQUEST_TIMEOUT_MS = 60_000
 
-export const EMPTY_AI_CONFIG: AiConfig = { enabled: false, baseUrl: '', apiKey: '', model: '' }
+export function aiReady(cfg: AiConfig): boolean {
+  return !!cfg.enabled && !!cfg.baseUrl.trim() && !!cfg.apiKey.trim() && !!cfg.model.trim()
+}
 
-export async function readAiConfig(db: Db): Promise<AiConfig> {
-  const row = await db.first<{ enabled: number; base_url: string; api_key: string; model: string; updated_at: number }>(
-    `SELECT enabled, base_url, api_key, model, updated_at FROM ai_settings WHERE id = 'default'`,
+export function aiLabel(cfg: AiConfig): string {
+  return cfg.name.trim() || cfg.model.trim() || '未命名配置'
+}
+
+export async function readAiConfigs(db: Db): Promise<AiConfig[]> {
+  const rows = await db.all<{
+    id: string
+    name: string
+    enabled: number
+    base_url: string
+    api_key: string
+    model: string
+    sort_order: number
+    updated_at: number
+  }>(
+    `SELECT id, name, enabled, base_url, api_key, model, sort_order, updated_at
+     FROM ai_settings
+     ORDER BY sort_order ASC, updated_at ASC, id ASC`,
   )
-  if (!row) return { ...EMPTY_AI_CONFIG }
-  return {
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name ?? '',
     enabled: !!row.enabled,
     baseUrl: row.base_url ?? '',
     apiKey: row.api_key ?? '',
     model: row.model ?? '',
-    updatedAt: Number(row.updated_at ?? 0),
+    sortOrder: Number(row.sort_order) || 0,
+    updatedAt: Number(row.updated_at) || 0,
+  }))
+}
+
+type SaveItem = {
+  id?: unknown
+  name?: unknown
+  enabled?: unknown
+  base_url?: unknown
+  model?: unknown
+  api_key?: unknown
+  clear_key?: unknown
+}
+
+/** 按数组顺序整表替换。下标就是失败后的接力顺序。 */
+export async function replaceAiConfigs(db: Db, items: unknown): Promise<AiConfig[]> {
+  if (!Array.isArray(items)) throw badRequest('请提供 items 数组')
+  if (items.length > MAX_AI_PROFILES) throw badRequest(`最多 ${MAX_AI_PROFILES} 套 AI 配置`)
+  const existing = await readAiConfigs(db)
+  const byId = new Map(existing.map((item) => [item.id, item]))
+  const seen = new Set<string>()
+  const now = Date.now()
+  const next: AiConfig[] = []
+
+  items.forEach((raw, index) => {
+    const item = (raw ?? {}) as SaveItem
+    const requestedId = typeof item.id === 'string' ? item.id.trim() : ''
+    const prev = requestedId ? byId.get(requestedId) : undefined
+    const id = prev ? prev.id : newId()
+    if (seen.has(id)) throw badRequest('配置 id 重复')
+    seen.add(id)
+
+    const name = typeof item.name === 'string' ? item.name.trim().slice(0, 40) : (prev?.name ?? '')
+    const enabled = item.enabled === true
+    const baseUrl = typeof item.base_url === 'string' ? item.base_url.trim().slice(0, 300) : (prev?.baseUrl ?? '')
+    const model = typeof item.model === 'string' ? item.model.trim().slice(0, 80) : (prev?.model ?? '')
+    let apiKey = prev?.apiKey ?? ''
+    if (item.clear_key === true) apiKey = ''
+    else if (typeof item.api_key === 'string' && item.api_key.trim()) apiKey = item.api_key.trim()
+
+    if (baseUrl && !/^https?:\/\//i.test(baseUrl)) throw badRequest(`第 ${index + 1} 套的 base_url 需以 http(s):// 开头`)
+    if (enabled && (!baseUrl || !apiKey || !model)) {
+      throw badRequest(`第 ${index + 1} 套要参与接力，需要同时填写 base_url、api_key、model`)
+    }
+    next.push({ id, name, enabled, baseUrl, apiKey, model, sortOrder: index, updatedAt: now })
+  })
+
+  const stmts: Stmt[] = []
+  for (const old of existing) {
+    if (!seen.has(old.id)) stmts.push({ sql: `DELETE FROM ai_settings WHERE id = ?`, params: [old.id] })
+  }
+  for (const row of next) {
+    stmts.push({
+      sql: `INSERT INTO ai_settings (id, name, enabled, base_url, api_key, model, sort_order, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name, enabled = excluded.enabled, base_url = excluded.base_url,
+              api_key = excluded.api_key, model = excluded.model, sort_order = excluded.sort_order,
+              updated_at = excluded.updated_at`,
+      params: [row.id, row.name, row.enabled ? 1 : 0, row.baseUrl, row.apiKey, row.model, row.sortOrder, now],
+    })
+  }
+  if (stmts.length) await db.batch(stmts)
+  return readAiConfigs(db)
+}
+
+export function toPublicAi(cfg: AiConfig) {
+  return {
+    id: cfg.id,
+    name: cfg.name,
+    enabled: cfg.enabled,
+    base_url: cfg.baseUrl,
+    model: cfg.model,
+    has_key: !!cfg.apiKey,
+    key_hint: maskAiKey(cfg.apiKey),
+    endpoint: cfg.baseUrl ? resolveEndpoint(cfg.baseUrl) : '',
+    sort_order: cfg.sortOrder,
+    updated_at: cfg.updatedAt ?? 0,
   }
 }
 
-export function aiReady(cfg: AiConfig): boolean {
-  return !!cfg.enabled && !!cfg.baseUrl.trim() && !!cfg.apiKey.trim() && !!cfg.model.trim()
+function maskAiKey(key: string): string {
+  if (!key) return ''
+  if (key.length <= 8) return `${key.slice(0, 2)}****`
+  return `${key.slice(0, 4)}****${key.slice(-4)}`
+}
+
+/** 按顺序尝试已启用且配置完整的套。上一套请求失败或返回不可用时换下一套。 */
+export async function withAiFailover<T>(
+  configs: AiConfig[],
+  run: (cfg: AiConfig) => Promise<AiResult<T>>,
+): Promise<AiResult<T>> {
+  const ready = configs.filter(aiReady)
+  if (!ready.length) return { ok: false, error: 'AI 未启用' }
+  const errors: string[] = []
+  for (const cfg of ready) {
+    const res = await run(cfg)
+    if (res.ok) return res
+    const brief = res.error.replace(/\s+/g, ' ').trim()
+    errors.push(`${aiLabel(cfg)}：${brief.length > 160 ? `${brief.slice(0, 160)}…` : brief}`)
+  }
+  return { ok: false, error: errors.join('；') }
 }
 
 /** base_url 归一化：支持 https://host、https://host/v1、以及完整 .../chat/completions。 */
@@ -179,11 +301,11 @@ function clip(v: string): string {
  * 超过 AI_MAX_ROWS 的部分不送模型（成本保护），返回时标注截断。
  */
 export async function aiParseTable(
-  cfg: AiConfig,
+  configs: AiConfig[],
   rows: string[][],
   ctx: { startRowNo: number; categories: string[]; accounts: string[] },
 ): Promise<AiResult<{ rows: AiParsedRow[]; truncated: boolean }>> {
-  if (!aiReady(cfg)) return { ok: false, error: 'AI 未启用' }
+  if (!configs.some(aiReady)) return { ok: false, error: 'AI 未启用' }
   if (!rows.length) return { ok: true, data: { rows: [], truncated: false } }
 
   const truncated = rows.length > AI_MAX_ROWS
@@ -200,16 +322,19 @@ export async function aiParseTable(
       .filter(Boolean)
       .join('\n')
 
-    const res = await chat(cfg, [
-      { role: 'system', content: PARSE_SYSTEM },
-      { role: 'user', content: `${reference}\n\n表格行：\n${lines}` },
-    ])
-    if (!res.ok) return { ok: false, error: res.error }
-
-    const parsed = extractJson(res.data)
-    const list = (parsed as { rows?: unknown })?.rows
-    if (!Array.isArray(list)) return { ok: false, error: 'AI 输出格式不符合预期' }
-    for (const item of list) {
+    const res = await withAiFailover(configs, async (cfg) => {
+      const chatRes = await chat(cfg, [
+        { role: 'system', content: PARSE_SYSTEM },
+        { role: 'user', content: `${reference}\n\n表格行：\n${lines}` },
+      ])
+      if (!chatRes.ok) return chatRes
+      const parsed = extractJson(chatRes.data)
+      const list = (parsed as { rows?: unknown })?.rows
+      if (!Array.isArray(list)) return { ok: false, error: 'AI 输出格式不符合预期' }
+      return { ok: true, data: list }
+    })
+    if (!res.ok) return res
+    for (const item of res.data) {
       const row = shapeAiRow(item, ctx.startRowNo + offset)
       if (row) out.push(row)
     }
@@ -258,11 +383,11 @@ const SUGGEST_SYSTEM = `你是记账分类助手。给你若干笔流水（含�
 
 /** 批量建议分类，返回 序号 → 分类名（只包含清单内的名字）。 */
 export async function aiSuggestCategories(
-  cfg: AiConfig,
+  configs: AiConfig[],
   items: SuggestItem[],
   categories: string[],
 ): Promise<AiResult<Record<number, string>>> {
-  if (!aiReady(cfg)) return { ok: false, error: 'AI 未启用' }
+  if (!configs.some(aiReady)) return { ok: false, error: 'AI 未启用' }
   if (!items.length || !categories.length) return { ok: true, data: {} }
 
   const allowed = new Set(categories)
@@ -279,15 +404,19 @@ export async function aiSuggestCategories(
         amount: (it.amount_cents / 100).toFixed(2),
       })),
     )
-    const res = await chat(cfg, [
-      { role: 'system', content: SUGGEST_SYSTEM },
-      { role: 'user', content: `分类清单：${categories.join('、')}\n流水：${payload}` },
-    ])
-    if (!res.ok) return { ok: false, error: res.error }
-    const parsed = extractJson(res.data)
-    const list = (parsed as { items?: unknown })?.items
-    if (!Array.isArray(list)) continue
-    for (const item of list) {
+    const res = await withAiFailover(configs, async (cfg) => {
+      const chatRes = await chat(cfg, [
+        { role: 'system', content: SUGGEST_SYSTEM },
+        { role: 'user', content: `分类清单：${categories.join('、')}\n流水：${payload}` },
+      ])
+      if (!chatRes.ok) return chatRes
+      const parsed = extractJson(chatRes.data)
+      const list = (parsed as { items?: unknown })?.items
+      if (!Array.isArray(list)) return { ok: false, error: 'AI 输出格式不符合预期' }
+      return { ok: true, data: list }
+    })
+    if (!res.ok) return res
+    for (const item of res.data) {
       if (!item || typeof item !== 'object') continue
       const o = item as Record<string, unknown>
       const i = Number(o.i)

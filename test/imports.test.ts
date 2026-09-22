@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { createApp } from '../src/app.ts'
 import { ensureMigrated } from '../src/db/migrate.ts'
 import { createSqliteDb } from '../src/db/sqlite.ts'
@@ -6,7 +6,7 @@ import { parseDelimited, textToTable, jsonToRows } from '../src/imports/text.ts'
 import { detectTable, normalizeRow } from '../src/imports/mapping.ts'
 import { parseAmountCents, parseDateYmd, parseDirection, excelSerialToYmd } from '../src/imports/values.ts'
 import { suggestAccount, suggestCategory } from '../src/imports/match.ts'
-import { extractJson, resolveEndpoint } from '../src/imports/ai.ts'
+import { extractJson, resolveEndpoint, withAiFailover, type AiConfig } from '../src/imports/ai.ts'
 
 async function setup() {
   const db = createSqliteDb(':memory:')
@@ -488,49 +488,52 @@ describe('导入接口', () => {
     const adminHeaders = { authorization: `Bearer ${adminToken}`, 'content-type': 'application/json' }
 
     const empty = await json(app, '/api/v1/admin/ai', { headers: adminHeaders })
-    expect(empty.body).toMatchObject({ enabled: false, has_key: false })
+    expect(empty.body).toMatchObject({ items: [] })
 
     const bad = await json(app, '/api/v1/admin/ai', {
       method: 'PUT',
       headers: adminHeaders,
-      body: JSON.stringify({ enabled: true, base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }),
+      body: JSON.stringify({ items: [{ enabled: true, base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }] }),
     })
     expect(bad.status).toBe(400)
 
     const saved = await json(app, '/api/v1/admin/ai', {
       method: 'PUT',
       headers: adminHeaders,
-      body: JSON.stringify({ enabled: true, base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat', api_key: 'sk-test-1234567890' }),
+      body: JSON.stringify({
+        items: [
+          { name: '主', enabled: true, base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat', api_key: 'sk-test-1234567890' },
+          { name: '备', enabled: true, base_url: 'https://api.openai.com/v1', model: 'gpt-4o-mini', api_key: 'sk-backup-1234567890' },
+        ],
+      }),
     })
     expect(saved.status).toBe(200)
+    const items = (saved.body as { items: { id: string; name: string; enabled: boolean; has_key: boolean; key_hint: string; endpoint: string; sort_order: number }[] }).items
+    expect(items.map((item) => item.name)).toEqual(['主', '备'])
+    expect(items[0].sort_order).toBe(0)
+    expect(items[1].sort_order).toBe(1)
+    expect(items[0].key_hint).toBe('sk-t****7890')
+    expect(items[0].endpoint).toBe('https://api.deepseek.com/v1/chat/completions')
+    expect(JSON.stringify(saved.body)).not.toContain('sk-test-1234567890')
+    expect(JSON.stringify(saved.body)).not.toContain('sk-backup-1234567890')
 
-    const got = (await json(app, '/api/v1/admin/ai', { headers: adminHeaders })).body as {
-      enabled: boolean
-      has_key: boolean
-      key_hint: string
-      endpoint: string
+    // 留空 api_key 表示不改；clear_key 才清空。顺序可以调整。
+    await json(app, '/api/v1/admin/ai', {
+      method: 'PUT',
+      headers: adminHeaders,
+      body: JSON.stringify({
+        items: [
+          { id: items[1].id, name: '备', enabled: true, base_url: 'https://api.openai.com/v1', model: 'gpt-4o-mini', api_key: '' },
+          { id: items[0].id, name: '主', enabled: false, base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat', clear_key: true },
+        ],
+      }),
+    })
+    const again = (await json(app, '/api/v1/admin/ai', { headers: adminHeaders })).body as {
+      items: { name: string; has_key: boolean; enabled: boolean }[]
     }
-    expect(got.enabled).toBe(true)
-    expect(got.has_key).toBe(true)
-    expect(got.key_hint).toBe('sk-t****7890')
-    expect(got.endpoint).toBe('https://api.deepseek.com/v1/chat/completions')
-    // 明文密钥不出现在任何响应里
-    expect(JSON.stringify(got)).not.toContain('sk-test-1234567890')
-
-    // 留空 api_key 表示不改；clear_key 才清空
-    await json(app, '/api/v1/admin/ai', {
-      method: 'PUT',
-      headers: adminHeaders,
-      body: JSON.stringify({ enabled: true, base_url: 'https://api.deepseek.com/v1', model: 'deepseek-chat', api_key: '' }),
-    })
-    expect((await json(app, '/api/v1/admin/ai', { headers: adminHeaders })).body).toMatchObject({ has_key: true })
-
-    await json(app, '/api/v1/admin/ai', {
-      method: 'PUT',
-      headers: adminHeaders,
-      body: JSON.stringify({ enabled: false, clear_key: true }),
-    })
-    expect((await json(app, '/api/v1/admin/ai', { headers: adminHeaders })).body).toMatchObject({ has_key: false, enabled: false })
+    expect(again.items.map((item) => item.name)).toEqual(['备', '主'])
+    expect(again.items[0]).toMatchObject({ has_key: true, enabled: true })
+    expect(again.items[1]).toMatchObject({ has_key: false, enabled: false })
   })
 
   it('导入接口需要账本上下文，未带 X-Ledger-Id 时拒绝', async () => {
@@ -542,5 +545,50 @@ describe('导入接口', () => {
       body: JSON.stringify({ kind: 'text', text: WECHAT_CSV }),
     })
     expect(res.status).toBe(401)
+  })
+})
+
+describe('AI 失败换下一套', () => {
+  const original = globalThis.fetch
+  afterEach(() => {
+    globalThis.fetch = original
+  })
+
+  function cfg(name: string, model: string, enabled = true): AiConfig {
+    return {
+      id: name,
+      name,
+      enabled,
+      baseUrl: 'https://example.com/v1',
+      apiKey: 'sk-test',
+      model,
+      sortOrder: 0,
+    }
+  }
+
+  it('第一套报错或返回坏 JSON 时改用下一套，停用的跳过', async () => {
+    const called: string[] = []
+    globalThis.fetch = async (_url, init) => {
+      const model = JSON.parse(String(init?.body)).model as string
+      called.push(model)
+      if (model === 'bad') return new Response('nope', { status: 500 })
+      if (model === 'junk') {
+        return new Response(JSON.stringify({ choices: [{ message: { content: '不是 JSON' } }] }), { status: 200 })
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"rows":[]}' } }] }), { status: 200 })
+    }
+    const res = await withAiFailover([cfg('主', 'bad'), cfg('停', 'skip', false), cfg('备', 'good')], async (item) => {
+      const chatRes = await fetch('https://example.com/v1/chat/completions', {
+        method: 'POST',
+        body: JSON.stringify({ model: item.model }),
+      })
+      if (!chatRes.ok) return { ok: false as const, error: `HTTP ${chatRes.status}` }
+      const payload = (await chatRes.json()) as { choices: { message: { content: string } }[] }
+      const text = payload.choices[0].message.content
+      if (!text.includes('rows')) return { ok: false as const, error: 'AI 输出格式不符合预期' }
+      return { ok: true as const, data: text }
+    })
+    expect(res).toMatchObject({ ok: true, data: '{"rows":[]}' })
+    expect(called).toEqual(['bad', 'good'])
   })
 })

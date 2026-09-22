@@ -2,7 +2,7 @@ import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { signAdminToken } from '../auth/jwt.ts'
 import { badRequest, notFound, unauthorized } from '../http.ts'
-import { readAiConfig, resolveEndpoint, testAi } from '../imports/ai.ts'
+import { readAiConfigs, replaceAiConfigs, resolveEndpoint, testAi, toPublicAi, type AiConfig } from '../imports/ai.ts'
 import { readAudio } from './speech.ts'
 import { readAsrProfiles, replaceAsrProfiles, toPublicAsr, transcribeOne, type AsrProfile } from '../speech/asr.ts'
 
@@ -93,57 +93,32 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
   })
 
   // -------------------------------------------------------------------------
-  // AI 配置（导入解析用）：全局单行，api_key 只回显掩码，永不下发明文
+  // AI 配置：多套，按数组顺序失败换下一套。api_key 只回显掩码。
   // -------------------------------------------------------------------------
   app.get('/api/v1/admin/ai', async (c) => {
-    const cfg = await readAiConfig(c.get('db'))
-    return c.json({
-      enabled: cfg.enabled,
-      base_url: cfg.baseUrl,
-      model: cfg.model,
-      has_key: !!cfg.apiKey,
-      key_hint: maskKey(cfg.apiKey),
-      endpoint: cfg.baseUrl ? resolveEndpoint(cfg.baseUrl) : '',
-      updated_at: cfg.updatedAt ?? 0,
-    })
+    const items = await readAiConfigs(c.get('db'))
+    return c.json({ items: items.map(toPublicAi) })
   })
 
   app.put('/api/v1/admin/ai', async (c) => {
     const body = await c.req.json().catch(() => ({}))
-    const db = c.get('db')
-    const current = await readAiConfig(db)
-    const enabled = body.enabled === true
-    const baseUrl = typeof body.base_url === 'string' ? body.base_url.trim() : current.baseUrl
-    const model = typeof body.model === 'string' ? body.model.trim() : current.model
-    let apiKey = current.apiKey
-    if (body.clear_key === true) apiKey = ''
-    else if (typeof body.api_key === 'string' && body.api_key.trim()) apiKey = body.api_key.trim()
-
-    if (enabled && (!baseUrl || !apiKey || !model)) {
-      throw badRequest('启用 AI 需要同时填写 base_url、api_key、model')
-    }
-    if (baseUrl && !/^https?:\/\//i.test(baseUrl)) throw badRequest('base_url 需以 http(s):// 开头')
-
-    await db.run(
-      `INSERT INTO ai_settings (id, enabled, base_url, api_key, model, updated_at)
-       VALUES ('default', ?, ?, ?, ?, ?)
-       ON CONFLICT(id) DO UPDATE SET
-         enabled = excluded.enabled, base_url = excluded.base_url,
-         api_key = excluded.api_key, model = excluded.model, updated_at = excluded.updated_at`,
-      [enabled ? 1 : 0, baseUrl, apiKey, model, Date.now()],
-    )
-    return c.json({ ok: true, enabled, base_url: baseUrl, model, has_key: !!apiKey })
+    const items = await replaceAiConfigs(c.get('db'), body?.items)
+    return c.json({ ok: true, items: items.map(toPublicAi) })
   })
 
-  /** 连通性测试：允许带未保存的临时参数（前端「测试」按钮直接用表单值）。 */
+  /** 测一套，不走接力。密钥留空则用该 id 已保存的。 */
   app.post('/api/v1/admin/ai/test', async (c) => {
     const body = await c.req.json().catch(() => ({}))
-    const current = await readAiConfig(c.get('db'))
-    const cfg = {
+    const id = typeof body.id === 'string' ? body.id : ''
+    const stored = (await readAiConfigs(c.get('db'))).find((item) => item.id === id)
+    const cfg: AiConfig = {
+      id: stored?.id ?? '',
+      name: typeof body.name === 'string' ? body.name : (stored?.name ?? ''),
       enabled: true,
-      baseUrl: typeof body.base_url === 'string' && body.base_url.trim() ? body.base_url.trim() : current.baseUrl,
-      apiKey: typeof body.api_key === 'string' && body.api_key.trim() ? body.api_key.trim() : current.apiKey,
-      model: typeof body.model === 'string' && body.model.trim() ? body.model.trim() : current.model,
+      baseUrl: typeof body.base_url === 'string' && body.base_url.trim() ? body.base_url.trim() : (stored?.baseUrl ?? ''),
+      apiKey: typeof body.api_key === 'string' && body.api_key.trim() ? body.api_key.trim() : (stored?.apiKey ?? ''),
+      model: typeof body.model === 'string' && body.model.trim() ? body.model.trim() : (stored?.model ?? ''),
+      sortOrder: 0,
     }
     const res = await testAi(cfg)
     if (!res.ok) return c.json({ ok: false, message: res.error, endpoint: resolveEndpoint(cfg.baseUrl) })
