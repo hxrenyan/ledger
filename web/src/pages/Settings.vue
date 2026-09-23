@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, type Ledger, type SessionBody } from '../api.ts'
 import { useSession } from '../stores/session.ts'
@@ -14,6 +14,9 @@ const ledgerName = ref('')
 const err = ref('')
 const msg = ref('')
 const showMore = ref(false)
+
+/** 头像字：取昵称 / 用户名首字。 */
+const initial = computed(() => (session.user?.nickname || session.user?.username || '?').slice(0, 1))
 
 async function refreshMe() {
   const body = await api<SessionBody>('/api/v1/me')
@@ -124,30 +127,29 @@ onMounted(async () => {
 </script>
 
 <template>
+  <!-- 布局对齐小程序 pages/me：头像卡 → 链接行分组 → 退出登录 -->
   <div class="page">
-    <h1>我的</h1>
-    <div class="card" style="margin-bottom: 12px">
-      <div class="row">
-        <div>
-          <div>{{ session.user?.nickname || session.user?.username }}</div>
-          <div class="muted">@{{ session.user?.username }}</div>
-        </div>
+    <div class="card user-card">
+      <span class="avatar avatar-lg">{{ initial }}</span>
+      <div>
+        <div style="font-weight: 600">{{ session.user?.nickname || session.user?.username }}</div>
+        <div class="muted">@{{ session.user?.username }}</div>
       </div>
     </div>
 
     <div class="card" style="margin-bottom: 12px">
-      <h2>当前账本</h2>
-      <div class="row" v-for="l in session.ledgers" :key="l.id" @click="switchLedger(l.id)">
-        <div>
-          <div>{{ l.name }}</div>
-          <div class="muted">{{ l.role === 'owner' ? '账本主' : '成员' }}</div>
-        </div>
-        <span class="muted">{{ l.id === session.ledgerId ? '当前' : '切换' }}</span>
+      <div class="row" @click="showMore = !showMore">
+        <div>账本与成员</div>
+        <span class="muted">{{ session.currentLedger?.name || ledgerName }}（{{ session.ledgers.length }}） ›</span>
       </div>
-      <button class="btn ghost" style="margin-top: 8px" @click="showMore = !showMore">
-        {{ showMore ? '收起' : '新建 / 加入 / 成员' }}
-      </button>
       <template v-if="showMore">
+        <div class="row" v-for="l in session.ledgers" :key="l.id" @click="switchLedger(l.id)">
+          <div>
+            <div>{{ l.name }}</div>
+            <div class="muted">{{ l.role === 'owner' ? '账本主' : '成员' }}</div>
+          </div>
+          <span class="muted">{{ l.id === session.ledgerId ? '当前' : '切换' }}</span>
+        </div>
         <div class="inline" style="margin-top: 12px">
           <input v-model="newName" placeholder="新账本名称" />
           <button class="btn" style="width: auto" @click="createLedger">创建</button>
@@ -173,18 +175,37 @@ onMounted(async () => {
           >移除</button>
         </div>
       </template>
+      <div class="row" @click="router.push('/budgets')">
+        <div>月预算</div>
+        <span class="muted">›</span>
+      </div>
+      <div class="row" @click="router.push('/categories')">
+        <div>分类管理</div>
+        <span class="muted">›</span>
+      </div>
+      <div class="row" @click="router.push('/recurring')">
+        <div>周期记账</div>
+        <span class="muted">›</span>
+      </div>
+      <div class="row" @click="router.push('/import')">
+        <div>账单导入</div>
+        <span class="muted">CSV / Excel / JSON ›</span>
+      </div>
+      <div class="row" @click="router.push('/speak')">
+        <div>智能记账</div>
+        <span class="muted">›</span>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="row" @click="router.push('/budgets')">月预算</div>
-      <div class="row" @click="router.push('/recurring')">周期记账</div>
-      <div class="row" @click="router.push('/categories')">分类</div>
-      <div class="row" @click="router.push('/speak')">智能记账</div>
-      <div class="row" @click="router.push('/import')">导入账单（CSV / Excel / JSON）</div>
-      <div class="row" @click="exportCsv">导出 CSV</div>
-      <div class="row" @click="logout" style="color: var(--expense)">退出登录</div>
+    <div class="card" style="margin-bottom: 12px">
+      <div class="row" @click="exportCsv">
+        <div>导出账单 CSV</div>
+        <span class="muted">›</span>
+      </div>
       <p v-if="err" class="err">{{ err }}</p>
       <p v-if="msg" class="muted">{{ msg }}</p>
     </div>
+
+    <button class="btn ghost" type="button" @click="logout">退出登录</button>
   </div>
 </template>

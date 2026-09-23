@@ -2,9 +2,23 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import LedgerName from '../components/LedgerName.vue'
+import MonthNav from '../components/MonthNav.vue'
 import { api, type Account, type Category, type Tx } from '../api.ts'
 import { formatYuan } from '../money.ts'
-import { addMonth, daysInShanghaiMonth, occurredAtToDate, shanghaiDate, shanghaiMonth } from '@server/time.ts'
+import { daysInShanghaiMonth, occurredAtToDate, shanghaiDate, shanghaiMonth } from '@server/time.ts'
+
+/** occurred_at（毫秒）→ 上海时区的 HH:mm，流水行的次要文案用。 */
+function clockOf(ms: number) {
+  return new Date(ms + 8 * 3600 * 1000).toISOString().slice(11, 16)
+}
+
+/** '2026-09-23' → '9月23日 周三'，日分组与日历选中日的标题。 */
+const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六']
+function dayLabel(d: string) {
+  const p = d.split('-').map(Number)
+  const w = new Date(Date.UTC(p[0], p[1] - 1, p[2])).getUTCDay()
+  return `${p[1]}月${p[2]}日 ${WEEK[w]}`
+}
 import { onDataChange } from '../refresh.ts'
 import { useSession } from '../stores/session.ts'
 
@@ -27,7 +41,7 @@ const session = useSession()
 const tab = ref<'list' | 'cal' | 'chart'>('list')
 const month = ref(shanghaiMonth())
 const q = ref('')
-const calDay = ref(shanghaiDate())
+const calDay = ref<string | null>(shanghaiDate())
 const filterCat = ref('')
 const filterAcc = ref('')
 const items = ref<Tx[]>([])
@@ -152,6 +166,11 @@ function label(m: string) {
   return `${y}年${Number(mo)}月`
 }
 
+/** 切月由 MonthNav 派发；连带清选中日、重拉数据（与小程序 home 同一决定）。 */
+function onMonthChange(m: string) {
+  month.value = m
+}
+
 function syncCalDay() {
   const today = shanghaiDate()
   calDay.value = today.startsWith(month.value) ? today : `${month.value}-01`
@@ -193,11 +212,7 @@ watch([month, () => session.ledgerId], () => {
       <h1>明细</h1>
       <LedgerName />
     </div>
-    <div class="month">
-      <button @click="month = addMonth(month, -1)">‹</button>
-      <strong>{{ label(month) }}</strong>
-      <button @click="month = addMonth(month, 1)">›</button>
-    </div>
+    <MonthNav :month="month" @change="onMonthChange" />
     <div class="summary">
       <div class="card"><div class="k">收入</div><div class="v income">{{ formatYuan(stats.income_cents) }}</div></div>
       <div class="card"><div class="k">支出</div><div class="v expense">{{ formatYuan(stats.expense_cents) }}</div></div>
@@ -230,10 +245,10 @@ watch([month, () => session.ledgerId], () => {
           </select>
         </div>
       </div>
-      <div v-if="!grouped.length" class="card muted">这个月还没有记录</div>
+      <div v-if="!grouped.length" class="card muted">这个月还没有记录，点下面的「+」记一笔</div>
       <div v-for="g in grouped" :key="g.d" class="card" style="margin-bottom: 12px">
         <div class="day-h">
-          <span>{{ g.d }}</span>
+          <span>{{ dayLabel(g.d) }}</span>
           <span class="muted">
             <span v-if="g.income" class="income">+{{ formatYuan(g.income) }}</span>
             <span v-if="g.expense" class="expense">-{{ formatYuan(g.expense) }}</span>
@@ -242,7 +257,10 @@ watch([month, () => session.ledgerId], () => {
         <div class="row" v-for="t in g.rows" :key="t.id" @click="router.push(`/tx/${t.id}`)">
           <div>
             <div>{{ titleOf(t) }} <span v-if="t.excluded" class="muted">不计入</span></div>
-            <div class="muted">{{ t.note || (t.kind === 'income' ? '收入' : t.kind === 'transfer' ? '转账' : '支出') }}</div>
+            <div class="muted">
+              {{ accMap[t.account_id] || '账户' }}<template v-if="t.to_account_id"> → {{ accMap[t.to_account_id] || '账户' }}</template>
+              · {{ clockOf(t.occurred_at) }}<template v-if="t.note"> · {{ t.note }}</template>
+            </div>
           </div>
           <div class="amount" :class="t.kind">
             {{ t.kind === 'expense' ? '-' : t.kind === 'income' ? '+' : '' }}{{ formatYuan(t.amount_cents) }}
@@ -263,11 +281,17 @@ watch([month, () => session.ledgerId], () => {
           @click="d && (calDay = ymd(d))"
         >{{ d || '' }}</button>
       </div>
-      <div class="card" style="margin-top: 12px">
-        <div class="muted">{{ calDay }}</div>
+      <div v-if="calDay" class="card" style="margin-top: 12px">
+        <div class="day-h">
+          <span>{{ dayLabel(calDay) }}</span>
+          <button class="text-btn" type="button" @click="calDay = null">收起</button>
+        </div>
         <div v-if="!dayItems.length" class="muted">这一天没有记录</div>
         <div class="row" v-for="t in dayItems" :key="t.id" @click="router.push(`/tx/${t.id}`)">
-          <div>{{ titleOf(t) }}</div>
+          <div>
+            <div>{{ titleOf(t) }}</div>
+            <div class="muted">{{ accMap[t.account_id] || '账户' }} · {{ clockOf(t.occurred_at) }}<template v-if="t.note"> · {{ t.note }}</template></div>
+          </div>
           <div class="amount" :class="t.kind">{{ formatYuan(t.amount_cents) }}</div>
         </div>
       </div>

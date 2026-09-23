@@ -562,28 +562,117 @@ input.bare {
   gap: 12px;
   margin: 12px 0 16px;
 }
+/* 三列版（人情页：送出 / 收到 / 差额） */
+.summary.three { grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.summary.three .card { padding: 12px 10px; }
 .summary .card { padding: 14px; }
 .summary .k { font-size: 12px; color: var(--muted); }
 .summary .v {
-  font-size: clamp(18px, 5.2vw, 22px);
+  font-size: clamp(16px, 5.2vw, 22px);
   margin-top: 6px;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
+/* 联系人首字头像（人情 → 联系人列表） */
+.avatar {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background: #eef0ff;
+  color: var(--brand);
+  font-weight: 600;
+  display: grid;
+  place-items: center;
+}
+/* 「我的」页的大头像（pages/me 的 avatar-lg 同款） */
+.avatar-lg {
+  width: 52px;
+  height: 52px;
+  border-radius: 26px;
+  font-size: 20px;
+}
+.user-card { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 
-.month {
+/* 月份切换条（components/MonthNav.vue）：‹ 2026年9月 ▾ ›
+   三页共用这一个定义，页面里不要再写 .month-nav —— 与小程序同一条纪律。 */
+.month-nav {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
+  position: relative;
+  margin: 4px 0 16px;
 }
-.month button {
-  border: 0;
+.month-nav .pill {
+  display: flex;
+  align-items: center;
   background: #fff;
-  width: 44px; height: 44px;
-  border-radius: 22px;
+  border-radius: 999px;
+  padding: 0 4px;
   box-shadow: var(--shadow);
 }
+.month-nav .nav {
+  border: 0;
+  background: transparent;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+}
+.month-nav .nav:active { background: #f2f3f7; }
+.month-nav .nav:disabled { opacity: 0.25; }
+/* 箭头用两条边框转 45° 拼出来，不吃字体差异（与小程序同一手法） */
+.month-nav .ico {
+  width: 8px;
+  height: 8px;
+  border-left: 2px solid var(--muted);
+  border-bottom: 2px solid var(--muted);
+  transform: rotate(45deg);
+}
+.month-nav .ico-next { transform: rotate(-135deg); }
+.month-nav .label {
+  border: 0;
+  background: transparent;
+  min-width: 104px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 600;
+  padding: 8px 0;
+  border-radius: 999px;
+}
+.month-nav .label:active { background: #f2f3f7; }
+.month-nav .caret {
+  width: 0;
+  height: 0;
+  margin-left: 6px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--muted);
+}
+.month-nav .back {
+  position: absolute;
+  right: 0;
+  border: 0;
+  font-size: 12px;
+  color: var(--brand);
+  background: #eef0ff;
+  border-radius: 999px;
+  padding: 4px 10px;
+}
+.month-picker .mp-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.month-picker .mp-row select {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+.month-picker .mp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {
