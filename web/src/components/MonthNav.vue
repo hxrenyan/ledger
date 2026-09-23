@@ -17,7 +17,7 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { addMonth, shanghaiMonth } from '@server/time.ts'
 
-const props = defineProps<{ month?: string; max?: string }>()
+const props = defineProps<{ month?: string; max?: string; compact?: boolean }>()
 const emit = defineEmits<{ change: [month: string] }>()
 
 const cap = computed(() => props.max || shanghaiMonth())
@@ -121,7 +121,9 @@ function back() {
 </script>
 
 <template>
-  <div class="month-nav">
+  <!-- compact：并进别的行时用（人情页与搜索框同行）。容器收成内容宽度，
+       「回到本月」从小圆点变药丸边上的小签，不再绝对定位压到旁边的输入框 -->
+  <div class="month-nav" :class="{ compact }">
     <div class="pill">
       <button class="nav" type="button" aria-label="上个月" :disabled="!canPrev" @click="prev">
         <i class="ico" aria-hidden="true"></i>

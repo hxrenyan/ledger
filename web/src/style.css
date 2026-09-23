@@ -574,17 +574,30 @@ input.bare {
   font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
-/* 联系人首字头像（人情 → 联系人列表） */
+/* 联系人首字头像（人情 → 联系人列表）：小小的圆标，不抢行的视觉 */
 .avatar {
   flex: none;
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
+  width: 26px;
+  height: 26px;
+  border-radius: 13px;
   background: #eef0ff;
   color: var(--brand);
+  font-size: 12px;
   font-weight: 600;
   display: grid;
   place-items: center;
+}
+/* 人情页：月份药丸与搜索框并排一行 */
+.fav-bar { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
+.fav-bar .fav-search {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: #fff;
+  border-radius: 999px;
+  padding: 10px 14px;
+  box-shadow: var(--shadow);
+  font-size: 14px;
 }
 /* 「我的」页的大头像（pages/me 的 avatar-lg 同款） */
 .avatar-lg {
@@ -664,6 +677,9 @@ input.bare {
   border-radius: 999px;
   padding: 4px 10px;
 }
+/* 紧凑模式（人情页与搜索同行）：容器收成内容宽度，「回到本月」挂在药丸旁边 */
+.month-nav.compact { display: inline-flex; gap: 6px; margin: 0; flex: none; }
+.month-nav.compact .back { position: static; padding: 4px 8px; }
 /* 滚轮（MonthNav 的年/月双列）：每项 40px、视口露出 5 项，与小程序 picker 同观感。
    .mp-item 的高度必须和组件里的 ITEM_H=40 一致，取值按 scrollTop/40 算，改要一起改。 */
 .month-picker .mp-wheel {

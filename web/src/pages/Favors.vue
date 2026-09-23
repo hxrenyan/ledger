@@ -120,9 +120,10 @@ onMounted(load)
     </div>
 
     <template v-if="tab === 'gifts'">
-      <MonthNav :month="month" @change="onMonthChange" />
-      <div class="card" style="margin-bottom: 12px; padding: 10px 12px">
-        <input v-model="q" placeholder="搜索姓名 / 事由 / 备注" class="bare" />
+      <!-- 月份与搜索并排一行：月份条用紧凑模式，「回到本月」挂在药丸边上 -->
+      <div class="fav-bar">
+        <MonthNav compact :month="month" @change="onMonthChange" />
+        <input v-model="q" class="fav-search" placeholder="搜索姓名 / 事由 / 备注" />
       </div>
       <p v-if="err" class="err">{{ err }}</p>
       <div v-if="!visible.length" class="card muted">这个月还没有往来。点下面的「+」记一笔。</div>
