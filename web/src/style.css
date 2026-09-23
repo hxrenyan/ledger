@@ -664,15 +664,47 @@ input.bare {
   border-radius: 999px;
   padding: 4px 10px;
 }
-.month-picker .mp-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.month-picker .mp-row select {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 12px;
-  background: #fff;
+/* 滚轮（MonthNav 的年/月双列）：每项 40px、视口露出 5 项，与小程序 picker 同观感。
+   .mp-item 的高度必须和组件里的 ITEM_H=40 一致，取值按 scrollTop/40 算，改要一起改。 */
+.month-picker .mp-wheel {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  height: 200px;
 }
-.month-picker .mp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 4px; }
+/* 中间的选中带：一条横贯两列的浅色高亮 */
+.month-picker .mp-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 80px;
+  height: 40px;
+  background: #f2f3f7;
+  border-radius: 10px;
+  pointer-events: none;
+}
+.month-picker .mp-col {
+  position: relative;
+  z-index: 1;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.month-picker .mp-col::-webkit-scrollbar { display: none; }
+/* 上下各留两格空白（80px），让首尾项也能滚到中间选中带 */
+.month-picker .mp-pad { height: 80px; flex: none; }
+.month-picker .mp-item {
+  height: 40px;
+  line-height: 40px;
+  text-align: center;
+  font-size: 16px;
+  color: var(--muted);
+  scroll-snap-align: center;
+  cursor: pointer;
+}
+.month-picker .mp-item.on { color: var(--text); font-weight: 600; }
+.month-picker .mp-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip {

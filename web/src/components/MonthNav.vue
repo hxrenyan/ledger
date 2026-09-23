@@ -2,9 +2,10 @@
 /**
  * 月份切换条（药丸）：‹ 2026年9月 ▾ ›，与小程序 components/month-nav 同一套交互。
  *
- * 明细 / 预算 / 人情三页共用。中间的月份可点：弹出「年 / 月」选择，直接跳，
- * 不用一个月一个月点箭头。H5 没有 picker 滚轮，用两个原生 select 兜住 ——
- * 选择能力一致，交互稍轻。
+ * 明细 / 预算 / 人情三页共用。中间的月份可点：弹出「年 / 月」双列滚轮，直接跳，
+ * 不用一个月一个月点箭头。滚轮用 overflow + scroll-snap 实现：每项 40px、
+ * 视口露出 5 项，滚停后取 Math.round(scrollTop / 40) 当选中项 —— 和小程序
+ * picker 的取值口径一致（滚到哪格算哪格，不依赖任何「确认中的中间态」）。
  *
  * 属性
  *   month  当前月份 'YYYY-MM'（空 = 本月）
@@ -13,7 +14,7 @@
  * 事件
  *   change  detail 为月份字符串。月份没变不派发，免得页面白重拉数据。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { addMonth, shanghaiMonth } from '@server/time.ts'
 
 const props = defineProps<{ month?: string; max?: string }>()
@@ -44,23 +45,60 @@ const canPrev = computed(() => current.value > `${years.value[0]}-01`)
 const canNext = computed(() => current.value < cap.value)
 const showBack = computed(() => current.value !== shanghaiMonth())
 
+// ---- 滚轮 -----------------------------------------------------------------
+// 每项固定 40px，CSS 里 .mp-item 高度必须与它一致，否则取值会错位。
+const ITEM_H = 40
+
 const pickerOpen = ref(false)
-const pickYear = ref(0)
-const pickMonth = ref(1)
-const pickMonths = computed(() => monthsOfYear(pickYear.value))
+const yearIdx = ref(0)
+const monthIdx = ref(0)
+const pickMonths = computed(() => monthsOfYear(years.value[yearIdx.value] ?? cap))
+
+const yearEl = ref<HTMLElement | null>(null)
+const monthEl = ref<HTMLElement | null>(null)
 
 function openPicker() {
-  pickYear.value = Number(current.value.slice(0, 4))
-  pickMonth.value = Number(current.value.slice(5, 7))
+  yearIdx.value = Math.max(0, years.value.indexOf(Number(current.value.slice(0, 4))))
+  const ms = monthsOfYear(years.value[yearIdx.value])
+  monthIdx.value = Math.min(Number(current.value.slice(5, 7)) - 1, ms.length - 1)
   pickerOpen.value = true
+  // 等滚轮渲染出来再定位：scrollTop 直接落在选中项上（顶部/底部各留了半个视口的空白）
+  void nextTick(() => {
+    if (yearEl.value) yearEl.value.scrollTop = yearIdx.value * ITEM_H
+    if (monthEl.value) monthEl.value.scrollTop = monthIdx.value * ITEM_H
+  })
+}
+
+/** 滚停取值：scrollTop → 最近的一格。滚动过程里会连发，算的是即时位置，无害。 */
+function onScrollYear(e: Event) {
+  const idx = Math.max(0, Math.min(years.value.length - 1, Math.round((e.target as HTMLElement).scrollTop / ITEM_H)))
+  if (idx === yearIdx.value) return
+  yearIdx.value = idx
+  // 换年后月份列变短（上限年截断），旧下标可能越界 —— 滚轮同步归位，别停在不存在的一格
+  const ms = monthsOfYear(years.value[idx])
+  if (monthIdx.value > ms.length - 1) {
+    monthIdx.value = ms.length - 1
+    if (monthEl.value) monthEl.value.scrollTop = monthIdx.value * ITEM_H
+  }
+}
+
+function onScrollMonth(e: Event) {
+  const ms = pickMonths.value
+  monthIdx.value = Math.max(0, Math.min(ms.length - 1, Math.round((e.target as HTMLElement).scrollTop / ITEM_H)))
+}
+
+/** 点某一格 = 平滑滚到那一格。 */
+function scrollCol(el: HTMLElement | null, idx: number) {
+  if (!el) return
+  el.scrollTo({ top: idx * ITEM_H, behavior: 'smooth' })
 }
 
 function confirmPicker() {
   pickerOpen.value = false
-  // 选了上限年的越界月份（先选年再换月下拉不会出现，但 select 直接选会）→ 钳到上限
-  const months = monthsOfYear(pickYear.value)
-  const m = Math.min(pickMonth.value, months[months.length - 1])
-  emitMonth(`${pickYear.value}-${String(m).padStart(2, '0')}`)
+  const year = years.value[yearIdx.value]
+  const ms = monthsOfYear(year)
+  const m = ms[Math.min(monthIdx.value, ms.length - 1)]
+  emitMonth(`${year}-${String(m).padStart(2, '0')}`)
 }
 
 /** 派发月份变化：没变、超上限、早于年份下界都不发。 */
@@ -80,12 +118,6 @@ function next() {
 function back() {
   emitMonth(shanghaiMonth())
 }
-
-// 换年后月份可能越界（比如停在 12 月再切到上限年），收敛到该年最后一个月
-watch(pickYear, () => {
-  const ms = monthsOfYear(pickYear.value)
-  if (pickMonth.value > ms[ms.length - 1]) pickMonth.value = ms[ms.length - 1]
-})
 </script>
 
 <template>
@@ -107,13 +139,30 @@ watch(pickYear, () => {
   <div v-if="pickerOpen" class="sheet-mask" @click="pickerOpen = false">
     <div class="sheet month-picker" @click.stop>
       <p class="add-title">选择年月</p>
-      <div class="mp-row">
-        <select v-model.number="pickYear" aria-label="年份">
-          <option v-for="y in years" :key="y" :value="y">{{ y }}年</option>
-        </select>
-        <select v-model.number="pickMonth" aria-label="月份">
-          <option v-for="m in pickMonths" :key="m" :value="m">{{ m }}月</option>
-        </select>
+      <div class="mp-wheel">
+        <div class="mp-band" aria-hidden="true"></div>
+        <div ref="yearEl" class="mp-col" @scroll.passive="onScrollYear">
+          <div class="mp-pad" aria-hidden="true"></div>
+          <div
+            v-for="(y, i) in years"
+            :key="y"
+            class="mp-item"
+            :class="{ on: i === yearIdx }"
+            @click="scrollCol(yearEl, i)"
+          >{{ y }}年</div>
+          <div class="mp-pad" aria-hidden="true"></div>
+        </div>
+        <div ref="monthEl" class="mp-col" @scroll.passive="onScrollMonth">
+          <div class="mp-pad" aria-hidden="true"></div>
+          <div
+            v-for="(m, i) in pickMonths"
+            :key="m"
+            class="mp-item"
+            :class="{ on: i === monthIdx }"
+            @click="scrollCol(monthEl, i)"
+          >{{ m }}月</div>
+          <div class="mp-pad" aria-hidden="true"></div>
+        </div>
       </div>
       <div class="mp-actions">
         <button class="btn ghost" type="button" @click="pickerOpen = false">取消</button>
