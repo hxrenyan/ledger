@@ -104,3 +104,19 @@
   border-radius: 999rpx;
   padding: 8rpx 20rpx;
 }
+
+/*
+ * 紧凑模式：和别的控件并排一行时用（人情页的月份条 + 搜索框）。
+ * 收成内容宽度、去掉外边距（间距交给外部那一行控制）；
+ * 「回到本月」不能再绝对定位到行右缘 —— 会压住旁边的控件，改挂药丸旁边。
+ */
+.month-nav.compact {
+  display: inline-flex;
+  justify-content: flex-start;
+  margin: 0;
+}
+
+.month-nav.compact .back {
+  position: static;
+  margin-left: 12rpx;
+}

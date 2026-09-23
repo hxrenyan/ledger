@@ -9,9 +9,12 @@
  * 清掉选中日、重新拉数据，那是页面的决定，组件不该替它做主。
  *
  * 属性
- *   month  当前月份 'YYYY-MM'（空 = 本月）
- *   max    可选的最后一个月 'YYYY-MM'（空 = 本月）。预算传「下个月」——
- *          它是唯一允许提前设预算的页面，别把上限一律写成当月。
+ *   month   当前月份 'YYYY-MM'（空 = 本月）
+ *   max     可选的最后一个月 'YYYY-MM'（空 = 本月）。预算传「下个月」——
+ *           它是唯一允许提前设预算的页面，别把上限一律写成当月。
+ *   compact 紧凑模式：整条收成内容宽度（inline-flex）、去掉外边距，
+ *           「回到本月」改挂在药丸旁边而不是行的右缘。
+ *           用于和别的控件并排一行的场景（人情页的月份条 + 搜索框）。
  * 事件
  *   bind:change  detail = { month }。选中的月份与当前相同时不派发，
  *                免得页面白白重拉一遍数据。
@@ -23,6 +26,7 @@ Component({
   properties: {
     month: { type: String, value: '' },
     max: { type: String, value: '' },
+    compact: { type: Boolean, value: false },
   },
 
   data: {

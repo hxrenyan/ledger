@@ -3,14 +3,48 @@
 }
 
 .avatar {
-  width: 80rpx;
-  height: 80rpx;
-  border-radius: 40rpx;
-  font-size: 30rpx;
-  line-height: 80rpx;
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 26rpx;
+  font-size: 24rpx;
+  line-height: 52rpx;
   overflow: hidden;
   white-space: nowrap;
   flex: none;
+}
+
+/*
+ * 月份条 + 搜索并排一行。month-nav 用 compact（收成内容宽度、无外边距），
+ * 这行负责两边的间距与对齐；搜索框做成和月份药丸同款的白色胶囊。
+ * 注意 input 必须给显式 height（它的高度只由字号撑开，写 padding 会裁字）。
+ */
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin: 4rpx 0 28rpx;
+}
+
+.filter-nav {
+  flex: none;
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  height: 76rpx;
+  background: #fff;
+  border-radius: 999rpx;
+  padding: 0 28rpx;
+  box-shadow: 0 8rpx 28rpx rgba(20, 20, 40, 0.07);
+}
+
+.search-input {
+  flex: 1;
+  height: 76rpx;
+  font-size: 28rpx;
 }
 
 .arrow {

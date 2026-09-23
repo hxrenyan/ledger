@@ -1,4 +1,4 @@
-<view class="month-nav">
+<view class="month-nav {{compact ? 'compact' : ''}}">
   <view class="pill">
     <button class="nav" bindtap="prev" disabled="{{!canPrev}}"><view class="ico"></view></button>
     <!-- 中间这块是可点的：弹「年 / 月」双列滚轮，直接跳 -->

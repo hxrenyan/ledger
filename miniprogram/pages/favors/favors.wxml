@@ -21,10 +21,12 @@
 
   <block wx:if="{{tab === 'gifts'}}">
     <!-- 只挂在「往来记录」这一栏：联系人那一栏是全量的，跟月份没关系 -->
-    <month-nav month="{{month}}" bind:change="onMonthChange" />
-
-    <view class="card">
-      <input class="input" value="{{q}}" bindinput="onSearch" placeholder="搜索姓名 / 事由 / 备注" placeholder-class="ph" />
+    <!-- 月份条与搜索并排一行；compact 让月份条收成内容宽度，不把搜索挤下去 -->
+    <view class="filter-row">
+      <month-nav class="filter-nav" compact month="{{month}}" bind:change="onMonthChange" />
+      <view class="search">
+        <input class="search-input" value="{{q}}" bindinput="onSearch" placeholder="搜索姓名 / 事由 / 备注" placeholder-class="ph" />
+      </view>
     </view>
 
     <view class="empty" wx:if="{{loading}}">加载中…</view>
