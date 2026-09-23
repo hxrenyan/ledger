@@ -1,0 +1,115 @@
+<view class="page">
+  <view class="tabs">
+    <view class="t {{tab === 'pick' ? 'on' : ''}}" data-t="pick" bindtap="switchTab">选文件</view>
+    <view class="t {{tab === 'preview' ? 'on' : ''}}" data-t="preview" bindtap="switchTab">核对</view>
+    <view class="t {{tab === 'batches' ? 'on' : ''}}" data-t="batches" bindtap="switchTab">导入记录</view>
+  </view>
+
+  <!-- 选文件 / 粘贴 -->
+  <block wx:if="{{tab === 'pick'}}">
+    <view class="card">
+      <view class="h2">从聊天里选文件</view>
+      <view class="tip" style="margin-top: 0">
+        支持 CSV / TXT / JSON（微信、支付宝、银行导出的都行）。Excel 请先另存为 CSV。
+        GBK 和 UTF-8 会自动识别，不用手动转码。
+      </view>
+      <button class="btn" bindtap="chooseFile">选择文件</button>
+      <view class="text-btn" style="display: inline-block; margin-top: 16rpx" bindtap="helpFile">支持哪些文件？</view>
+    </view>
+
+    <view class="card">
+      <view class="h2">或者直接粘贴</view>
+      <textarea
+        class="paste"
+        value="{{pasted}}"
+        bindinput="onPaste"
+        placeholder="把账单内容粘进来，一行一笔；第一行是表头也没关系"
+        placeholder-class="ph"
+        maxlength="-1"
+      ></textarea>
+      <button class="btn ghost" bindtap="previewPasted">解析这段文本</button>
+    </view>
+  </block>
+
+  <!-- 核对 -->
+  <block wx:if="{{tab === 'preview'}}">
+    <view class="card" wx:if="{{stats}}">
+      <view class="row" style="padding-top: 0">
+        <view class="grow">
+          <view class="title">{{filename || '未命名'}}</view>
+          <view class="muted">
+            共 {{stats.total}} 行 · 可导入 {{stats.ok}} · 重复 {{stats.duplicate}} · 跳过 {{stats.skip}} · 失败 {{stats.failed}}
+          </view>
+        </view>
+        <view class="mark">{{aiUsed ? 'AI 解析' : '规则解析'}}</view>
+      </view>
+      <view class="err" wx:if="{{aiError}}">{{aiError}}</view>
+      <view class="tip" wx:if="{{truncated}}">文件较大，只解析了前面一部分。</view>
+      <view class="switch-row">
+        <view>跳过重复的流水</view>
+        <switch checked="{{dedupe}}" color="#3b5bdb" bindchange="onDedupe" />
+      </view>
+      <view class="imp-select-all">
+        <view class="text-btn" data-on="1" bindtap="selectAll">全选</view>
+        <view class="text-btn" data-on="0" bindtap="selectAll">全不选</view>
+      </view>
+    </view>
+
+    <view class="empty" wx:if="{{!rows.length}}">没有解析出内容，回上一步换个文件或粘贴文本试试</view>
+
+    <view class="imp-row {{item.bad ? 'bad' : ''}} {{item.include ? '' : 'off'}}" wx:for="{{rows}}" wx:key="row">
+      <view class="imp-top">
+        <view class="imp-check {{item.include ? 'on' : ''}}" data-i="{{index}}" bindtap="toggleInclude">
+          {{item.include ? '✓' : ''}}
+        </view>
+        <view class="imp-no">{{item.row}}</view>
+        <view class="ap-dir {{item.direction}}" data-i="{{index}}" bindtap="toggleDirection">
+          {{item.direction === 'income' ? '收入' : '支出'}}
+        </view>
+        <input class="imp-amount" type="text" value="{{item.amountText}}" data-i="{{index}}" bindinput="onAmount" placeholder="0.00" />
+      </view>
+
+      <view class="ap-picks">
+        <picker mode="date" value="{{item.date}}" data-i="{{index}}" bindchange="onDate">
+          <view class="ap-pick">{{item.date}}</view>
+        </picker>
+        <picker
+          mode="selector"
+          range="{{item.direction === 'income' ? incomeCatNames : expenseCatNames}}"
+          value="{{item.catIndex}}"
+          data-i="{{index}}"
+          bindchange="pickCategory"
+        >
+          <view class="ap-pick">{{item.catName}}</view>
+        </picker>
+        <picker mode="selector" range="{{accountNames}}" value="{{item.acctIndex}}" data-i="{{index}}" bindchange="pickAccount">
+          <view class="ap-pick">{{item.acctName}}</view>
+        </picker>
+      </view>
+
+      <input class="imp-note" value="{{item.note}}" data-i="{{index}}" bindinput="onNote" placeholder="备注" />
+      <view class="imp-flag" wx:if="{{item.statusText}}">{{item.statusText}}<text wx:if="{{item.counterparty}}"> · 对方 {{item.counterparty}}</text></view>
+    </view>
+
+    <view class="tip" wx:if="{{hiddenCount}}">还有 {{hiddenCount}} 行没显示（避免卡顿）；提交时它们会按当前规则一并导入，重复的会被跳过。</view>
+
+    <view class="imp-actions">
+      <button class="btn ghost" bindtap="cancelPreview">重新选</button>
+      <button class="btn" bindtap="commit">确认导入</button>
+    </view>
+  </block>
+
+  <!-- 批次 -->
+  <block wx:if="{{tab === 'batches'}}">
+    <view class="empty" wx:if="{{!batches.length}}">还没有导入过</view>
+    <view class="card" wx:if="{{batches.length}}">
+      <view class="row" wx:for="{{batches}}" wx:key="id">
+        <view class="grow">
+          <view class="title">{{item.filename}}<text wx:if="{{item.undone}}"> · 已撤销</text></view>
+          <view class="muted">{{item.timeText}} · {{item.countText}}<text wx:if="{{item.byName}}"> · {{item.byName}}</text></view>
+        </view>
+        <view class="text-btn" wx:if="{{!item.undone}}" data-id="{{item.id}}" bindtap="undoBatch">撤销</view>
+      </view>
+    </view>
+  </block>
+</view>

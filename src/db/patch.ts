@@ -67,6 +67,28 @@ export async function patchSchema(db: Db) {
   await db.run(
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities (provider, user_id)`,
   )
+
+  // web-view 混合架构：业务配置 + 一次性会话交接码
+  await db.run(
+    `CREATE TABLE IF NOT EXISTS app_configs (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`,
+  )
+  await db.run(
+    `CREATE TABLE IF NOT EXISTS handoff_codes (
+      code_hash TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      ledger_id TEXT NOT NULL DEFAULT '',
+      expires_at INTEGER NOT NULL,
+      used_at INTEGER,
+      created_at INTEGER NOT NULL
+    )`,
+  )
+  await db.run(
+    `CREATE INDEX IF NOT EXISTS idx_handoff_expires ON handoff_codes (expires_at)`,
+  )
 }
 
 async function ensureColumn(db: Db, table: string, column: string, def: string) {

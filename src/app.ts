@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { Db } from './db/types.ts'
 import { verifyToken } from './auth/jwt.ts'
-import { forbidden, HttpError, unauthorized } from './http.ts'
+import { badRequest, forbidden, HttpError, unauthorized } from './http.ts'
 import { registerAuthRoutes } from './routes/auth.ts'
 import { registerAccountRoutes } from './routes/accounts.ts'
 import { registerCategoryRoutes } from './routes/categories.ts'
@@ -15,6 +15,8 @@ import { registerFavorRoutes } from './routes/favors.ts'
 import { registerRecurrenceRoutes } from './routes/recurrences.ts'
 import { registerImportRoutes } from './routes/imports.ts'
 import { registerSpeechRoutes } from './routes/speech.ts'
+import { registerOcrRoutes } from './routes/ocr.ts'
+import { registerWebviewRoutes } from './routes/webview.ts'
 import { resolveWechatExchange, type WechatCodeExchange } from './auth/wechat.ts'
 
 export type AppEnv = {
@@ -40,11 +42,22 @@ export type AppConfig = {
   exchangeWechatCode?: WechatCodeExchange
 }
 
+/**
+ * 不要求账本上下文的路径：这些接口要么在选账本之前就要用，要么自己处理账本归属。
+ * （webview/handoff 自己校验成员身份，账本无效时不报错、只是不下发账本。）
+ */
 const LEDGER_OPTIONAL = new Set([
   '/api/v1/me',
   '/api/v1/me/wechat/bind',
   '/api/v1/ledgers',
   '/api/v1/ledgers/join',
+  '/api/v1/app/config',
+  '/api/v1/webview/handoff',
+  // 只读全局的模型配置（ai_profiles），与账本无关。
+  // 小程序不带 X-Ledger-Id 调它们，若按「缺账本」挡下来会返回 401，
+  // 客户端会把 401 当掉登录，把刚登录的用户踢回登录页。
+  '/api/v1/speech/status',
+  '/api/v1/ocr/status',
 ])
 
 export function createApp(cfg: AppConfig) {
@@ -133,7 +146,9 @@ export function createApp(cfg: AppConfig) {
     }
     const userId = c.get('userId')
     const ledgerId = c.req.header('X-Ledger-Id') ?? c.req.query('ledger_id')
-    if (!ledgerId) throw unauthorized('缺少账本')
+    // 用 400 而不是 401：这里用户已经通过鉴权，只是请求没带账本，语义上不是「未登录」。
+    // 用 401 会让客户端误判成掉登录，把用户踢回登录页。
+    if (!ledgerId) throw badRequest('缺少账本')
     const row = await c.get('db').first<{ role: string }>(
       `SELECT role FROM members WHERE ledger_id = ? AND user_id = ?`,
       [ledgerId, userId],
@@ -155,6 +170,8 @@ export function createApp(cfg: AppConfig) {
   registerRecurrenceRoutes(app)
   registerImportRoutes(app)
   registerSpeechRoutes(app)
+  registerOcrRoutes(app)
+  registerWebviewRoutes(app)
   registerAdminRoutes(app)
 
   return app

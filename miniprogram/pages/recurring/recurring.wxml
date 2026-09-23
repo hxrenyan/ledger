@@ -1,0 +1,27 @@
+<view class="page">
+  <view class="card">
+    <view class="tip" style="margin-top: 0">
+      周期记账每月自动记一笔，到期的会在你打开首页时补上。日期限 1–28 号。
+    </view>
+    <button class="btn ghost" bindtap="runNow">立即补记到期的</button>
+  </view>
+
+  <view class="card">
+    <view class="h2">已设置的周期</view>
+    <view class="empty" wx:if="{{loading}}">加载中…</view>
+    <view class="empty" wx:elif="{{!items.length}}">还没有周期记账</view>
+    <view class="row" wx:for="{{items}}" wx:key="id" data-id="{{item.id}}" bindtap="onItem">
+      <view class="grow">
+        <view class="title">
+          {{item.kindText}} · {{item.category}}
+          <text wx:if="{{!item.enabled}}"> · 已停用</text>
+        </view>
+        <view class="muted">每月 {{item.day}} 号 · {{item.account}}<text wx:if="{{item.note}}"> · {{item.note}}</text></view>
+      </view>
+      <view class="amount {{item.kind === 'income' ? 'income' : 'expense'}}">{{item.amountText}}</view>
+      <view class="arrow">›</view>
+    </view>
+  </view>
+
+  <button class="btn ghost" bindtap="add">新增周期记账</button>
+</view>

@@ -1,0 +1,29 @@
+.search-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+
+.search-row .input {
+  flex: 1;
+}
+
+.filter-row {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 16rpx;
+}
+
+.filter-row > picker {
+  flex: 1;
+  min-width: 0;
+}
+
+.filter-row .picker-box {
+  font-size: 26rpx;
+}
+
+.ph {
+  color: #b8b8bd;
+}

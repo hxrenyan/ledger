@@ -1,0 +1,43 @@
+<view class="page">
+  <view class="card">
+    <view class="h2">我的账本</view>
+    <view class="tip">切换账本只能在这里：点一下要用的账本，明细、人情、资产都会跟着换。</view>
+    <view class="row" wx:for="{{ledgers}}" wx:key="id" data-id="{{item.id}}" bindtap="switchLedger">
+      <view class="grow">
+        <view class="title">{{item.name}}</view>
+        <view class="muted">{{item.roleText}}</view>
+      </view>
+      <view class="mark" wx:if="{{item.on}}">当前</view>
+    </view>
+  </view>
+
+  <button class="btn ghost" bindtap="create">新建账本</button>
+  <button class="btn ghost" bindtap="join">用邀请码加入</button>
+
+  <view class="card">
+    <view class="row" style="padding-top: 0">
+      <view class="grow">
+        <view class="title">{{ledgerName}}</view>
+        <view class="muted">{{loading ? '加载中…' : '共 ' + members.length + ' 位成员'}}</view>
+      </view>
+      <view class="text-btn" wx:if="{{isOwner}}" bindtap="rename">改名</view>
+    </view>
+
+    <view class="row" wx:for="{{members}}" wx:key="userId" data-user="{{item.userId}}" bindtap="onMember">
+      <view class="avatar">{{item.initial}}</view>
+      <view class="grow">
+        <view class="title">{{item.name}}<text wx:if="{{item.isMe}}">（我）</text></view>
+        <view class="muted">{{item.roleText}}</view>
+      </view>
+      <view class="arrow" wx:if="{{isOwner && !item.isMe && !item.isOwner}}">移出 ›</view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{isOwner}}">
+    <view class="h2">邀请码</view>
+    <view class="invite">{{inviteCode || '未生成'}}</view>
+    <view class="tip">对方在「用邀请码加入」里输入这串码，就能一起记账；只给他看这个码。</view>
+    <button class="btn ghost" bindtap="copyInvite">复制邀请码</button>
+    <button class="btn ghost" bindtap="rotate">重置邀请码</button>
+  </view>
+</view>

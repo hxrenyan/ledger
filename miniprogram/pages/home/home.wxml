@@ -1,0 +1,201 @@
+<view class="page with-fab">
+  <!-- 月切换：点中间的年月可以直接跳（上限是本月，看不到未来） -->
+  <month-nav month="{{month}}" bind:change="onMonthChange" />
+
+  <!-- 汇总 -->
+  <view class="summary">
+    <view class="s">
+      <view class="k">收入</view>
+      <view class="v income">{{incomeText}}</view>
+    </view>
+    <view class="s">
+      <view class="k">支出</view>
+      <view class="v expense">{{expenseText}}</view>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{budgetText}}">
+    <view class="row" style="border-bottom: 0; padding-top: 0; padding-bottom: 16rpx">
+      <view class="grow title">本月预算</view>
+      <view class="muted">{{budgetText}}</view>
+    </view>
+    <view class="bar {{budgetOver ? 'over' : ''}}">
+      <view class="i" style="width: {{budgetPercent}}%"></view>
+    </view>
+    <view class="tip">已用 {{budgetPercent}}%{{budgetOver ? ' · 已超出预算' : ''}}</view>
+  </view>
+
+  <!-- 视图切换 -->
+  <view class="tabs">
+    <view class="t {{view === 'list' ? 'on' : ''}}" data-v="list" bindtap="switchView">流水</view>
+    <view class="t {{view === 'cal' ? 'on' : ''}}" data-v="cal" bindtap="switchView">日历</view>
+    <view class="t {{view === 'stat' ? 'on' : ''}}" data-v="stat" bindtap="switchView">统计</view>
+  </view>
+
+  <!-- 搜索与筛选 -->
+  <view class="card" wx:if="{{view === 'list'}}">
+    <view class="row" style="border-bottom: 0; padding: 0">
+      <view class="grow" bindtap="toggleSearch">
+        <text wx:if="{{q}}">搜索：{{q}}</text>
+        <text wx:else class="muted">搜索备注…</text>
+      </view>
+      <view class="text-btn" bindtap="toggleSearch">{{showSearch ? '收起' : '搜索'}}</view>
+    </view>
+
+    <block wx:if="{{showSearch}}">
+      <view class="search-row">
+        <input
+          class="input"
+          value="{{q}}"
+          bindinput="onSearch"
+          bindconfirm="doSearch"
+          confirm-type="search"
+          placeholder="备注关键词"
+          placeholder-class="ph"
+        />
+        <button class="btn compact" bindtap="doSearch">搜索</button>
+      </view>
+      <view class="filter-row">
+        <picker mode="selector" range="{{accountNames}}" value="{{accountFilterIndex}}" bindchange="pickAccount">
+          <view class="picker-box">
+            <text class="val {{accountId ? '' : 'ph'}}">{{accountId ? accountFilterText : '全部账户'}}</text>
+            <text class="caret">▾</text>
+          </view>
+        </picker>
+        <picker mode="selector" range="{{categoryNames}}" value="{{categoryFilterIndex}}" bindchange="pickCategory">
+          <view class="picker-box">
+            <text class="val {{categoryId ? '' : 'ph'}}">{{categoryId ? categoryFilterText : '全部分类'}}</text>
+            <text class="caret">▾</text>
+          </view>
+        </picker>
+      </view>
+      <view class="text-btn" wx:if="{{q || accountId || categoryId}}" bindtap="resetFilter">清除筛选</view>
+    </block>
+  </view>
+
+  <!-- 流水视图 -->
+  <block wx:if="{{view === 'list'}}">
+    <view class="empty" wx:if="{{loading}}">加载中…</view>
+    <view class="empty" wx:elif="{{empty}}">这个月还没有记录，点右下角 + 记一笔</view>
+    <view class="card" wx:for="{{groups}}" wx:key="key">
+      <view class="row" style="padding-top: 0">
+        <view class="grow title">{{item.label}}</view>
+        <view class="muted">{{item.sumText}}</view>
+      </view>
+      <view
+        class="row"
+        wx:for="{{item.items}}"
+        wx:for-item="tx"
+        wx:key="id"
+        data-id="{{tx.id}}"
+        bindtap="editTx"
+        bindlongpress="deleteTx"
+      >
+        <view class="grow">
+          <view class="title">{{tx.category || tx.kindText}}<text wx:if="{{tx.excluded}}"> · 不计入</text><text wx:if="{{tx.hasReceipt}}"> · 有票</text></view>
+          <view class="muted">{{tx.account}}<text wx:if="{{tx.toAccount}}"> → {{tx.toAccount}}</text> · {{tx.clock}}<text wx:if="{{tx.note}}"> · {{tx.note}}</text></view>
+        </view>
+        <view class="amount {{tx.kind === 'income' ? 'income' : (tx.kind === 'expense' ? 'expense' : '')}}">{{tx.amountText}}</view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 日历视图 -->
+  <block wx:if="{{view === 'cal'}}">
+    <view class="cal">
+      <view class="w" wx:for="{{calWeek}}" wx:key="*this">{{item}}</view>
+      <!-- wx:for-item 必须显式写：block 的默认变量名是 item，写成 cell 会全部取到 undefined，
+           格子渲染成一排没有数字的空框（就是「日历一片空白」） -->
+      <block wx:for="{{cells}}" wx:for-item="cell" wx:key="key">
+        <!-- 月初/月末的占位格不绑点击：点了静默返回，看着像坏了 -->
+        <view class="d blank" wx:if="{{cell.blank}}"></view>
+        <view
+          class="d {{cell.has ? 'has' : ''}} {{cell.date === selectedDay ? 'on' : ''}} {{cell.date === todayISO ? 'today' : ''}}"
+          wx:else
+          data-date="{{cell.date}}"
+          bindtap="tapDay"
+        >
+          {{cell.day}}
+        </view>
+      </block>
+    </view>
+
+    <view class="empty" wx:if="{{empty && !selectedDay}}">这个月还没有记录，点右下角 + 记一笔</view>
+
+    <view class="card" wx:if="{{selectedDay}}">
+      <view class="row" style="padding-top: 0">
+        <view class="grow title">{{dayTitle}}</view>
+        <view class="text-btn" bindtap="clearDay">收起</view>
+      </view>
+      <!-- 整月都没记录时，别只说「这天没有记录」——那像是点坏了 -->
+      <view class="empty" wx:if="{{!dayItems.length}}">{{empty ? '这个月还没有记录，点右下角 + 记一笔' : '这天没有记录'}}</view>
+      <view
+        class="row"
+        wx:for="{{dayItems}}"
+        wx:for-item="tx"
+        wx:key="id"
+        data-id="{{tx.id}}"
+        bindtap="editTx"
+        bindlongpress="deleteTx"
+      >
+        <view class="grow">
+          <view class="title">{{tx.category || tx.kindText}}</view>
+          <view class="muted">{{tx.account}} · {{tx.clock}}<text wx:if="{{tx.note}}"> · {{tx.note}}</text></view>
+        </view>
+        <view class="amount {{tx.kind === 'income' ? 'income' : (tx.kind === 'expense' ? 'expense' : '')}}">{{tx.amountText}}</view>
+      </view>
+    </view>
+  </block>
+
+  <!-- 统计视图 -->
+  <block wx:if="{{view === 'stat'}}">
+    <view class="card">
+      <view class="stat-line">
+        <text>{{monthText}}结余</text>
+        <text>收入 {{incomeText}} · 支出 {{expenseText}}</text>
+      </view>
+      <view class="stat-net {{netClass}}">{{netText}}</view>
+
+      <view class="stat-h">
+        <view class="h2" style="margin: 0">近 6 个月</view>
+        <view class="muted">绿收入 / 红支出</view>
+      </view>
+      <view class="chart">
+        <view class="col {{item.month === month ? 'on' : ''}}" wx:for="{{trend}}" wx:key="month">
+          <view class="bars">
+            <view class="b income" style="height: {{item.incomeH}}%"></view>
+            <view class="b expense" style="height: {{item.expenseH}}%"></view>
+          </view>
+          <view class="x">{{item.label}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="h2">分类排行</view>
+      <view class="empty" wx:if="{{!statCats.length}}">本月还没有收支</view>
+      <view class="cat" wx:for="{{statCats}}" wx:key="id">
+        <view class="top">
+          <view>{{item.name}}<text class="{{item.kind === 'income' ? 'income' : 'expense'}}"> · {{item.kind === 'income' ? '收入' : '支出'}}</text></view>
+          <view class="amount {{item.kind === 'income' ? 'income' : 'expense'}}">{{item.amountText}}</view>
+        </view>
+        <view class="bar {{item.kind === 'income' ? 'income' : (item.over ? 'over' : '')}}">
+          <view class="i" style="width: {{item.width}}%"></view>
+        </view>
+        <view class="cat note" wx:if="{{item.shareText || item.budgetText}}">{{item.shareText}}<text wx:if="{{item.budgetText}}"> · {{item.budgetText}}</text></view>
+      </view>
+    </view>
+  </block>
+</view>
+
+<view class="fab" bindtap="openAdd">+</view>
+
+<add-sheet show="{{showAdd}}" canAi="{{canAi}}" bind:close="closeAdd" bind:select="onAddSelect" />
+<ai-panel
+  show="{{showVoice}}"
+  scope="tx"
+  can-speak="{{canSpeak}}"
+  can-photo="{{canPhoto}}"
+  bind:close="closeVoice"
+  bind:done="onVoiceDone"
+/>

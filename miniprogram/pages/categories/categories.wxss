@@ -1,0 +1,8 @@
+.arrow {
+  color: #8e8e93;
+  font-size: 30rpx;
+}
+
+.link-row switch {
+  transform: scale(0.9);
+}

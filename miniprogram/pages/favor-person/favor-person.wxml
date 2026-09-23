@@ -1,0 +1,41 @@
+<view class="page with-action">
+  <view class="head">
+    <view class="h1">{{name}}</view>
+    <view class="spacer"></view>
+    <view class="muted">{{relation}}</view>
+  </view>
+
+  <view class="summary">
+    <view class="s">
+      <view class="k">送出</view>
+      <view class="v expense">{{givenText}}</view>
+    </view>
+    <view class="s">
+      <view class="k">收到</view>
+      <view class="v income">{{receivedText}}</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="row" style="padding-top: 0; border-bottom: 0">
+      <view class="grow title">差额</view>
+      <view class="amount {{netClass}}">{{netText}}</view>
+    </view>
+    <view class="tip">{{hint}}</view>
+  </view>
+
+  <view class="card">
+    <view class="h2">往来记录</view>
+    <view class="empty" wx:if="{{loading}}">加载中…</view>
+    <view class="empty" wx:elif="{{!items.length}}">还没有往来记录</view>
+    <view class="row" wx:for="{{items}}" wx:key="id" data-id="{{item.id}}" bindtap="editGift" bindlongpress="removeGift">
+      <view class="grow">
+        <view class="title">{{item.occasion}}</view>
+        <view class="muted">{{item.dateLabel}} · {{item.kindText}}<text wx:if="{{item.note}}"> · {{item.note}}</text></view>
+      </view>
+      <view class="amount {{item.kind === 'give' ? 'expense' : 'income'}}">{{item.amountText}}</view>
+    </view>
+  </view>
+
+  <button class="btn" bindtap="addGift">给 {{name}} 记一笔</button>
+</view>

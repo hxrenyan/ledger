@@ -1,0 +1,20 @@
+<!-- web-view 会自动铺满整页，所以它必须是唯一渲染在页面上的内容，不能套外层容器 -->
+<web-view
+  wx:if="{{src && !failed}}"
+  src="{{src}}"
+  bindload="onWebLoad"
+  binderror="onWebError"
+  bindmessage="onMessage"
+></web-view>
+
+<view wx:elif="{{failed}}" class="fallback">
+  <view class="fb-badge">网页版</view>
+  <view class="fb-title">{{title}}</view>
+  <view class="fb-msg">{{message}}</view>
+  <view class="fb-hint">网页打不开不影响记账功能，可以用原生页面继续。</view>
+  <button class="fb-btn" bindtap="onOpenNative">用原生页面打开</button>
+</view>
+
+<view wx:else class="loading">
+  <view class="loading-text">正在打开…</view>
+</view>

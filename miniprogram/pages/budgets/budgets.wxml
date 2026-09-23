@@ -1,0 +1,37 @@
+<view class="page">
+  <!-- 上限传下个月：预算常常是提前给下个月设的 -->
+  <month-nav month="{{month}}" max="{{maxMonth}}" bind:change="onMonthChange" />
+
+  <view class="card">
+    <view class="row" style="padding-top: 0">
+      <view class="grow">
+        <view class="title">总预算</view>
+        <view class="muted">已用 {{totalUsedText}}</view>
+      </view>
+      <view class="amount">{{totalText}}</view>
+    </view>
+    <view class="bar {{totalOver ? 'over' : ''}}">
+      <view class="i" style="width: {{totalPercent}}%"></view>
+    </view>
+    <view class="tip">{{totalText === '未设置' ? '还没设总预算' : '已用 ' + totalPercent + '%' + (totalOver ? ' · 已超出' : '')}}</view>
+    <button class="btn ghost" bindtap="setTotal">设定总预算</button>
+    <view class="tip">清空输入框并确定，就是删掉这项预算。</view>
+  </view>
+
+  <view class="card">
+    <view class="h2">分类预算</view>
+    <view class="empty" wx:if="{{loading}}">加载中…</view>
+    <view class="empty" wx:elif="{{!rows.length}}">还没有支出分类</view>
+    <view class="cat" wx:for="{{rows}}" wx:key="id" data-id="{{item.id}}" bindtap="setCategory">
+      <view class="top">
+        <view>{{item.name}}</view>
+        <view class="muted">已用 {{item.spentText}} / {{item.amountText}}</view>
+      </view>
+      <view class="bar {{item.over ? 'over' : ''}}">
+        <view class="i" style="width: {{item.percent}}%"></view>
+      </view>
+    </view>
+  </view>
+
+  <view class="tip">点某一项设置金额；已设过的项，把输入框清空再确定就能删掉。</view>
+</view>

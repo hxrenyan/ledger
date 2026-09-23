@@ -61,6 +61,8 @@
 | POST | `/api/v1/admin/ai/test` | 测其中一套，不走接力。可用表单里的临时参数 |
 | GET/PUT | `/api/v1/admin/asr` | 语音配置列表。`items` 顺序即接力顺序，最多 8 套；密钥只回显掩码 |
 | POST | `/api/v1/admin/asr/test` | 测其中一套，需上传音频，音频不保存 |
+| GET/PUT | `/api/v1/admin/ocr` | 图片识别配置列表。规则同 asr；见 [photo.md](photo.md) |
+| POST | `/api/v1/admin/ocr/test` | 测其中一套，需上传图片，图片不保存 |
 
 预览响应里的 `source` / `header_index` / `mapping` 会一并返回，方便排查「为什么这列没认出来」。
 
@@ -81,7 +83,7 @@
 |---------|------|
 | `import_batches` | 批次台账：来源、文件名、行数统计、AI 标记、状态、操作人 |
 | `transactions.import_batch_id` | 流水归属批次，为空表示手工录入；撤销按此列删除 |
-| `ai_profiles` | 模型配置，`kind=llm` 解析、`kind=asr` 语音。同 kind 内按 `sort_order` 失败换下一套。只存接口地址、模型和密钥 |
+| `ai_profiles` | 模型配置，`kind=llm` 解析、`kind=asr` 语音、`kind=ocr` 图片识别。同 kind 内按 `sort_order` 失败换下一套。只存接口地址、模型和密钥 |
 | `gifts.import_batch_id` | 导入时认出的人情往来，随批次撤销 |
 
 原始账单文件在浏览器里解析，服务端只收到文本或二维表，不保存文件正文。语音同样只在当次请求内存里转写，识别完即丢。批次表上的 `filename` 只是辨认用的文件名。

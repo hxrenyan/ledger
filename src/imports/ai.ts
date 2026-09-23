@@ -389,20 +389,53 @@ const UTTERANCE_SYSTEM = `你是记账助手。用户用口语记了若干笔账
 - source 填对应的原句。
 - 不要编造金额。`
 
-/** 把口语交给模型拆成流水。失败由调用方退回规则解析。 */
+/**
+ * 拍照这条路线的输入不是口语，而是 OCR 出来的一整页版面文字（含小票明细、
+ * 支付截图的字段名、表格里的单元格、页眉页脚）。所以提示词的重点是：
+ * 区分「这一笔到底该记多少」——支付截图取实付金额、小票按行拆、发票只取合计，
+ * 别把单价、找零、余额、优惠这些也记成流水。
+ */
+const PHOTO_SYSTEM = `你是票据整理助手。输入是用 OCR 从一张图片上识别出来的文字（可能是微信/支付宝支付截图、超市小票、发票、银行流水截图、手写记账本或表格），版面顺序和换行都不可靠。
+请把其中真实的收支流水整理出来，只输出 JSON：{"items":[{"date":"YYYY-MM-DD","amount":35.5,"direction":"expense","note":"星巴克","category":"餐饮","account":"","source":"原文片段","favor_contact":"","favor_kind":"","favor_occasion":""}]}
+规则：
+- 先判断这张图属于哪一类，再决定怎么取数：
+  · 支付截图（一屏一笔）：只记一笔，amount 取「实付/付款金额/合计」那个数，商家名写进 note，不要把余额、优惠、订单号记成流水。
+  · 小票：商品明细逐行一笔；但如果图上已经有「合计」且明细看不清，就只记合计一笔，别重复。
+  · 发票：只记一笔，amount 取价税合计。
+  · 银行流水截图：每一行存/取、收入/支出各记一笔，按正负或「收/支」字样判断 direction。
+  · 手写记账本：一行一笔，日期和金额尽量认。
+- 一张图最多 80 笔；只输出你确实在图上看到的，不要编造。
+- amount 是人民币元，正数，最多两位小数。带负号或「-」的是支出。
+- direction 只能是 expense 或 income。收入、收款、转入、工资、退款、报销是 income，其余默认 expense。
+- date 用 YYYY-MM-DD。图上有日期就用图上的；只写了月日就按消息里的「今天」补年份；实在没有就用今天。
+- note 写商家或消费内容，简短，不要整段照抄，也不要带「￥」和小数点后面的零。
+- category 必须从参考分类里选，且和方向一致；不确定就留空字符串。
+- account 必须从参考账户里选；不确定就留空字符串。
+- 随礼、礼金、份子、压岁钱、红包给人：favor_contact 写对方姓名（2到4个汉字），favor_kind 写 give 或 receive，favor_occasion 写结婚、满月、搬家、寿宴、升学、丧事、过年、生日之一，没有就留空。
+- 微信、支付宝、美团、银行不是人名，不要写进 favor_contact。普通消费这三个字段都留空。
+- source 填图上对应的原文片段。
+- OCR 可能把数字认错（比如 3 认成 8），只要金额在那张图里讲得通就照用，不要自己改数。`
+
+export type UtteranceMode = 'speak' | 'photo'
+
+/** 把口语 / 票据文字交给模型拆成流水。失败由调用方退回规则解析。 */
 export async function aiParseUtterances(
   configs: AiConfig[],
   text: string,
   ctx: { today: string; categories: string[]; accounts: string[] },
+  mode: UtteranceMode = 'speak',
 ): Promise<AiResult<AiUtteranceItem[]>> {
   if (!configs.some(aiReady)) return { ok: false, error: 'AI 未启用' }
-  const clipped = text.trim().slice(0, 4000)
-  if (!clipped) return { ok: true, data: [] }
+  // 拍照那条链路拿到的是一整页版面文字（可能很长），窗口比口语宽松得多。
+  const limit = mode === 'photo' ? 8000 : 4000
+  const body = text.trim().slice(0, limit)
+  if (!body) return { ok: true, data: [] }
+  const system = mode === 'photo' ? PHOTO_SYSTEM : UTTERANCE_SYSTEM
   const reference = [
     `今天是 ${ctx.today}`,
     ctx.categories.length ? `参考分类：${ctx.categories.join('、')}` : '',
     ctx.accounts.length ? `参考账户：${ctx.accounts.join('、')}` : '',
-    `原话：\n${clipped}`,
+    `${mode === 'photo' ? '识别出的单据文字' : '原话'}：\n${body}`,
   ]
     .filter(Boolean)
     .join('\n')
@@ -411,10 +444,11 @@ export async function aiParseUtterances(
     const chatRes = await chat(
       cfg,
       [
-        { role: 'system', content: UTTERANCE_SYSTEM },
+        { role: 'system', content: system },
         { role: 'user', content: reference },
       ],
-      { timeoutMs: 25_000 },
+      // 拍照那条链路文字长得多，给模型的时间也放宽。
+      { timeoutMs: mode === 'photo' ? 40_000 : 25_000 },
     )
     if (!chatRes.ok) return chatRes
     const parsed = extractJson(chatRes.data)
@@ -425,11 +459,12 @@ export async function aiParseUtterances(
   if (!res.ok) return res
 
   const out: AiUtteranceItem[] = []
-  for (const item of res.data.slice(0, 50)) {
+  // 一张小票可能十几行，上限比口语宽。
+  for (const item of res.data.slice(0, mode === 'photo' ? 80 : 50)) {
     const shaped = shapeUtterance(item, ctx.today)
     if (shaped) out.push(shaped)
   }
-  if (!out.length) return { ok: false, error: 'AI 没有解析出可入账的句子' }
+  if (!out.length) return { ok: false, error: mode === 'photo' ? '没能从这张图里读出可入账的流水' : 'AI 没有解析出可入账的句子' }
   return { ok: true, data: out }
 }
 

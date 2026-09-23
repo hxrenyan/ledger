@@ -1,0 +1,38 @@
+.mark {
+  font-size: 24rpx;
+  color: #3b5bdb;
+  background: #eef0ff;
+  border-radius: 999rpx;
+  padding: 8rpx 20rpx;
+  font-weight: 600;
+}
+
+.avatar {
+  width: 72rpx;
+  height: 72rpx;
+  border-radius: 36rpx;
+  background: #eef0ff;
+  color: #3b5bdb;
+  font-size: 28rpx;
+  font-weight: 600;
+  line-height: 72rpx;
+  text-align: center;
+  flex: none;
+}
+
+.arrow {
+  color: #8e8e93;
+  font-size: 24rpx;
+}
+
+.invite {
+  font-size: 48rpx;
+  font-weight: 600;
+  letter-spacing: 8rpx;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  padding: 20rpx 0;
+  background: #f6f7fb;
+  border-radius: 24rpx;
+  margin-bottom: 8rpx;
+}

@@ -1,0 +1,115 @@
+<view class="page">
+  <view class="kind">
+    <view class="k {{kind === 'expense' ? 'on expense' : ''}}" data-kind="expense" bindtap="setKind">支出</view>
+    <view class="k {{kind === 'income' ? 'on income' : ''}}" data-kind="income" bindtap="setKind">收入</view>
+    <view class="k {{kind === 'transfer' ? 'on plain' : ''}}" data-kind="transfer" bindtap="setKind">转账</view>
+  </view>
+
+  <view class="card">
+    <view class="amount-wrap">
+      <text class="cny">¥</text>
+      <input
+        class="input amount-input"
+        type="text"
+        value="{{amountText}}"
+        bindinput="onAmount"
+        placeholder="0.00"
+        placeholder-class="ph"
+        focus="{{!id}}"
+      />
+    </view>
+    <view class="tip">支持算式，例如 12+8、3*4</view>
+  </view>
+
+  <view class="card">
+    <view class="h2">日期</view>
+    <view class="chips">
+      <view
+        class="chip {{item.on ? 'on' : ''}}"
+        wx:for="{{dateQuick}}"
+        wx:key="value"
+        data-date="{{item.value}}"
+        bindtap="tapQuick"
+      >
+        {{item.label}}
+      </view>
+      <picker mode="date" value="{{date}}" bindchange="onDate">
+        <view class="chip">{{date}}</view>
+      </picker>
+    </view>
+  </view>
+
+  <view class="card" wx:if="{{kind !== 'transfer'}}">
+    <view class="h2">分类</view>
+    <view class="chips">
+      <view
+        class="chip {{item.id === categoryId ? 'on' : ''}}"
+        wx:for="{{catChips}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="pickCategory"
+      >
+        {{item.name}}
+      </view>
+    </view>
+    <view class="empty" wx:if="{{!catChips.length}}">还没有分类，去「我的 → 分类」加一个</view>
+  </view>
+
+  <view class="card">
+    <view class="field" style="margin-bottom: 0">
+      <view class="label">{{kind === 'transfer' ? '转出账户' : '账户'}}</view>
+      <picker mode="selector" range="{{accountNames}}" value="{{accountIndex}}" bindchange="pickAccount">
+        <view class="picker-box">
+          <text class="val">{{accountName}}</text>
+          <text class="caret">▾</text>
+        </view>
+      </picker>
+    </view>
+
+    <view class="field" wx:if="{{kind === 'transfer'}}" style="margin: 24rpx 0 0">
+      <view class="label">转入账户</view>
+      <picker mode="selector" range="{{accountNames}}" value="{{toAccountIndex}}" bindchange="pickToAccount">
+        <view class="picker-box">
+          <text class="val {{toAccountId ? '' : 'ph'}}">{{toAccountName}}</text>
+          <text class="caret">▾</text>
+        </view>
+      </picker>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="field">
+      <view class="label">备注</view>
+      <input class="input" value="{{note}}" bindinput="onNote" placeholder="比如：和同事午饭" placeholder-class="ph" />
+    </view>
+
+    <view class="switch-row">
+      <view>不计入收支统计</view>
+      <switch checked="{{excluded}}" color="#3b5bdb" bindchange="onExcluded" />
+    </view>
+    <view class="tip">转账本来就不过统计；这里的开关是给「报销垫付」这类流水用的。</view>
+  </view>
+
+  <view class="card">
+    <view class="h2">收据</view>
+    <block wx:if="{{hasReceipt}}">
+      <view class="row" style="padding-top: 0">
+        <view class="grow title">已上传</view>
+        <view class="text-btn" bindtap="viewReceipt">查看</view>
+        <view class="text-btn" bindtap="deleteReceipt">删除</view>
+      </view>
+    </block>
+    <button class="btn ghost" bindtap="pickReceipt">{{hasReceipt ? '换一张' : '上传收据图'}}</button>
+    <view class="tip">支持 jpeg / png / webp，小于 512KB；超了会自动压一下。新增的流水要先保存才能传。</view>
+  </view>
+
+  <view class="switch-row" wx:if="{{!id}}">
+    <view>保存后继续记下一笔</view>
+    <switch checked="{{keepGoing}}" color="#3b5bdb" bindchange="onKeepGoing" />
+  </view>
+
+  <view class="err" wx:if="{{err}}">{{err}}</view>
+
+  <button class="btn" bindtap="save" disabled="{{saving}}">{{saving ? '保存中…' : '保存'}}</button>
+  <button class="btn danger" wx:if="{{id}}" bindtap="remove">删除这笔</button>
+</view>

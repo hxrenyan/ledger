@@ -15,7 +15,9 @@
 --   gifts          人情往来记录
 --   recurrences    周期记账（只支持收入 / 支出）
 --   import_batches 账单导入批次（回溯 / 撤销）
---   ai_profiles    模型配置（kind=llm 解析 / asr 语音，按 sort_order 接力）
+--   ai_profiles    模型配置（kind=llm 解析 / asr 语音 / ocr 图片识别，按 sort_order 接力）
+--   app_configs     服务端业务配置（页面归属等，改完 deploy 即生效）
+--   handoff_codes   原生 → web-view 网页 的一次性会话交接码
 --
 -- 约定：表之间只保留逻辑关联字段，不定义数据库外键；
 --       关联完整性由应用层校验，多语句写入走 D1 batch。
@@ -203,8 +205,8 @@ CREATE TABLE IF NOT EXISTS import_batches (
 
 -- ---------------------------------------------------------------------------
 -- ai_profiles（解析与语音共用一张配置表）
--- kind：llm = 账单解析；asr = 语音识别。同一 kind 内按 sort_order 失败换下一套。
--- protocol：asr 目前只实现 openai-audio；llm 留空（走 chat/completions）。
+-- kind：llm = 账单解析；asr = 语音识别；ocr = 图片识别。同一 kind 内按 sort_order 失败换下一套。
+-- protocol：asr 目前只实现 openai-audio；ocr 目前只有 openai-vision；llm 留空（走 chat/completions）。
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ai_profiles (
   kind TEXT NOT NULL,
@@ -218,6 +220,31 @@ CREATE TABLE IF NOT EXISTS ai_profiles (
   sort_order INTEGER NOT NULL DEFAULT 0,
   updated_at INTEGER NOT NULL,
   PRIMARY KEY (kind, id)
+);
+
+-- ---------------------------------------------------------------------------
+-- app_configs（服务端业务配置，key 级覆盖）
+-- 用途：页面归属（原生 / web-view）、开关与文案。改完 deploy 即生效，不用发版。
+-- 只放数据，不放可执行代码——微信禁止动态下发代码。
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS app_configs (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- handoff_codes（小程序原生 → web-view 网页 的一次性会话交接码）
+-- web-view 里没有 wx.login，网页侧靠这个补会话。
+-- 只存 SHA-256；5 分钟过期；用一次即失效（UPDATE ... RETURNING 原子抢占）。
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS handoff_codes (
+  code_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  ledger_id TEXT NOT NULL DEFAULT '',
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER,
+  created_at INTEGER NOT NULL
 );
 
 -- ---------------------------------------------------------------------------
@@ -235,3 +262,5 @@ CREATE INDEX IF NOT EXISTS idx_tx_import_batch ON transactions (import_batch_id)
 CREATE INDEX IF NOT EXISTS idx_gifts_import_batch ON gifts (import_batch_id) WHERE import_batch_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_ai_profiles_order ON ai_profiles (kind, sort_order);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities (provider, user_id);
+-- 交接码只在签发时按过期时间清理一次，索引服务这个 DELETE。
+CREATE INDEX IF NOT EXISTS idx_handoff_expires ON handoff_codes (expires_at);

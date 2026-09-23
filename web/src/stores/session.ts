@@ -35,8 +35,16 @@ export const useSession = defineStore('session', () => {
     token.value = body.token
     user.value = body.user
     ledgers.value = body.ledgers
-    const keep = body.ledgers.some((l) => l.id === ledgerId.value)
-    persistLedger(keep ? ledgerId.value : (body.ledgers[0]?.id ?? ''))
+    // 从 web-view 交接过来时会带 ledger_id（小程序当时的账本），优先采信，
+    // 免得用户刚在原生页选好的账本一切到网页又跳回去。
+    const preferred =
+      body.ledger_id && body.ledgers.some((l) => l.id === body.ledger_id) ? body.ledger_id : ''
+    if (preferred) {
+      persistLedger(preferred)
+    } else {
+      const keep = body.ledgers.some((l) => l.id === ledgerId.value)
+      persistLedger(keep ? ledgerId.value : (body.ledgers[0]?.id ?? ''))
+    }
     localStorage.setItem(TOKEN, body.token)
     localStorage.setItem(USER, JSON.stringify(body.user))
     localStorage.setItem(LEDGERS, JSON.stringify(body.ledgers))

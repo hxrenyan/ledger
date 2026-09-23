@@ -1,0 +1,23 @@
+.summary .s .v {
+  font-size: 34rpx;
+}
+
+.avatar {
+  width: 80rpx;
+  height: 80rpx;
+  border-radius: 40rpx;
+  font-size: 30rpx;
+  line-height: 80rpx;
+  overflow: hidden;
+  white-space: nowrap;
+  flex: none;
+}
+
+.arrow {
+  color: #8e8e93;
+  font-size: 30rpx;
+}
+
+.ph {
+  color: #b8b8bd;
+}

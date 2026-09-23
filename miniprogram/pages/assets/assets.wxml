@@ -1,0 +1,41 @@
+<view class="page">
+  <view class="card net">
+    <view class="muted">净资产</view>
+    <view class="net-v {{netClass}}">{{netText}}</view>
+    <view class="tip">只统计未归档账户；归档的账户不计入。</view>
+  </view>
+
+  <view class="card">
+    <view class="h2">账户</view>
+    <view class="empty" wx:if="{{loading}}">加载中…</view>
+    <view class="empty" wx:elif="{{!items.length}}">还没有账户，点下面新增</view>
+    <view class="row" wx:for="{{items}}" wx:key="id" data-id="{{item.id}}" bindtap="onAccount">
+      <view class="grow">
+        <view class="title">{{item.name}}</view>
+        <view class="muted">{{item.typeLabel}}</view>
+      </view>
+      <view class="amount {{item.balanceClass}}">{{item.balanceText}}</view>
+      <view class="arrow">›</view>
+    </view>
+  </view>
+
+  <block wx:if="{{archived.length}}">
+    <view class="link-row" bindtap="toggleArchived">
+      <view>已归档（{{archived.length}}）</view>
+      <view class="arrow">{{showArchived ? '收起' : '展开'}}</view>
+    </view>
+    <view class="card" wx:if="{{showArchived}}">
+      <view class="row" wx:for="{{archived}}" wx:key="id" data-id="{{item.id}}" bindtap="onAccount">
+        <view class="grow">
+          <view class="title">{{item.name}}</view>
+          <view class="muted">{{item.typeLabel}} · 已归档</view>
+        </view>
+        <view class="amount">{{item.balanceText}}</view>
+        <view class="arrow">›</view>
+      </view>
+    </view>
+  </block>
+
+  <button class="btn ghost" bindtap="addAccount">新增账户</button>
+  <button class="btn ghost" bindtap="openBudgets">去设预算</button>
+</view>

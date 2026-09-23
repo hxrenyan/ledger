@@ -1,0 +1,302 @@
+.ap-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+}
+
+.ap-sheet {
+  width: 100%;
+  max-height: 88vh;
+  background: #fff;
+  border-radius: 36rpx 36rpx 0 0;
+  padding: 32rpx 28rpx calc(28rpx + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+.ap-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24rpx;
+}
+
+.ap-title {
+  font-size: 32rpx;
+  font-weight: 600;
+}
+
+.ap-close {
+  font-size: 26rpx;
+  color: #8e8e93;
+}
+
+.ap-hint {
+  font-size: 24rpx;
+  color: #8e8e93;
+  line-height: 1.7;
+  text-align: center;
+  padding: 12rpx 0;
+}
+
+.ap-talk {
+  margin: 24rpx auto 8rpx;
+  width: 240rpx;
+  height: 240rpx;
+  border-radius: 120rpx;
+  background: #eef0ff;
+  color: #3b5bdb;
+  font-size: 30rpx;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.ap-talk.on {
+  background: #3b5bdb;
+  color: #fff;
+  transform: scale(1.04);
+}
+
+/* 拍照入口做得比录音轻：它是备选路径，不该跟大圆按钮抢注意力 */
+.ap-photo {
+  margin: 20rpx auto 4rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 84rpx;
+  padding: 0 36rpx;
+  border-radius: 999rpx;
+  border: 2rpx solid #d9ddf0;
+  color: #3b5bdb;
+  font-size: 27rpx;
+}
+
+.ap-photo:active {
+  background: #f4f6ff;
+}
+
+/* 相机图标用边框拼，不依赖字体里的图形字符 */
+.ap-photo-ico {
+  position: relative;
+  width: 30rpx;
+  height: 22rpx;
+  margin-right: 14rpx;
+  border: 3rpx solid #3b5bdb;
+  border-radius: 6rpx;
+}
+
+.ap-photo-ico::before {
+  content: '';
+  position: absolute;
+  left: 5rpx;
+  top: -9rpx;
+  width: 11rpx;
+  height: 6rpx;
+  background: #3b5bdb;
+  border-radius: 3rpx 3rpx 0 0;
+}
+
+.ap-photo-ico::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9rpx;
+  height: 9rpx;
+  border: 3rpx solid #3b5bdb;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* 认出文字但没配解析模型时的说明块 */
+.ap-notice {
+  background: #fffaf0;
+  border: 2rpx solid #f2dfb8;
+  border-radius: 24rpx;
+  padding: 24rpx;
+  margin-bottom: 20rpx;
+}
+
+.ap-notice-title {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: #8a5a12;
+}
+
+.ap-notice-desc {
+  margin-top: 10rpx;
+  font-size: 24rpx;
+  line-height: 1.7;
+  color: #96702f;
+}
+
+.ap-ocr {
+  margin-top: 16rpx;
+  max-height: 260rpx;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 16rpx;
+}
+
+.ap-ocr-text {
+  font-size: 24rpx;
+  line-height: 1.7;
+  color: #556070;
+  word-break: break-all;
+}
+
+.ap-notice-copy {
+  margin-top: 16rpx;
+  text-align: center;
+  font-size: 25rpx;
+  color: #3b5bdb;
+  background: #eef0ff;
+  border-radius: 999rpx;
+  padding: 14rpx 0;
+}
+
+.ap-busy {
+  padding: 48rpx 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.ap-spin {
+  width: 48rpx;
+  height: 48rpx;
+  border: 5rpx solid #e6e8f5;
+  border-top-color: #3b5bdb;
+  border-radius: 50%;
+}
+
+.ap-text {
+  font-size: 26rpx;
+  color: #556070;
+  background: #f6f7fb;
+  border-radius: 20rpx;
+  padding: 20rpx;
+  line-height: 1.6;
+  margin-bottom: 16rpx;
+}
+
+.ap-meta {
+  font-size: 22rpx;
+  color: #8e8e93;
+  margin-bottom: 16rpx;
+}
+
+.ap-rows {
+  flex: 1;
+  max-height: 46vh;
+}
+
+.ap-row {
+  border: 1rpx solid #ececef;
+  border-radius: 24rpx;
+  padding: 20rpx;
+  margin-bottom: 16rpx;
+}
+
+.ap-row.bad {
+  border-color: #f6d5d5;
+  background: #fffafa;
+}
+
+.ap-row-top {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.ap-dir {
+  font-size: 24rpx;
+  padding: 8rpx 18rpx;
+  border-radius: 999rpx;
+  background: #eceef5;
+  color: #556070;
+}
+
+.ap-dir.expense {
+  background: #ffe9e8;
+  color: #e5484d;
+}
+
+.ap-dir.income {
+  background: #e6f6ec;
+  color: #1f9d55;
+}
+
+.ap-amount {
+  flex: 1;
+  min-width: 0;
+  /* input 的高度必须显式给，否则字会被上下裁掉 */
+  height: 76rpx;
+  padding: 0;
+  font-size: 36rpx;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.ap-del {
+  font-size: 24rpx;
+  color: #8e8e93;
+  padding-left: 8rpx;
+}
+
+.ap-picks {
+  display: flex;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.ap-pick {
+  font-size: 24rpx;
+  color: #3b5bdb;
+  background: #eef0ff;
+  border-radius: 16rpx;
+  padding: 12rpx 16rpx;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ap-picks > picker {
+  flex: 1;
+  min-width: 0;
+}
+
+.ap-note {
+  margin-top: 14rpx;
+  height: 76rpx;
+  padding: 0;
+  font-size: 26rpx;
+  border-bottom: 1rpx solid #ececef;
+}
+
+.ap-bad-reason {
+  margin-top: 12rpx;
+  font-size: 22rpx;
+  color: #e5484d;
+}
+
+.ap-actions {
+  display: flex;
+  gap: 16rpx;
+  margin-top: 20rpx;
+}
+
+.ap-actions .btn {
+  flex: 1;
+  margin-top: 0;
+}

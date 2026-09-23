@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "智能记账",
+  "usingComponents": {
+    "ai-panel": "/components/ai-panel/ai-panel"
+  }
+}

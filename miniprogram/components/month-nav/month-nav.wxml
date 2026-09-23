@@ -1,0 +1,18 @@
+<view class="month-nav">
+  <view class="pill">
+    <button class="nav" bindtap="prev" disabled="{{!canPrev}}"><view class="ico"></view></button>
+    <!-- 中间这块是可点的：弹「年 / 月」双列滚轮，直接跳 -->
+    <picker
+      class="pick"
+      mode="multiSelector"
+      range="{{range}}"
+      value="{{value}}"
+      bindchange="onPick"
+      bindcolumnchange="onColumn"
+    >
+      <view class="label">{{monthText}}<view class="caret"></view></view>
+    </picker>
+    <button class="nav" bindtap="next" disabled="{{!canNext}}"><view class="ico ico-next"></view></button>
+  </view>
+  <view class="back" wx:if="{{showBack}}" bindtap="back">回到本月</view>
+</view>

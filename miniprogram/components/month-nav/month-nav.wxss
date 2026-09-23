@@ -1,0 +1,106 @@
+/*
+ * 月份切换条的唯一样式定义处。
+ *
+ * 组件的样式是隔离的（app.wxss 里的类名碰不到这里），所以这套规则只能放在
+ * 组件里 —— 反过来也别再在页面里写 .month-nav，那会变成两套各改各的。
+ * CSS 变量（--muted / --brand 等）定义在 app.wxss 的 page 上，会继承进来。
+ */
+
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin: 4rpx 0 28rpx;
+}
+
+.month-nav .pill {
+  display: flex;
+  align-items: center;
+  background: #fff;
+  border-radius: 999rpx;
+  padding: 0 8rpx;
+  box-shadow: 0 8rpx 28rpx rgba(20, 20, 40, 0.07);
+}
+
+.month-nav .nav {
+  width: 76rpx;
+  height: 76rpx;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  line-height: 1;
+  background: transparent;
+  border-radius: 999rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.month-nav .nav::after {
+  border: 0;
+}
+
+/* 箭头用两条边框转 45° 拼出来，不吃字体差异，缩放也不虚 */
+.month-nav .ico {
+  width: 16rpx;
+  height: 16rpx;
+  border-left: 4rpx solid var(--muted);
+  border-bottom: 4rpx solid var(--muted);
+  transform: rotate(45deg);
+}
+
+.month-nav .ico-next {
+  transform: rotate(-135deg);
+}
+
+.month-nav .nav:active {
+  background: #f2f3f7;
+}
+
+.month-nav .nav[disabled] {
+  opacity: 0.25;
+}
+
+/* picker 自身要撑成 flex 项，否则中间那块的对齐会跟两边不一致 */
+.month-nav .pick {
+  display: flex;
+  align-items: center;
+}
+
+.month-nav .label {
+  min-width: 208rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 32rpx;
+  font-weight: 600;
+  padding: 12rpx 0;
+  border-radius: 999rpx;
+}
+
+/* 按下给一点反馈，让人知道这块能点 */
+.month-nav .label:active {
+  background: #f2f3f7;
+}
+
+/* 小三角提示「点这里能展开」，用边框拼，不依赖字体里的 ▾ */
+.month-nav .caret {
+  width: 0;
+  height: 0;
+  margin-left: 12rpx;
+  border-left: 9rpx solid transparent;
+  border-right: 9rpx solid transparent;
+  border-top: 10rpx solid var(--muted);
+}
+
+.month-nav .back {
+  position: absolute;
+  right: 0;
+  font-size: 24rpx;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: 999rpx;
+  padding: 8rpx 20rpx;
+}

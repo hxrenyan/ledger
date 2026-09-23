@@ -1,3 +1,4 @@
+import { inMiniProgram, reLaunch } from './bridge.ts'
 import { useSession } from './stores/session.ts'
 
 export class ApiError extends Error {
@@ -20,7 +21,12 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(path, { ...init, headers })
   if (res.status === 401) {
     session.clear()
-    if (!path.startsWith('/api/v1/auth/')) location.href = '/login'
+    if (!path.startsWith('/api/v1/auth/')) {
+      // web-view 里没有 wx.login，网页自己的 /login 登录不了，
+      // 要把用户交回小程序的登录页。
+      if (inMiniProgram) reLaunch('/pages/login/login')
+      else location.href = '/login'
+    }
   }
   const ct = res.headers.get('content-type') ?? ''
   if (!ct.includes('json')) {
@@ -39,6 +45,8 @@ export type SessionBody = {
   token: string
   user: { id: string; username: string; nickname: string; has_password: boolean; wechat_bound: boolean }
   ledgers: Ledger[]
+  /** 仅 web-view 交接登录返回：小程序当时的账本，用于对齐首屏账本。 */
+  ledger_id?: string
 }
 export type Account = { id: string; name: string; type: string; archived: boolean; current_cents: number }
 export type Category = { id: string; name: string; kind: 'expense' | 'income'; archived: boolean }

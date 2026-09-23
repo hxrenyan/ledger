@@ -1,0 +1,86 @@
+<view class="page">
+  <view class="kind">
+    <view class="k {{kind === 'give' ? 'on expense' : ''}}" data-kind="give" bindtap="setKind">送出</view>
+    <view class="k {{kind === 'receive' ? 'on income' : ''}}" data-kind="receive" bindtap="setKind">收到</view>
+  </view>
+
+  <view class="card">
+    <view class="amount-wrap">
+      <text class="cny">¥</text>
+      <input
+        class="input amount-input"
+        type="text"
+        value="{{amountText}}"
+        bindinput="onAmount"
+        placeholder="0.00"
+        placeholder-class="ph"
+      />
+    </view>
+    <view class="tip">可以是 800、1000 这种整数，也支持算式。</view>
+  </view>
+
+  <view class="card">
+    <view class="field" style="margin-bottom: 0">
+      <view class="label">对方</view>
+      <picker mode="selector" range="{{contactNames}}" value="{{contactIndex}}" bindchange="pickContact">
+        <view class="picker-box">
+          <text class="val {{contactName ? '' : 'ph'}}">{{contactName || '选择联系人'}}</text>
+          <text class="caret">▾</text>
+        </view>
+      </picker>
+    </view>
+    <view class="text-btn" style="margin-top: 20rpx; display: inline-block" bindtap="addContact">＋ 新增联系人</view>
+  </view>
+
+  <view class="card">
+    <view class="h2">日期</view>
+    <view class="chips">
+      <view class="chip {{item.on ? 'on' : ''}}" wx:for="{{dateQuick}}" wx:key="value" data-date="{{item.value}}" bindtap="tapQuick">
+        {{item.label}}
+      </view>
+      <picker mode="date" value="{{date}}" bindchange="onDate">
+        <view class="chip">{{date}}</view>
+      </picker>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="h2">事由</view>
+    <view class="chips">
+      <view
+        class="chip {{item === occasion ? 'on' : ''}}"
+        wx:for="{{occasions}}"
+        wx:key="*this"
+        data-value="{{item}}"
+        bindtap="pickOccasion"
+      >
+        {{item}}
+      </view>
+    </view>
+    <input
+      class="input"
+      style="margin-top: 20rpx"
+      value="{{customOccasion}}"
+      bindinput="onCustomOccasion"
+      placeholder="或者自己写（最多 16 字）"
+      placeholder-class="ph"
+    />
+  </view>
+
+  <view class="card">
+    <view class="field" style="margin-bottom: 0">
+      <view class="label">备注</view>
+      <input class="input" value="{{note}}" bindinput="onNote" placeholder="比如：随了 800，回了 1000" placeholder-class="ph" />
+    </view>
+  </view>
+
+  <view class="switch-row" wx:if="{{!id}}">
+    <view>保存后继续记下一笔</view>
+    <switch checked="{{keepGoing}}" color="#3b5bdb" bindchange="onKeepGoing" />
+  </view>
+
+  <view class="err" wx:if="{{err}}">{{err}}</view>
+
+  <button class="btn" bindtap="save" disabled="{{saving}}">{{saving ? '保存中…' : '保存'}}</button>
+  <button class="btn danger" wx:if="{{id}}" bindtap="remove">删除这条</button>
+</view>

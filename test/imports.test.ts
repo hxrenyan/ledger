@@ -544,7 +544,9 @@ describe('导入接口', () => {
       headers: { authorization: `Bearer ${ctx.token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ kind: 'text', text: WECHAT_CSV }),
     })
-    expect(res.status).toBe(401)
+    // 是 400 而不是 401：用户已通过鉴权，只是请求没带账本上下文。
+    // 用 401 会被客户端当成「登录过期」而清会话、跳登录页（详见 test/ledger-header.test.ts）。
+    expect(res.status).toBe(400)
   })
 })
 

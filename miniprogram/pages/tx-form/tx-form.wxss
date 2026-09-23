@@ -1,0 +1,21 @@
+.amount-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.cny {
+  font-size: 44rpx;
+  font-weight: 600;
+  color: #8e8e93;
+}
+
+.amount-wrap .amount-input {
+  flex: 1;
+  border: 0;
+  padding-left: 0;
+}
+
+.ph {
+  color: #b8b8bd;
+}

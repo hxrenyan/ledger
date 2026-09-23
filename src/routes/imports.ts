@@ -41,6 +41,20 @@ export function registerImportRoutes(app: Hono<AppEnv>) {
     return c.json(preview)
   })
 
+  /**
+   * 图片识别出来的文字 → 流水行。
+   * 和 /imports/utterances 是同一条下游（核对、提交都共用 /imports/commit），
+   * 差别只在提示词：口语那句一句一笔，票据这段要区分实付金额与余额、明细与合计。
+   */
+  app.post('/api/v1/imports/receipt', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const text = typeof body?.text === 'string' ? body.text : ''
+    if (!text.trim()) throw badRequest('没有可解析的文字')
+    if (text.length > 20000) throw badRequest('文字过长')
+    const preview = await previewUtterances(c.get('db'), c.get('ledgerId'), text, 'photo')
+    return c.json(preview)
+  })
+
   app.post('/api/v1/imports/suggest', async (c) => {
     const body = await c.req.json().catch(() => ({}))
     const list = Array.isArray(body?.rows) ? body.rows : []

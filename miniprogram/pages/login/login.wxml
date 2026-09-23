@@ -1,0 +1,80 @@
+<view class="login">
+  <view class="brand">
+    <view class="logo">账</view>
+    <view class="app-name">记账</view>
+    <view class="slogan">支出、收入、人情、资产，一处记清</view>
+  </view>
+
+  <view class="card">
+    <block wx:if="{{mode === 'wechat'}}">
+      <button class="btn wechat" bindtap="onWechat" disabled="{{busy}}">
+        {{busy ? '登录中…' : '微信一键登录'}}
+      </button>
+      <view class="tip">首次登录会自动建账本；已有微信账号直接进入。</view>
+      <view class="err" wx:if="{{err}}">{{err}}</view>
+      <view class="alt" bindtap="toPassword">用用户名密码登录</view>
+    </block>
+
+    <block wx:else>
+      <view class="err" wx:if="{{wechatTip}}">{{wechatTip}}</view>
+
+      <view class="field">
+        <view class="label">用户名</view>
+        <input
+          class="input"
+          value="{{username}}"
+          data-key="username"
+          bindinput="onInput"
+          placeholder="用户名"
+          placeholder-class="ph"
+        />
+      </view>
+      <view class="field">
+        <view class="label">密码</view>
+        <input
+          class="input"
+          password
+          value="{{password}}"
+          data-key="password"
+          bindinput="onInput"
+          placeholder="密码"
+          placeholder-class="ph"
+        />
+      </view>
+      <view class="field" wx:if="{{form === 'register'}}">
+        <view class="label">昵称（可空，默认与用户名相同）</view>
+        <input
+          class="input"
+          value="{{nickname}}"
+          data-key="nickname"
+          bindinput="onInput"
+          placeholder="昵称"
+          placeholder-class="ph"
+        />
+      </view>
+
+      <view class="err" wx:if="{{err}}">{{err}}</view>
+
+      <button class="btn" bindtap="onSubmit" disabled="{{busy}}">
+        {{busy ? '处理中…' : (form === 'login' ? '登录' : '注册并创建账本')}}
+      </button>
+      <view class="alt" bindtap="switchForm">
+        {{form === 'login' ? '没有账号？注册一个' : '已有账号？去登录'}}
+      </view>
+      <view class="alt" bindtap="toWechat">用微信登录</view>
+    </block>
+  </view>
+
+  <!--
+    环境逃生口。只在指向非线上时出现，正常用户看不到。
+    「本地」指 127.0.0.1，登录必然连不上，而改回线上的入口在登录之后的「我的」里，
+    所以在登录页必须留一个出口，否则会把自己锁在外面。
+  -->
+  <view class="env" wx:if="{{envKey !== 'prod'}}">
+    <view class="env-tip">
+      <view class="env-title">当前指向「{{envLabel}}」</view>
+      <view class="env-desc">{{envApi}}</view>
+    </view>
+    <view class="env-btn" bindtap="backToProd">切回线上</view>
+  </view>
+</view>

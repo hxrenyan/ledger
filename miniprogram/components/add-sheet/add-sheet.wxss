@@ -1,0 +1,79 @@
+.as-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+}
+
+.as-sheet {
+  width: 100%;
+  background: #fff;
+  border-radius: 36rpx 36rpx 0 0;
+  padding: 32rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));
+}
+
+.as-title {
+  font-size: 28rpx;
+  color: #8e8e93;
+  text-align: center;
+  margin-bottom: 28rpx;
+}
+
+.as-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24rpx;
+}
+
+.as-item {
+  width: calc((100% - 48rpx) / 3);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.as-ico {
+  width: 104rpx;
+  height: 104rpx;
+  border-radius: 32rpx;
+  line-height: 104rpx;
+  text-align: center;
+  font-size: 40rpx;
+  font-weight: 600;
+}
+
+.as-ico.expense {
+  background: #ffe9e8;
+  color: #e5484d;
+}
+
+.as-ico.brand {
+  background: #eef0ff;
+  color: #3b5bdb;
+}
+
+.as-ico.gift {
+  background: #fff2e0;
+  color: #d97706;
+}
+
+.as-ico.plain {
+  background: #eef1f5;
+  color: #556070;
+}
+
+.as-label {
+  font-size: 26rpx;
+  color: #1d1d1f;
+}
+
+.as-cancel {
+  margin-top: 32rpx;
+  text-align: center;
+  font-size: 30rpx;
+  color: #8e8e93;
+  padding: 20rpx 0;
+}

@@ -1,0 +1,32 @@
+<view class="page">
+  <view class="card">
+    <view class="h2">说一句、拍一张，就记下</view>
+    <view class="tip" style="margin-top: 0">
+      说：「昨天午饭 35」「打车 128 用的微信」「今天收到工资 12000」「给王哥随礼 800」，一句里说多笔也可以。
+      拍：小票、发票、支付截图都行 —— 认出的金额与日期会摆成表格，逐行核对后再保存。
+    </view>
+
+    <view class="tabs" style="margin-top: 24rpx">
+      <view class="t {{scope === 'tx' ? 'on' : ''}}" data-scope="tx" bindtap="setScope">记收支</view>
+      <view class="t {{scope === 'favor' ? 'on' : ''}}" data-scope="favor" bindtap="setScope">记人情</view>
+    </view>
+
+    <block wx:if="{{available === false}}">
+      <view class="err">语音识别和图片识别都还没配置（管理员在后台加 ASR 或 OCR 模型即可）。先手动记一笔吧。</view>
+      <button class="btn ghost" bindtap="goForm">去手动记一笔</button>
+    </block>
+    <button class="btn" wx:elif="{{available}}" bindtap="open">
+      {{canSpeak && canPhoto ? '开始（说话或拍照）' : (canSpeak ? '开始说话' : '拍一张')}}
+    </button>
+    <view class="tip" wx:else>检查识别服务中…</view>
+  </view>
+</view>
+
+<ai-panel
+  show="{{show}}"
+  scope="{{scope}}"
+  can-speak="{{canSpeak}}"
+  can-photo="{{canPhoto}}"
+  bind:close="close"
+  bind:done="onDone"
+/>

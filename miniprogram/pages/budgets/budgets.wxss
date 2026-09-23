@@ -1,0 +1,20 @@
+.month {
+  justify-content: space-between;
+}
+
+/* 顶部的「换月份」下拉：不占满整行，比表单里的下拉小一号 */
+.picker-box.auto {
+  width: auto;
+  min-height: 72rpx;
+  padding: 0 24rpx;
+  font-size: 26rpx;
+}
+
+/* 容器是 auto 宽度，值按内容宽度排，别被 flex:1 撑开 */
+.picker-box.auto .val {
+  flex: none;
+}
+
+.picker-box.auto .caret {
+  font-size: 22rpx;
+}

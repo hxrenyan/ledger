@@ -1,0 +1,8 @@
+{
+  "name": "ledgerProxy",
+  "version": "1.0.0",
+  "description": "把小程序的请求转发到后端 Worker（绕开小程序服务器域名白名单）",
+  "main": "index.js",
+  "private": true,
+  "dependencies": {}
+}

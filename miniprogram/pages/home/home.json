@@ -1,0 +1,9 @@
+{
+  "navigationBarTitleText": "明细",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "month-nav": "/components/month-nav/month-nav",
+    "add-sheet": "/components/add-sheet/add-sheet",
+    "ai-panel": "/components/ai-panel/ai-panel"
+  }
+}

@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:web": "vue-tsc --noEmit -p web/tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "check:miniprogram": "node miniprogram/tools/check.mjs && node miniprogram/tools/smoke.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",

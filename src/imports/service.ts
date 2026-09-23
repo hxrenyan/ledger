@@ -22,6 +22,7 @@ import {
   readAiConfigs,
   type AiParsedRow,
   type SuggestItem,
+  type UtteranceMode,
 } from './ai.ts'
 import { accountNameBySource, suggestAccount, suggestCategory, type AccountLite, type CategoryLite, type Suggestion } from './match.ts'
 import { detectFavor, isPersonName, parseUtterances } from './favor.ts'
@@ -648,11 +649,21 @@ function normalizeSource(source: unknown): string {
 
 export type UtterancePreview = {
   items: PreviewRow[]
-  parser: 'ai' | 'rules'
+  /**
+   * none 只会出现在拍照那条链路：没有配文本解析模型时，规则解析对一整页 OCR
+   * 文字无能为力 —— 与其吐出一堆错行让人逐条删，不如老实说「没配置」，
+   * 界面会把识别出的原文直接摆给用户看。
+   */
+  parser: 'ai' | 'rules' | 'none'
   ai_error: string
 }
 
-export async function previewUtterances(db: Db, ledgerId: string, text: string): Promise<UtterancePreview> {
+export async function previewUtterances(
+  db: Db,
+  ledgerId: string,
+  text: string,
+  mode: UtteranceMode = 'speak',
+): Promise<UtterancePreview> {
   const accounts = await db.all<{ id: string; name: string }>(
     `SELECT id, name FROM accounts WHERE ledger_id = ? AND archived = 0 ORDER BY sort_order ASC, created_at ASC`,
     [ledgerId],
@@ -697,13 +708,29 @@ export async function previewUtterances(db: Db, ledgerId: string, text: string):
       })
 
   const configs = await readAiConfigs(db)
-  if (!configs.some(aiReady)) return { items: byRules(), parser: 'rules', ai_error: '' }
-  const ai = await aiParseUtterances(configs, text, {
-    today: shanghaiDate(),
-    categories: catList.map((c) => `${c.name}(${c.kind === 'income' ? '收入' : '支出'})`),
-    accounts: accounts.map((a) => a.name),
-  })
-  if (!ai.ok) return { items: byRules(), parser: 'rules', ai_error: ai.error }
+  if (!configs.some(aiReady)) {
+    if (mode === 'photo') {
+      return {
+        items: [],
+        parser: 'none',
+        ai_error: '图片识别出文字之后，还需要一个文本解析模型把它整理成流水。请在后台「AI 配置」里加一套。',
+      }
+    }
+    return { items: byRules(), parser: 'rules', ai_error: '' }
+  }
+  const ai = await aiParseUtterances(
+    configs,
+    text,
+    {
+      today: shanghaiDate(),
+      categories: catList.map((c) => `${c.name}(${c.kind === 'income' ? '收入' : '支出'})`),
+      accounts: accounts.map((a) => a.name),
+    },
+    mode,
+  )
+  if (!ai.ok) {
+    return mode === 'photo' ? { items: [], parser: 'none', ai_error: ai.error } : { items: byRules(), parser: 'rules', ai_error: ai.error }
+  }
 
   const items = ai.data.map((item, index) => {
     const row = withSuggestions(
@@ -721,6 +748,9 @@ export async function previewUtterances(db: Db, ledgerId: string, text: string):
       },
       accounts,
       catList,
+      // 第四个参数是「账单来源」（只用来推默认账户：wechat → 微信）。
+      // 口语和拍照都不是账单来源，给 utterance 即可 —— 账户主要靠备注里的
+      // 关键词（suggestAccount）和模型给的名字来定。
       'utterance',
     )
     const fromText = detectFavor([item.source, item.note].filter(Boolean).join(' '), item.direction)

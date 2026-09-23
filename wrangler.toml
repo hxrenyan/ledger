@@ -14,11 +14,13 @@ routes = [
 ]
 
 # 静态页在 public/（Vue 构建产物）；/api/* 必须先走 Worker
+# /MP_verify_* 也要先走 Worker：not_found_handling = single-page-application 会把
+# 找不到的路径兜底成 index.html，否则微信的业务域名校验文件取不到纯文本。
 [assets]
 directory = "./public"
 binding = "ASSETS"
 not_found_handling = "single-page-application"
-run_worker_first = ["/api/*"]
+run_worker_first = ["/api/*", "/MP_verify_*"]
 
 
 # D1：先执行 npm run db:create，把返回的 database_id 填到下面两处
@@ -29,6 +31,8 @@ database_id = "080ebddc-4649-4970-8bf9-b9b95c199c8b"
 preview_database_id = "080ebddc-4649-4970-8bf9-b9b95c199c8b"
 
 # 非敏感配置；JWT_SECRET / ADMIN_TOKEN / WX_APPID / WX_SECRET 放 .dev.vars / wrangler secret
+# 可选：MP_VERIFY = 微信业务域名校验文件的内容（取 /MP_verify_<串>.txt 的纯文本内容），
+#       配置后无需重新构建前端就能通过校验；也可以直接把 txt 丢进 public/。
 [vars]
 
 # ---------------------------------------------------------------------------

@@ -5,6 +5,8 @@ import { badRequest, notFound, unauthorized } from '../http.ts'
 import { readAiConfigs, replaceAiConfigs, resolveEndpoint, testAi, toPublicAi, type AiConfig } from '../imports/ai.ts'
 import { readAudio } from './speech.ts'
 import { readAsrProfiles, replaceAsrProfiles, toPublicAsr, transcribeOne, type AsrProfile } from '../speech/asr.ts'
+import { OCR_PROTOCOL, readOcrProfiles, recognizeOne, replaceOcrProfiles, toPublicOcr, type OcrProfile } from '../ocr/vision.ts'
+import { imageFromFile } from './ocr.ts'
 
 export function registerAdminRoutes(app: Hono<AppEnv>) {
   app.post('/api/v1/admin/login', async (c) => {
@@ -165,6 +167,46 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
     const res = await transcribeOne(profile, audio)
     if (!res.ok) return c.json({ ok: false, message: res.error })
     return c.json({ ok: true, text: res.text })
+  })
+
+  // -----------------------------------------------------------------------
+  // 图片识别：同样多套接力。图片只在识别服务的内存里过一遍，不落库。
+  // -----------------------------------------------------------------------
+  app.get('/api/v1/admin/ocr', async (c) => {
+    const items = await readOcrProfiles(c.get('db'))
+    return c.json({ items: items.map(toPublicOcr) })
+  })
+
+  app.put('/api/v1/admin/ocr', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const items = await replaceOcrProfiles(c.get('db'), body?.items)
+    return c.json({ ok: true, items: items.map(toPublicOcr) })
+  })
+
+  /** 测一套，不走接力。可以带未保存的表单值；密钥留空则用该 id 已存的。 */
+  app.post('/api/v1/admin/ocr/test', async (c) => {
+    const form = await c.req.raw.formData().catch(() => null)
+    if (!form) throw badRequest('请上传图片')
+    const file = form.get('file')
+    if (!(file instanceof File)) throw badRequest('请上传图片')
+    const image = await imageFromFile(file)
+    const id = typeof form.get('id') === 'string' ? String(form.get('id')) : ''
+    const stored = (await readOcrProfiles(c.get('db'))).find((p) => p.id === id)
+    const profile: OcrProfile = {
+      id: stored?.id ?? '',
+      name: typeof form.get('name') === 'string' ? String(form.get('name')) : (stored?.name ?? ''),
+      enabled: true,
+      protocol: OCR_PROTOCOL,
+      baseUrl: strField(form, 'base_url') || stored?.baseUrl || '',
+      apiKey: strField(form, 'api_key') || stored?.apiKey || '',
+      model: strField(form, 'model') || stored?.model || '',
+      sortOrder: 0,
+      updatedAt: 0,
+    }
+    const started = Date.now()
+    const res = await recognizeOne(profile, image)
+    if (!res.ok) return c.json({ ok: false, message: res.error })
+    return c.json({ ok: true, latency_ms: Date.now() - started, chars: res.text.length, text: res.text })
   })
 }
 

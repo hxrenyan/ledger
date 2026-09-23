@@ -1,0 +1,89 @@
+.login {
+  padding: 80rpx 40rpx 60rpx;
+}
+
+.brand {
+  text-align: center;
+  margin-bottom: 60rpx;
+}
+
+.logo {
+  width: 128rpx;
+  height: 128rpx;
+  margin: 0 auto 24rpx;
+  border-radius: 40rpx;
+  background: #3b5bdb;
+  color: #fff;
+  font-size: 56rpx;
+  font-weight: 600;
+  line-height: 128rpx;
+  text-align: center;
+  box-shadow: 0 16rpx 40rpx rgba(59, 91, 219, 0.3);
+}
+
+.app-name {
+  font-size: 44rpx;
+  font-weight: 600;
+}
+
+.slogan {
+  font-size: 24rpx;
+  color: #8e8e93;
+  margin-top: 12rpx;
+}
+
+.btn.wechat {
+  background: #1f9d55;
+}
+
+.alt {
+  text-align: center;
+  font-size: 26rpx;
+  color: #3b5bdb;
+  padding: 20rpx 0 4rpx;
+}
+
+.ph {
+  color: #b8b8bd;
+}
+
+/* 环境逃生口：指向非线上时才出现。 */
+.env {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 32rpx;
+  padding: 20rpx 24rpx;
+  background: #fff4e5;
+  border: 2rpx solid #ffd8a8;
+  border-radius: 20rpx;
+}
+
+.env-tip {
+  flex: 1;
+  min-width: 0;
+  margin-right: 16rpx;
+}
+
+.env-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #8a5a00;
+}
+
+.env-desc {
+  font-size: 22rpx;
+  color: #a97c2f;
+  margin-top: 6rpx;
+}
+
+.env-btn {
+  flex: none;
+  height: 60rpx;
+  line-height: 60rpx;
+  padding: 0 24rpx;
+  border-radius: 30rpx;
+  background: #d97706;
+  color: #fff;
+  font-size: 26rpx;
+}

@@ -1,0 +1,6 @@
+{
+  "navigationBarTitleText": "预算",
+  "usingComponents": {
+    "month-nav": "/components/month-nav/month-nav"
+  }
+}

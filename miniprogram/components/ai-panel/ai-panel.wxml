@@ -1,0 +1,121 @@
+<view class="ap-mask" wx:if="{{show}}" bindtap="close">
+  <view class="ap-sheet" catchtap="noop">
+    <view class="ap-head">
+      <view class="ap-title">智能记账</view>
+      <view class="ap-close" bindtap="close">关闭</view>
+    </view>
+
+    <!-- 待录 / 待拍 / 录音中 -->
+    <block wx:if="{{state === 'idle' || state === 'recording'}}">
+      <!-- 认出了字但没配解析模型：把原文摆出来，别让人以为是拍糊了 -->
+      <view class="ap-notice" wx:if="{{state === 'idle' && parser === 'none'}}">
+        <view class="ap-notice-title">认出了文字，但还整理不成流水</view>
+        <view class="ap-notice-desc">{{aiError}}</view>
+        <scroll-view class="ap-ocr" scroll-y>
+          <text class="ap-ocr-text" user-select="{{true}}">{{rawText}}</text>
+        </scroll-view>
+        <view class="ap-notice-copy" bindtap="copyRawText">复制这段文字</view>
+      </view>
+
+      <view class="ap-hint" wx:if="{{!(state === 'idle' && parser === 'none')}}">{{tip || hintText}}</view>
+
+      <view
+        class="ap-talk {{state === 'recording' ? 'on' : ''}}"
+        wx:if="{{canSpeak || state === 'recording'}}"
+        bindtouchstart="startRecord"
+        bindtouchend="finishRecord"
+        bindtouchcancel="finishRecord"
+      >
+        <text wx:if="{{state === 'recording'}}">{{seconds}}" · 松开结束</text>
+        <text wx:else>按住说话</text>
+      </view>
+
+      <view class="ap-photo" wx:if="{{canPhoto && state !== 'recording'}}" bindtap="pickPhoto">
+        <view class="ap-photo-ico"></view>
+        <text>拍一张小票 / 支付截图</text>
+      </view>
+    </block>
+
+    <!-- 识别中 -->
+    <view class="ap-busy" wx:if="{{state === 'busy'}}">
+      <view class="ap-spin"></view>
+      <view class="ap-hint">{{tip || '识别中…'}}</view>
+    </view>
+
+    <!-- 核对 -->
+    <block wx:if="{{state === 'editing'}}">
+      <view class="ap-text" wx:if="{{text}}">“{{text}}”</view>
+      <view class="ap-meta">
+        共 {{items.length}} 行 · {{parser === 'ai' ? 'AI 解析' : '规则解析'}}
+        <text wx:if="{{aiError}}">（{{aiError}}）</text>
+      </view>
+
+      <scroll-view class="ap-rows" scroll-y>
+        <view class="ap-row {{item.bad ? 'bad' : ''}}" wx:for="{{items}}" wx:key="row">
+          <view class="ap-row-top">
+            <view class="ap-dir {{item.direction}}" data-i="{{index}}" bindtap="onDirection">
+              {{item.direction === 'income' ? '收入' : '支出'}}
+            </view>
+            <input
+              class="ap-amount"
+              type="text"
+              value="{{item.amountText}}"
+              data-i="{{index}}"
+              bindinput="onAmount"
+              placeholder="0.00"
+            />
+            <view class="ap-del" data-i="{{index}}" bindtap="removeRow">删除</view>
+          </view>
+
+          <view class="ap-picks">
+            <picker mode="date" value="{{item.date}}" data-i="{{index}}" bindchange="onDate">
+              <view class="ap-pick">{{item.date}}</view>
+            </picker>
+            <picker
+              mode="selector"
+              range="{{item.direction === 'income' ? incNames : expNames}}"
+              value="{{item.catIndex}}"
+              data-i="{{index}}"
+              bindchange="pickCategory"
+            >
+              <view class="ap-pick">{{item.catName}}</view>
+            </picker>
+            <picker
+              mode="selector"
+              range="{{acctNames}}"
+              value="{{item.acctIndex}}"
+              data-i="{{index}}"
+              bindchange="pickAccount"
+            >
+              <view class="ap-pick">{{item.acctName}}</view>
+            </picker>
+          </view>
+
+          <input
+            class="ap-note"
+            value="{{item.noteText}}"
+            data-i="{{index}}"
+            bindinput="onNote"
+            placeholder="备注"
+          />
+
+          <input
+            wx:if="{{item.isFavor}}"
+            class="ap-note"
+            value="{{item.counterpartyText}}"
+            data-i="{{index}}"
+            bindinput="onCounterparty"
+            placeholder="对方姓名（记成人情）"
+          />
+
+          <view class="ap-bad-reason" wx:if="{{item.bad}}">{{item.reason || '这一行没解析出来'}}</view>
+        </view>
+      </scroll-view>
+
+      <view class="ap-actions">
+        <button class="btn ghost" bindtap="retry">{{mode === 'photo' ? '换一张' : '重说'}}</button>
+        <button class="btn" bindtap="commit">保存 {{items.length}} 笔</button>
+      </view>
+    </block>
+  </view>
+</view>

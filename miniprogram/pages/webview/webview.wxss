@@ -1,0 +1,47 @@
+.loading,
+.fallback {
+  padding: 120rpx 48rpx;
+  text-align: center;
+}
+
+.loading-text {
+  font-size: 28rpx;
+  color: #8e8e93;
+}
+
+.fb-badge {
+  display: inline-block;
+  padding: 6rpx 20rpx;
+  border-radius: 999rpx;
+  background: #eef1fd;
+  color: #3b5bdb;
+  font-size: 22rpx;
+}
+
+.fb-title {
+  margin-top: 28rpx;
+  font-size: 34rpx;
+  font-weight: 600;
+  color: #1c1c1e;
+}
+
+.fb-msg {
+  margin-top: 16rpx;
+  font-size: 28rpx;
+  color: #6b6b70;
+}
+
+.fb-hint {
+  margin-top: 12rpx;
+  font-size: 24rpx;
+  color: #a1a1a6;
+  line-height: 1.6;
+}
+
+.fb-btn {
+  margin-top: 56rpx;
+  background: #3b5bdb;
+  color: #fff;
+  font-size: 30rpx;
+  border-radius: 16rpx;
+}

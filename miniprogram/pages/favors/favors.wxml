@@ -1,0 +1,72 @@
+<view class="page with-fab">
+  <view class="summary">
+    <view class="s">
+      <view class="k">送出</view>
+      <view class="v expense">{{givenText}}</view>
+    </view>
+    <view class="s">
+      <view class="k">收到</view>
+      <view class="v income">{{receivedText}}</view>
+    </view>
+    <view class="s">
+      <view class="k">差额</view>
+      <view class="v {{netClass}}">{{netText}}</view>
+    </view>
+  </view>
+
+  <view class="tabs">
+    <view class="t {{tab === 'gifts' ? 'on' : ''}}" data-t="gifts" bindtap="switchTab">往来记录</view>
+    <view class="t {{tab === 'contacts' ? 'on' : ''}}" data-t="contacts" bindtap="switchTab">联系人</view>
+  </view>
+
+  <block wx:if="{{tab === 'gifts'}}">
+    <!-- 只挂在「往来记录」这一栏：联系人那一栏是全量的，跟月份没关系 -->
+    <month-nav month="{{month}}" bind:change="onMonthChange" />
+
+    <view class="card">
+      <input class="input" value="{{q}}" bindinput="onSearch" placeholder="搜索姓名 / 事由 / 备注" placeholder-class="ph" />
+    </view>
+
+    <view class="empty" wx:if="{{loading}}">加载中…</view>
+    <view class="empty" wx:elif="{{empty}}">{{emptyText}}</view>
+
+    <view class="card" wx:for="{{groups}}" wx:key="key">
+      <view class="row" style="padding-top: 0">
+        <view class="grow title">{{item.label}}</view>
+      </view>
+      <view
+        class="row"
+        wx:for="{{item.items}}"
+        wx:for-item="g"
+        wx:key="id"
+        data-id="{{g.id}}"
+        bindtap="editGift"
+        bindlongpress="removeGift"
+      >
+        <view class="grow">
+          <view class="title">{{g.contact}}<text wx:if="{{g.occasion}}"> · {{g.occasion}}</text></view>
+          <view class="muted">{{g.kindText}}<text wx:if="{{g.note}}"> · {{g.note}}</text></view>
+        </view>
+        <view class="amount {{g.kind === 'give' ? 'expense' : 'income'}}">{{g.amountText}}</view>
+      </view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <view class="empty" wx:if="{{contactEmpty}}">还没有联系人，点下面新增</view>
+    <view class="card" wx:if="{{contacts.length}}">
+      <view class="row" wx:for="{{contacts}}" wx:key="id" data-id="{{item.id}}" bindtap="openPerson">
+        <view class="avatar">{{item.initial}}</view>
+        <view class="grow">
+          <view class="title">{{item.name}}<text wx:if="{{item.relation}}"> · {{item.relation}}</text></view>
+          <view class="muted">{{item.summary}}</view>
+        </view>
+        <view class="amount {{item.netClass}}">{{item.netText}}</view>
+        <view class="arrow">›</view>
+      </view>
+    </view>
+    <button class="btn ghost" bindtap="addContact">新增联系人</button>
+  </block>
+</view>
+
+<view class="fab" bindtap="addGift">+</view>

@@ -1,0 +1,17 @@
+.card.net {
+  text-align: center;
+  padding: 36rpx 28rpx 28rpx;
+}
+
+.net-v {
+  font-size: 68rpx;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  margin: 12rpx 0 8rpx;
+  overflow-wrap: anywhere;
+}
+
+.arrow {
+  color: #8e8e93;
+  font-size: 30rpx;
+}

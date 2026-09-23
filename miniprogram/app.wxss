@@ -1,0 +1,616 @@
+/* 全局样式：色板与组件类与 web/src/style.css 保持一致，方便两边对照维护。 */
+
+page {
+  --bg: #f4f5f8;
+  --card: #ffffff;
+  --text: #1d1d1f;
+  --muted: #8e8e93;
+  --line: #ececef;
+  --expense: #e5484d;
+  --income: #1f9d55;
+  --brand: #3b5bdb;
+  --brand-soft: #eef0ff;
+
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", sans-serif;
+  font-size: 28rpx;
+}
+
+.page {
+  padding: 24rpx 24rpx 48rpx;
+}
+
+/* 底部有悬浮加号或 tabBar 时留出空间 */
+.page.with-fab {
+  padding-bottom: 220rpx;
+}
+
+.card {
+  background: var(--card);
+  border-radius: 32rpx;
+  padding: 28rpx;
+  box-shadow: 0 8rpx 32rpx rgba(20, 20, 40, 0.05);
+}
+
+.card + .card {
+  margin-top: 24rpx;
+}
+
+h1,
+.h1 {
+  font-size: 40rpx;
+  font-weight: 600;
+  margin: 0 0 24rpx;
+}
+
+h2,
+.h2 {
+  font-size: 30rpx;
+  font-weight: 600;
+  margin: 0 0 20rpx;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+  margin-bottom: 24rpx;
+}
+
+.head .h1 {
+  margin: 0;
+  font-size: 40rpx;
+}
+
+.head .spacer {
+  flex: 1;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 24rpx;
+}
+
+.expense {
+  color: var(--expense);
+}
+
+.income {
+  color: var(--income);
+}
+
+.amount {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.err {
+  color: var(--expense);
+  font-size: 26rpx;
+  margin: 12rpx 0;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16rpx;
+  padding: 24rpx 0;
+  border-bottom: 1rpx solid var(--line);
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+.row .grow {
+  flex: 1;
+  min-width: 0;
+}
+
+.row .title {
+  font-size: 28rpx;
+  overflow-wrap: anywhere;
+}
+
+/* 按钮 */
+.btn {
+  border: 0;
+  border-radius: 24rpx;
+  padding: 24rpx 32rpx;
+  background: var(--brand);
+  color: #fff;
+  width: 100%;
+  min-height: 88rpx;
+  font-size: 30rpx;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.btn.ghost {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.btn.danger {
+  background: var(--expense);
+}
+
+.btn.compact {
+  width: auto;
+  min-height: 64rpx;
+  padding: 12rpx 24rpx;
+  font-size: 26rpx;
+  border-radius: 20rpx;
+}
+
+.btn[disabled] {
+  opacity: 0.5;
+}
+
+.btn + .btn {
+  margin-top: 16rpx;
+}
+
+.text-btn {
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  font-size: 26rpx;
+  font-weight: 600;
+  padding: 0;
+  line-height: 1.6;
+}
+
+.text-btn::after {
+  border: 0;
+}
+
+/* 表单 */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
+}
+
+.field .label {
+  font-size: 26rpx;
+  color: var(--muted);
+}
+
+/* 输入框必须给显式高度。
+   小程序 <input> 的高度只由字号撑开，加 padding 会把内容区压到小于行高，
+   文字上下被裁掉（真机 iOS 尤其明显，开发者工具的模拟器不一定看得出来）。
+   所以统一用 height 定高、padding 只做左右。 */
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 96rpx;
+  padding: 0 24rpx;
+  border: 1rpx solid var(--line);
+  border-radius: 24rpx;
+  background: #fff;
+  font-size: 30rpx;
+}
+
+/* 下拉选择：值要能省略，箭头不能被长名字挤走或换行 */
+.picker-box {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 96rpx;
+  padding: 0 24rpx;
+  border: 1rpx solid var(--line);
+  border-radius: 24rpx;
+  background: #fff;
+  font-size: 30rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+}
+
+.picker-box .val {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.picker-box .val.ph,
+.picker-box .caret {
+  color: var(--muted);
+}
+
+.picker-box .caret {
+  flex: none;
+  font-size: 24rpx;
+}
+
+/* 金额输入字号大，高度同样要显式给 */
+.amount-input {
+  height: 132rpx;
+  padding: 0 24rpx;
+  font-size: 56rpx;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.switch-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16rpx;
+  padding: 12rpx 0;
+  font-size: 28rpx;
+}
+
+/* 分类 / 事由 chips */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.chip {
+  border: 1rpx solid var(--line);
+  background: #fff;
+  border-radius: 999rpx;
+  padding: 14rpx 24rpx;
+  font-size: 26rpx;
+  line-height: 1.3;
+}
+
+.chip.on {
+  border-color: var(--brand);
+  color: var(--brand);
+  background: var(--brand-soft);
+  font-weight: 600;
+}
+
+/* 收支类型切换 */
+.kind {
+  display: flex;
+  gap: 16rpx;
+  margin-bottom: 24rpx;
+}
+
+.kind .k {
+  flex: 1;
+  text-align: center;
+  padding: 22rpx 8rpx;
+  border-radius: 24rpx;
+  background: #eceef5;
+  font-size: 28rpx;
+}
+
+.kind .k.on.expense {
+  background: #ffe9e8;
+  color: var(--expense);
+  font-weight: 600;
+}
+
+.kind .k.on.income {
+  background: #e6f6ec;
+  color: var(--income);
+  font-weight: 600;
+}
+
+.kind .k.on.plain {
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+/* 顶部 tabs（页内） */
+.tabs {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 24rpx;
+}
+
+.tabs .t {
+  flex: 1;
+  text-align: center;
+  padding: 18rpx 8rpx;
+  border-radius: 20rpx;
+  background: #eceef5;
+  color: var(--muted);
+  font-size: 26rpx;
+}
+
+.tabs .t.on {
+  background: #fff;
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* 月份切换条不在这里 —— 它是 components/month-nav，样式随组件走。
+   组件样式是隔离的，写在这儿对它无效，反而会变成两套定义。 */
+
+/* 两列汇总 */
+.summary {
+  display: flex;
+  gap: 20rpx;
+  margin: 20rpx 0 24rpx;
+}
+
+.summary .s {
+  flex: 1;
+  background: #fff;
+  border-radius: 28rpx;
+  padding: 24rpx;
+  box-shadow: 0 8rpx 32rpx rgba(20, 20, 40, 0.05);
+}
+
+.summary .s .k {
+  font-size: 24rpx;
+  color: var(--muted);
+}
+
+.summary .s .v {
+  font-size: 40rpx;
+  margin-top: 8rpx;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+/* 进度条 */
+.bar {
+  height: 14rpx;
+  background: #eceef5;
+  border-radius: 99rpx;
+  overflow: hidden;
+}
+
+.bar .i {
+  height: 100%;
+  background: var(--brand);
+}
+
+.bar.over .i {
+  background: var(--expense);
+}
+
+.bar.share .i {
+  background: var(--expense);
+  opacity: 0.75;
+}
+
+.bar.income .i {
+  background: var(--income);
+}
+
+/* 日历 */
+.cal {
+  display: flex;
+  flex-wrap: wrap;
+  background: #fff;
+  border-radius: 32rpx;
+  padding: 16rpx 8rpx 8rpx;
+  box-shadow: 0 8rpx 32rpx rgba(20, 20, 40, 0.05);
+}
+
+/* 7 列由 flex-basis 定死（1/7），不用 width 百分比凑整：
+   否则舍入误差会让某一行只摆下 6 个，整个网格错位。 */
+.cal .w,
+.cal .d {
+  flex: 0 0 14.2857%;
+}
+
+.cal .w {
+  text-align: center;
+  font-size: 24rpx;
+  color: var(--muted);
+  padding: 8rpx 0;
+}
+
+.cal .d {
+  height: 76rpx;
+  line-height: 76rpx;
+  text-align: center;
+  font-size: 26rpx;
+  border-radius: 20rpx;
+}
+
+.cal .d.has {
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.cal .d.on {
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* 今天：数字下方一个小圆点，保证「今天」在没被选中时也认得出来。
+   选中态（蓝底）时圆点转白，否则同色画在同色底上等于没画。 */
+.cal .d.today {
+  position: relative;
+}
+
+.cal .d.today::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 10rpx;
+  width: 8rpx;
+  height: 8rpx;
+  margin-left: -4rpx;
+  border-radius: 50%;
+  background: var(--brand);
+}
+
+.cal .d.on.today::after {
+  background: #fff;
+}
+
+/* 统计 */
+.stat-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 16rpx;
+  font-size: 24rpx;
+  color: var(--muted);
+}
+
+.stat-net {
+  font-size: 60rpx;
+  font-weight: 600;
+  letter-spacing: -1rpx;
+  margin: 12rpx 0 16rpx;
+  overflow-wrap: anywhere;
+}
+
+.stat-h {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16rpx;
+  margin-bottom: 20rpx;
+}
+
+.chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 12rpx;
+  margin-top: 28rpx;
+}
+
+.chart .col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12rpx;
+}
+
+.chart .bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6rpx;
+  width: 100%;
+  height: 180rpx;
+}
+
+.chart .bars .b {
+  flex: 1;
+  border-radius: 8rpx 8rpx 4rpx 4rpx;
+  opacity: 0.85;
+}
+
+.chart .bars .b.income {
+  background: var(--income);
+}
+
+.chart .bars .b.expense {
+  background: var(--expense);
+}
+
+.chart .col.on .bars .b {
+  opacity: 1;
+}
+
+.chart .x {
+  font-size: 22rpx;
+  color: var(--muted);
+}
+
+.chart .col.on .x {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.cat {
+  padding: 20rpx 0;
+  border-bottom: 1rpx solid var(--line);
+}
+
+.cat:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.cat .top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16rpx;
+  font-size: 28rpx;
+  margin-bottom: 12rpx;
+}
+
+.cat .note {
+  font-size: 24rpx;
+  color: var(--muted);
+  margin-top: 12rpx;
+}
+
+/* 悬浮加号 */
+.fab {
+  position: fixed;
+  right: 40rpx;
+  bottom: 60rpx;
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 56rpx;
+  background: var(--brand);
+  color: #fff;
+  font-size: 60rpx;
+  line-height: 112rpx;
+  text-align: center;
+  box-shadow: 0 16rpx 40rpx rgba(59, 91, 219, 0.35);
+  z-index: 20;
+}
+
+.fab::after {
+  border: 0;
+}
+
+/* 头像块 / 列表入口 */
+.avatar {
+  width: 96rpx;
+  height: 96rpx;
+  border-radius: 48rpx;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 36rpx;
+  font-weight: 600;
+  text-align: center;
+  line-height: 96rpx;
+}
+
+.link-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 28rpx 0;
+  border-bottom: 1rpx solid var(--line);
+  font-size: 30rpx;
+}
+
+.link-row:last-child {
+  border-bottom: 0;
+}
+
+.link-row .arrow {
+  color: var(--muted);
+  font-size: 26rpx;
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 26rpx;
+  padding: 24rpx 0;
+  text-align: center;
+}
+
+.tip {
+  font-size: 24rpx;
+  color: var(--muted);
+  line-height: 1.7;
+  margin: 16rpx 0;
+}

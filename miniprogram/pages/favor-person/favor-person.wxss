@@ -1,0 +1,3 @@
+.page.with-action {
+  padding-bottom: 160rpx;
+}

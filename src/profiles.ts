@@ -1,5 +1,5 @@
 /**
- * llm（账单解析）和 asr（语音识别）共用 ai_profiles。
+ * llm（账单解析）/ asr（语音识别）/ ocr（图片识别）共用 ai_profiles。
  * 按 kind 分开读写；同一 kind 内 sort_order 就是失败后的接力顺序。
  */
 
@@ -7,7 +7,7 @@ import type { Db, Stmt } from './db/types.ts'
 import { badRequest } from './http.ts'
 import { newId } from './seed.ts'
 
-export type ProfileKind = 'llm' | 'asr'
+export type ProfileKind = 'llm' | 'asr' | 'ocr'
 
 export type Profile = {
   id: string

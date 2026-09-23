@@ -1,0 +1,66 @@
+{
+  "pages": [
+    "pages/home/home",
+    "pages/login/login",
+    "pages/tx-form/tx-form",
+    "pages/favors/favors",
+    "pages/favor-person/favor-person",
+    "pages/gift-form/gift-form",
+    "pages/assets/assets",
+    "pages/me/me",
+    "pages/ledger/ledger",
+    "pages/budgets/budgets",
+    "pages/categories/categories",
+    "pages/recurring/recurring",
+    "pages/speak/speak",
+    "pages/import/import",
+    "pages/webview/webview"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#f4f5f8",
+    "navigationBarTitleText": "记账",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f4f5f8",
+    "backgroundTextStyle": "light",
+    "enablePullDownRefresh": false
+  },
+  "tabBar": {
+    "color": "#8e8e93",
+    "selectedColor": "#3b5bdb",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/home/home",
+        "text": "明细",
+        "iconPath": "images/tab-list.png",
+        "selectedIconPath": "images/tab-list-on.png"
+      },
+      {
+        "pagePath": "pages/favors/favors",
+        "text": "人情",
+        "iconPath": "images/tab-gift.png",
+        "selectedIconPath": "images/tab-gift-on.png"
+      },
+      {
+        "pagePath": "pages/assets/assets",
+        "text": "资产",
+        "iconPath": "images/tab-wallet.png",
+        "selectedIconPath": "images/tab-wallet-on.png"
+      },
+      {
+        "pagePath": "pages/me/me",
+        "text": "我的",
+        "iconPath": "images/tab-user.png",
+        "selectedIconPath": "images/tab-user-on.png"
+      }
+    ]
+  },
+  "usingComponents": {
+    "add-sheet": "/components/add-sheet/add-sheet",
+    "ai-panel": "/components/ai-panel/ai-panel"
+  },
+  "style": "v2",
+  "lazyCodeLoading": "requiredComponents",
+  "sitemapLocation": "sitemap.json"
+}

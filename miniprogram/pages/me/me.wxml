@@ -1,0 +1,70 @@
+<view class="page">
+  <view class="card user">
+    <view class="avatar-lg">{{initial}}</view>
+    <view class="user-main">
+      <view class="nick">{{nickname}}</view>
+      <view class="muted">
+        {{username ? '账号 ' + username : '微信登录' }}
+        <text wx:if="{{wechatBound}}"> · 已绑微信</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="link-row" data-key="ledger" bindtap="go">
+      <view>账本与成员</view>
+      <view class="arrow">{{ledgerName}}（{{ledgerCount}}）›</view>
+    </view>
+    <view class="link-row" data-key="budgets" bindtap="go">
+      <view>月预算</view>
+      <view class="arrow">›</view>
+    </view>
+    <view class="link-row" data-key="categories" bindtap="go">
+      <view>分类管理</view>
+      <view class="arrow">›</view>
+    </view>
+    <view class="link-row" data-key="recurring" bindtap="go">
+      <view>周期记账</view>
+      <view class="arrow">›</view>
+    </view>
+    <view class="link-row" data-key="import" bindtap="go">
+      <view>账单导入</view>
+      <view class="arrow">›</view>
+    </view>
+    <view class="link-row" data-key="speak" bindtap="go">
+      <view>语音记账</view>
+      <view class="arrow">›</view>
+    </view>
+    <view class="link-row" wx:if="{{webviewHost}}" bindtap="openWebview">
+      <view>网页版</view>
+      <view class="arrow">{{webviewHost}} ›</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="link-row" bindtap="exportCsv">
+      <view>导出账单 CSV</view>
+      <view class="arrow">›</view>
+    </view>
+    <view class="link-row" wx:if="{{wechatBound && !hasPassword}}" bindtap="bindAccount">
+      <view>绑定已有账号</view>
+      <view class="arrow">把老账号并进来 ›</view>
+    </view>
+    <view class="link-row" bindtap="about">
+      <view>关于</view>
+      <view class="arrow">›</view>
+    </view>
+  </view>
+
+  <view class="card">
+    <view class="h2">开发者</view>
+    <view class="link-row" bindtap="pickEnv">
+      <view>后端环境</view>
+      <view class="arrow">{{envLabel}} ›</view>
+    </view>
+    <view class="tip">当前：{{baseUrl}}</view>
+    <view class="tip">切换环境会清空本地会话，需要重新登录。正式发布前记得切回「线上」。</view>
+  </view>
+
+  <button class="btn ghost" bindtap="logout">退出登录</button>
+</view>

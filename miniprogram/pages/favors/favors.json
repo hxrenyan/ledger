@@ -1,0 +1,7 @@
+{
+  "navigationBarTitleText": "人情",
+  "enablePullDownRefresh": true,
+  "usingComponents": {
+    "month-nav": "/components/month-nav/month-nav"
+  }
+}

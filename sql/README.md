@@ -46,6 +46,8 @@ npm run db:migrate-all-remote
 | `recurrences` | TEXT | 周期记账（只支持收入 / 支出） |
 | `import_batches` | TEXT | 账单导入批次台账（回溯 / 撤销） |
 | `ai_profiles` | `(kind, id)` | 模型配置。`llm` 解析账单，`asr` 语音识别；同 kind 内按 `sort_order` 接力。不保存录音和账单原文 |
+| `app_configs` | `key` | 服务端业务配置。目前存 `webview.enabled` / `webview.host` / `webview.pages`（页面归属表，原生 or web-view）。改完 `deploy` 即生效，不用发版 |
+| `handoff_codes` | `code_hash` | 一次性会话交接码。web-view 里没有 `wx.login`，网页侧靠它换回会话；只存 SHA-256，5 分钟过期，用一次即失效 |
 
 新环境只用 `schema.sql`。线上已有数据只追加 `sql/migrations/`，不要对生产库重跑全量 schema。
 

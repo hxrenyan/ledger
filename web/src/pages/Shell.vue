@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { inMiniProgram, navTo, switchTab } from '../bridge.ts'
 import VoiceSheet from '../components/VoiceSheet.vue'
 import { api, type SessionBody } from '../api.ts'
 import { notifyDataChange } from '../refresh.ts'
@@ -22,12 +23,44 @@ const personId = computed(() =>
   route.path.startsWith('/favors/person/') ? String(route.params.id ?? '') : '',
 )
 
+/**
+ * 底部导航。
+ *
+ * 这四页在小程序里全是原生页（要 wx.login / 录音 / 拍照 / 选图），
+ * 所以在 web-view 里点它们 = 把用户交回原生页面；普通浏览器里才是前端路由。
+ * 这样网页版是「进去看一眼再退回来」的长尾页，不是和原生并行的一套壳——
+ * 既是体验考虑，也避免被判成「纯网页套壳」。
+ */
+const navItems = [
+  { label: '明细', to: '/', mini: '/pages/home/home', match: (p: string) => p === '/' },
+  { label: '人情', to: '/favors', mini: '/pages/favors/favors', match: (p: string) => p.startsWith('/favors') },
+  { label: '资产', to: '/accounts', mini: '/pages/assets/assets', match: (p: string) => p.startsWith('/accounts') },
+  { label: '我的', to: '/me', mini: '/pages/me/me', match: (p: string) => p.startsWith('/me') },
+]
+
+function goNav(item: (typeof navItems)[number]) {
+  if (inMiniProgram) {
+    switchTab(item.mini)
+    return
+  }
+  router.push(item.to)
+}
+
 watch(() => route.path, () => {
   addOpen.value = false
   voiceScope.value = null
 })
 
 function openAdd() {
+  // 记账表单一律用原生页：要拍照存收据、要录音，网页在 web-view 里拿不到这些能力。
+  if (inMiniProgram) {
+    if (!inFavor.value) {
+      navTo('/pages/tx-form/tx-form')
+      return
+    }
+    navTo(personId.value ? `/pages/gift-form/gift-form?contact=${personId.value}` : '/pages/gift-form/gift-form')
+    return
+  }
   voiceScope.value = null
   addOpen.value = true
 }
@@ -77,11 +110,13 @@ onMounted(async () => {
       <router-view />
     </div>
     <nav class="nav">
-      <router-link to="/" :class="{ on: route.path === '/' }">明细</router-link>
-      <router-link to="/favors" :class="{ on: route.path.startsWith('/favors') }">人情</router-link>
+      <template v-for="item in navItems.slice(0, 2)" :key="item.label">
+        <a :href="item.to" :class="{ on: item.match(route.path) }" @click.prevent="goNav(item)">{{ item.label }}</a>
+      </template>
       <button class="nav-plus" type="button" @click="openAdd">+</button>
-      <router-link to="/accounts" :class="{ on: route.path.startsWith('/accounts') }">资产</router-link>
-      <router-link to="/me" :class="{ on: route.path.startsWith('/me') }">我的</router-link>
+      <template v-for="item in navItems.slice(2)" :key="item.label">
+        <a :href="item.to" :class="{ on: item.match(route.path) }" @click.prevent="goNav(item)">{{ item.label }}</a>
+      </template>
     </nav>
 
     <p v-if="toast" class="toast">{{ toast }}</p>
