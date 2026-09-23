@@ -458,6 +458,59 @@ for (const file of jsFiles) {
 }
 
 // ---------------------------------------------------------------------------
+// 17. recorder 的全局回调不许按实例注册
+//
+// wx.getRecorderManager() 是全局单例，而 onStop / onError 是「后注册覆盖先注册」。
+// 浮层同时挂在明细页与智能记账整页：一旦按实例注册（this.recorder.onStop(...)），
+// 后挂载的那个就把先前的覆盖掉；从整页返回（整页实例已销毁）后再录音，回调就打在
+// 已销毁的实例上 —— 另一个页面的浮层永远停在「识别中…」，不报错也不超时，
+// 只能杀掉小程序重进。
+//
+// 正确做法：走 ai-panel 里的 bindRecorder —— 模块级只挂一个回调，再转发给
+// 「本次真正发起录音」的实例（activePanel）。
+// ---------------------------------------------------------------------------
+const RECORDER_EVENTS = ["onStop", "onError", "onStart", "onPause", "onFrameRecorded"];
+for (const file of jsFiles) {
+  if (file.startsWith(join(root, "tools"))) continue;
+  const src = readFileSync(file, "utf8");
+  for (const evt of RECORDER_EVENTS) {
+    if (new RegExp(`recorder\\s*\\.\\s*${evt}\\s*\\(`).test(src)) {
+      err(
+        `${rel(file)} 直接调了 recorder.${evt}()：recorder 是全局单例，回调会互相覆盖，` +
+          `必须走 ai-panel 的 bindRecorder 转发（否则另一个页面的浮层会永远停在「识别中…」）`,
+      );
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 18. 认图的客户端超时必须大于后端的接力预算
+//
+// 写反了的现象很隐蔽：后端本来会给出「哪套配置、什么原因」这种可读错误，
+// 却总被客户端抢先盖成一句笼统的「识别超时」，而且那次后端调用其实白跑了。
+// 这条路本身很慢（视觉模型首 token 实测 30~60 秒，见 src/ocr/vision.ts 顶部），
+// 两边都是调优时容易被单独改动的值，所以在这里钉住它们的大小关系。
+// ---------------------------------------------------------------------------
+const VISION_SRC = join(repoRoot, "src", "ocr", "vision.ts");
+const REQUEST_UTIL = join(root, "utils", "request.js");
+if (existsSync(VISION_SRC) && existsSync(REQUEST_UTIL)) {
+  const num = (src, name) => {
+    const m = src.match(new RegExp(`const ${name}\\s*=\\s*([\\d_]+)`));
+    return m ? Number(m[1].replace(/_/g, "")) : NaN;
+  };
+  const clientMs = num(readFileSync(REQUEST_UTIL, "utf8"), "SCAN_TIMEOUT_MS");
+  const serverMs = num(readFileSync(VISION_SRC, "utf8"), "CHAIN_BUDGET_MS");
+  if (!clientMs || !serverMs) {
+    err("取不到 SCAN_TIMEOUT_MS（utils/request.js）或 CHAIN_BUDGET_MS（src/ocr/vision.ts）");
+  } else if (clientMs <= serverMs) {
+    err(
+      `认图的客户端超时（${clientMs}ms）不大于后端接力预算（${serverMs}ms）：` +
+        `后端还没走完客户端就先放弃了，可读的错误永远送不回来`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 报告
 // ---------------------------------------------------------------------------
 console.log(`检查 ${files.length} 个文件（${jsFiles.length} 个 js / ${jsonFiles.length} 个 json）`);

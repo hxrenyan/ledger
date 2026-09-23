@@ -11,6 +11,15 @@ const config = require('../config')
 const transport = require('./transport')
 const session = require('./session')
 
+/**
+ * 上传（语音转写 / 认图）的默认超时，也是 withTimeout 的兜底值。
+ *
+ * 这两个都是只读接口（认得出就返回文字，没写库），所以超时后丢弃结果没有副作用。
+ * 值要**大于**服务端自己的单套超时：让服务端有机会先把可读的错误（比如
+ * 「某套配置返回 401」）送回来，而不是被客户端的超时抢先盖成一句笼统的「识别超时」。
+ */
+const UPLOAD_TIMEOUT_MS = 120000
+
 function toError(res, fallback) {
   const body = res && res.data
   const message = body && typeof body.message === 'string' && body.message ? body.message : fallback
@@ -31,10 +40,47 @@ function queryString(data) {
   return parts.join('&')
 }
 
+/**
+ * 给一个 Promise 套上「自己的」超时。
+ *
+ * 为什么不能只靠 wx.request 的 timeout：那个参数兜不住「连接已经建立、
+ * 后端迟迟不响应」这种最常见的情况 —— 认图正好撞在这个场景上（视觉模型
+ * 首 token 就可能几十秒），浮层于是永远停在「识别中…」：不报错、不结束，
+ * 只能杀进程重进。所以超时必须在 JS 这一层兜死。
+ *
+ * 超时的语义只是「不再等」，**不会重发**。写类接口绝不能靠它重试 ——
+ * 请求可能已经被后端处理并落库了（这与 transport 里「超时不降级」同一条原则）。
+ */
+function withTimeout(promise, ms, message) {
+  return new Promise(function (resolve, reject) {
+    let done = false
+    const timer = setTimeout(function () {
+      if (done) return
+      done = true
+      reject({ code: 'timeout', message: message, status: 0 })
+    }, ms)
+    promise.then(
+      function (v) {
+        if (done) return
+        done = true
+        clearTimeout(timer)
+        resolve(v)
+      },
+      function (e) {
+        if (done) return
+        done = true
+        clearTimeout(timer)
+        reject(e)
+      },
+    )
+  })
+}
+
 function request(options) {
   const opts = options || {}
   const path = opts.path
   const withLedger = opts.withLedger !== false
+  const timeout = opts.timeout || 20000
   const token = session.getToken()
   const ledgerId = session.getLedgerId()
 
@@ -45,33 +91,35 @@ function request(options) {
     opts.header || {},
   )
 
-  return transport
-    .send({
+  return withTimeout(
+    transport.send({
       path: path,
       method: (opts.method || 'GET').toUpperCase(),
       data: opts.data || undefined,
       header: header,
-      timeout: opts.timeout || 20000,
-    })
-    .then(function (res) {
-      if (res.statusCode === 401) {
-        // 登录类接口的 401 是「密码错」这类业务语义，不能当成掉登录。
-        //
-        // 还要确认这是「当前这条会话」的 401：token 是发请求时捕获的，
-        // 响应回来时可能已经登录过（或换过账号）了。这种迟到的 401 若照样
-        // 清会话跳登录，现象就是「刚登录进去又被踢回登录页」，极难定位。
-        // 因此只有 token 与当前存储的一致，才认定这条会话真的失效。
-        if (path.indexOf('/api/v1/auth/') !== 0 && token === session.getToken()) {
-          session.clear()
-          wx.reLaunch({ url: '/pages/login/login' })
-        }
-        throw toError(res, '登录已过期')
+      timeout: timeout,
+    }),
+    timeout,
+    '请求超时，请稍后重试',
+  ).then(function (res) {
+    if (res.statusCode === 401) {
+      // 登录类接口的 401 是「密码错」这类业务语义，不能当成掉登录。
+      //
+      // 还要确认这是「当前这条会话」的 401：token 是发请求时捕获的，
+      // 响应回来时可能已经登录过（或换过账号）了。这种迟到的 401 若照样
+      // 清会话跳登录，现象就是「刚登录进去又被踢回登录页」，极难定位。
+      // 因此只有 token 与当前存储的一致，才认定这条会话真的失效。
+      if (path.indexOf('/api/v1/auth/') !== 0 && token === session.getToken()) {
+        session.clear()
+        wx.reLaunch({ url: '/pages/login/login' })
       }
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        return res.data
-      }
-      throw toError(res, '请求失败')
-    })
+      throw toError(res, '登录已过期')
+    }
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      return res.data
+    }
+    throw toError(res, '请求失败')
+  })
 }
 
 /**
@@ -302,10 +350,11 @@ function uploadBinary(options) {
   const mime = opts.mime || AUDIO_MIME[ext] || 'application/octet-stream'
   const field = opts.field || 'file'
   const extra = opts.formData || {}
+  const timeout = opts.timeout || UPLOAD_TIMEOUT_MS
   const token = session.getToken()
   const ledgerId = session.getLedgerId()
 
-  return readFileBytes(opts.filePath).then(function (bytes) {
+  const sent = readFileBytes(opts.filePath).then(function (bytes) {
     const packed = buildMultipart(field, 'upload.' + ext, mime, bytes, extra)
     return new Promise(function (resolve, reject) {
       wx.request({
@@ -317,7 +366,9 @@ function uploadBinary(options) {
           ledgerId ? { 'x-ledger-id': ledgerId } : {},
         ),
         data: packed.body,
-        timeout: opts.timeout || 120000,
+        // 这个参数也传着，但真正兜底的是下面那层 withTimeout ——
+        // wx.request 的 timeout 管不到「连接已建立、后端不吭声」。
+        timeout: timeout,
         success: function (res) {
           let body = null
           try {
@@ -341,6 +392,8 @@ function uploadBinary(options) {
       })
     })
   })
+
+  return withTimeout(sent, timeout, '识别超时，请重试')
 }
 
 const IMAGE_EXT = {
@@ -363,6 +416,16 @@ const IMAGE_EXT = {
 const DIRECT_IMAGE_BYTES = 3 * 1024 * 1024
 const CLOUD_IMAGE_BYTES = 600 * 1024
 
+/**
+ * 认图的超时。
+ *
+ * 后端这条链路本身就很慢：实测视觉模型首 token 就要 30~60 秒（见 src/ocr/vision.ts
+ * 顶部的实测数据），而且几条配置接力还会累加。后端单套 90 秒、整条 100 秒，
+ * 这里给 120 秒 —— 让「哪一套失败、为什么」这种可读错误先回来，
+ * 而不是被客户端抢先盖成一句笼统的「识别超时」。
+ */
+const SCAN_TIMEOUT_MS = 120000
+
 function imageLimit() {
   return transport.usingCloud() ? CLOUD_IMAGE_BYTES : DIRECT_IMAGE_BYTES
 }
@@ -380,7 +443,7 @@ function imageLimit() {
 function scanImage(options) {
   const opts = options || {}
   const mime = opts.mime || 'image/jpeg'
-  const timeout = opts.timeout || 60000
+  const timeout = opts.timeout || SCAN_TIMEOUT_MS
   if (transport.usingCloud()) {
     return readFileBase64(opts.filePath).then(function (b64) {
       return post('/api/v1/ocr/scan', { image_base64: b64, mime: mime }, { timeout: timeout })
@@ -425,4 +488,6 @@ module.exports = {
   put: put,
   del: del,
   queryString: queryString,
+  // 导出只为测试：语义见 withTimeout 的说明。
+  withTimeout: withTimeout,
 }

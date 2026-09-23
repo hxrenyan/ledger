@@ -19,8 +19,25 @@ export const DEFAULT_OCR_MODEL = 'PaddlePaddle/PaddleOCR-VL-1.5'
 export const DEFAULT_OCR_BASE = 'https://api.siliconflow.cn/v1'
 export const OCR_PROTOCOL = 'openai-vision'
 
-/** 一次识别的上限。拍单据本来就不该慢，超了换下一套。 */
+/**
+ * 单套配置的上限。
+ *
+ * 实测（同一张 332 字节的图标，硅基流动）：PaddleOCR-VL-1.5 30.9s / 45.5s、
+ * Qwen3-VL-8B 36.5s、Qwen3-VL-30B-A3B 64.9s —— 而且图标只产出 4 个 token，
+ * 说明耗时几乎全在排队/冷启动，与图的大小、输出长度无关。真实小票更长。
+ * 所以这里给得宽：小票本就该等，等不到再换下一套也没意义（下一套同样慢）。
+ */
 const REQUEST_TIMEOUT_MS = 90_000
+/**
+ * 整条接力的总预算。
+ *
+ * 单套可以宽，几套叠起来不行：小程序那边有自己的硬超时（见 utils/request.js），
+ * 后端必须更早收手 —— 否则用户等到的只是客户端那句笼统的「识别超时」，
+ * 而不是「哪一套、因为什么失败」这种能直接定位的错误。
+ */
+const CHAIN_BUDGET_MS = 100_000
+/** 剩余时间少于这个数就别再开新的一轮了：开了也来不及返回，只会让人多等。 */
+const MIN_SLICE_MS = 5_000
 /** 输出上限：一整页手写本可能很长，但没必要等它写满 16K。 */
 const MAX_OUTPUT_TOKENS = 8192
 
@@ -143,8 +160,14 @@ export async function recognizeChain(profiles: OcrProfile[], image: ImagePayload
   const ready = profiles.filter(ocrReady)
   if (!ready.length) return { ok: false, error: '没有可用的图片识别配置' }
   const errors: string[] = []
+  const deadline = Date.now() + CHAIN_BUDGET_MS
   for (const profile of ready) {
-    const res = await recognizeOne(profile, image)
+    const left = deadline - Date.now()
+    if (left < MIN_SLICE_MS) {
+      errors.push('总耗时已超出预算，放弃后续配置')
+      break
+    }
+    const res = await recognizeOne(profile, image, Math.min(REQUEST_TIMEOUT_MS, left))
     if (res.ok) return { ok: true, text: res.text, profile: profileLabel(profile) }
     errors.push(`${profileLabel(profile)}：${clip(res.error)}`)
   }
@@ -154,6 +177,7 @@ export async function recognizeChain(profiles: OcrProfile[], image: ImagePayload
 export async function recognizeOne(
   profile: OcrProfile,
   image: ImagePayload,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
 ): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
   if (!ocrReady({ ...profile, enabled: true })) return { ok: false, error: '配置不完整' }
   if (profile.protocol !== OCR_PROTOCOL) return { ok: false, error: `暂不支持协议 ${profile.protocol}` }
@@ -189,7 +213,7 @@ export async function recognizeOne(
         authorization: `Bearer ${profile.apiKey}`,
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     })
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)

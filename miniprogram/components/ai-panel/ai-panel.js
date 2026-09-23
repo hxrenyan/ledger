@@ -37,6 +37,33 @@ function brief(text) {
   return s.length > BRIEF_CHARS ? s.slice(0, BRIEF_CHARS) + '…' : s
 }
 
+/**
+ * wx.getRecorderManager() 是全局单例，而 onStop / onError 是「后注册覆盖先注册」。
+ *
+ * 这个浮层同时挂在明细页与智能记账整页（home / speak）。只要开过整页那一个，
+ * 它的回调就把明细页那个覆盖掉；从整页返回时整页实例已销毁，之后在明细页录音，
+ * 结束回调会打在**已销毁**的实例上 —— 明细页的浮层就永远停在「识别中…」，
+ * 既不报错也不超时，只能杀掉小程序重进。反过来也一样。
+ *
+ * 所以不按实例注册：全局回调只绑这一个模块级函数，由它转发给「本次真正发起
+ * 录音」的实例。注册的是同一个函数引用，多实例互相覆盖（或重复注册）都无副作用 ——
+ * activePanel 被取走后立刻置空，重复调用自然被挡掉。
+ */
+let activePanel = null
+
+function bindRecorder(manager) {
+  manager.onStop(function (res) {
+    const panel = activePanel
+    activePanel = null
+    if (panel) panel.onRecorded(res)
+  })
+  manager.onError(function (err) {
+    const panel = activePanel
+    activePanel = null
+    if (panel) panel.onRecordError(err)
+  })
+}
+
 Component({
   properties: {
     show: { type: Boolean, value: false },
@@ -89,15 +116,17 @@ Component({
   lifetimes: {
     attached() {
       this.recorder = wx.getRecorderManager()
-      this.recorder.onStop((res) => this.onRecorded(res))
-      this.recorder.onError((err) => {
-        this.setData({ state: 'idle', tip: '' })
-        ui.toast((err && err.errMsg) || '录音失败')
-      })
+      bindRecorder(this.recorder)
       this.timer = null
+      this.stopGuard = null
     },
     detached() {
+      // 录音途中被销毁：这次的结果没人要了，但 activePanel 必须清掉，
+      // 否则下一次录音的回调会落在一个已销毁的实例上（正是上面说的那个坑）。
+      if (activePanel === this) activePanel = null
       this.clearTimer()
+      this.clearStopGuard()
+      this.clearSlowTip()
       if (this.data.state === 'recording') {
         try {
           this.recorder.stop()
@@ -111,6 +140,8 @@ Component({
   methods: {
     reset() {
       this.clearTimer()
+      this.clearStopGuard()
+      this.clearSlowTip()
       this.setData({
         state: 'idle',
         seconds: 0,
@@ -141,6 +172,53 @@ Component({
       if (this.timer) {
         clearInterval(this.timer)
         this.timer = null
+      }
+    },
+
+    /**
+     * onStop 迟迟不来的兜底。
+     *
+     * recorder.stop() 正常都会回调 onStop；个别机型、或录音短到几乎没启动时不会，
+     * 这时浮层就永远停在「识别中…」。这个定时器只盯「回调到没到」——
+     * onRecorded 一到就把 gotStop 置上，所以上传本身耗时长并不会被它误伤。
+     */
+    armStopGuard() {
+      this.clearStopGuard()
+      this.stopGuard = setTimeout(() => {
+        this.stopGuard = null
+        if (this.gotStop || this.data.state !== 'busy') return
+        this.setData({ state: 'idle', tip: '' })
+        ui.toast('这次没录上，再说一次')
+      }, 8000)
+    },
+
+    clearStopGuard() {
+      if (this.stopGuard) {
+        clearTimeout(this.stopGuard)
+        this.stopGuard = null
+      }
+    },
+
+    /**
+     * 认图等久了，把话说明白。
+     *
+     * 这条路真的慢（视觉模型排队，实测首 token 30~60 秒），一直显示「识别中…」
+     * 会让人以为卡死了。所以十几秒后换成一句有信息量、并且**预期可控**的话 ——
+     * 「半分钟」这种量级说出来了，用户才愿意等。
+     */
+    armSlowTip() {
+      this.clearSlowTip()
+      this.slowTip = setTimeout(() => {
+        this.slowTip = null
+        if (this.data.state !== 'busy') return
+        this.setData({ tip: '还在认图，识别模型排队中，通常要半分钟' })
+      }, 12000)
+    },
+
+    clearSlowTip() {
+      if (this.slowTip) {
+        clearTimeout(this.slowTip)
+        this.slowTip = null
       }
     },
 
@@ -179,6 +257,8 @@ Component({
 
     startRecord() {
       if (this.data.state === 'recording') return
+      // 认领这次录音：结束回调由模块级 bindRecorder 转发到这儿（见文件顶部说明）。
+      activePanel = this
       this.setData({ state: 'recording', mode: 'voice', seconds: 0, tip: '松开发送' })
       this.recorder.start({ duration: MAX_SECONDS * 1000, format: 'mp3', sampleRate: 16000, encodeBitRate: 48000 })
       this.clearTimer()
@@ -193,14 +273,19 @@ Component({
       if (this.data.state !== 'recording') return
       this.clearTimer()
       this.setData({ state: 'busy', tip: '识别中…' })
+      this.gotStop = false
+      this.armStopGuard()
       try {
         this.recorder.stop()
       } catch (e) {
+        this.clearStopGuard()
         this.setData({ state: 'idle', tip: '' })
       }
     },
 
     onRecorded(res) {
+      this.gotStop = true
+      this.clearStopGuard()
       const filePath = res && res.tempFilePath
       if (!filePath) {
         this.setData({ state: 'idle', tip: '' })
@@ -228,6 +313,14 @@ Component({
         .catch((err) => this.onFail(err, '语音识别失败'))
     },
 
+    /** 录音器报错（由模块级 bindRecorder 转发过来）。 */
+    onRecordError(err) {
+      this.gotStop = true
+      this.clearStopGuard()
+      this.setData({ state: 'idle', tip: '' })
+      ui.toast((err && err.errMsg) || '录音失败')
+    },
+
     // ---- 拍照 ----
 
     /**
@@ -247,6 +340,7 @@ Component({
         })
         .then((ready) => {
           this.setData({ tip: '识别中…' })
+          this.armSlowTip()
           return request.scanImage(ready)
         })
         .then((res) => {
@@ -267,6 +361,7 @@ Component({
 
     /** @param {object|null} preview 上一步返回空（已经 toast 过了）时跳过 */
     applyPreview(preview, emptyTip) {
+      this.clearSlowTip()
       if (!preview) return
       const items = this.decorate((preview && preview.items) || [])
       this.setData({
@@ -280,6 +375,7 @@ Component({
 
     /** 用户点取消不算失败，别弹报错。 */
     onFail(err, fallback) {
+      this.clearSlowTip()
       const cancelled = err && err.code === 'cancelled'
       this.setData({ state: 'idle', tip: '' })
       if (cancelled) return

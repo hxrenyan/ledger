@@ -477,3 +477,48 @@ describe('传输层：云通道何时可以降级', () => {
     expect(directCalls).toBe(1)
   })
 })
+
+/**
+ * 「自己那一层」的硬超时。
+ *
+ * 为什么必须有：wx.request 的 timeout 管不到「连接已建立、后端迟迟不吭声」——
+ * 认图正好撞在这个场景上（视觉模型首 token 实测 30~60 秒），浮层于是永远停在
+ * 「识别中…」：不报错、不结束，只能杀掉小程序重进。这几条钉住它的语义。
+ *
+ * 超时只意味着「不再等」，**不会重发**，所以写类接口也不会因此重复提交。
+ */
+describe('请求层的自带超时（不依赖 wx.request 的 timeout）', () => {
+  const { mod } = loadRequestModule({}, { token: 't', ledgerId: 'L' })
+
+  it('到点还没结算就拒，并带上能直接给用户看的文案', async () => {
+    const never = new Promise(() => {})
+    await expect(mod.withTimeout(never, 10, '识别超时，请重试')).rejects.toEqual({
+      code: 'timeout',
+      message: '识别超时，请重试',
+      status: 0,
+    })
+  })
+
+  it('先结算就原样放行', async () => {
+    await expect(mod.withTimeout(Promise.resolve('ok'), 50, 'x')).resolves.toBe('ok')
+  })
+
+  it('底层自己的失败原样透出，不被超时文案盖掉', async () => {
+    const boom = { code: 'network', message: '上传失败，请检查网络', status: 0 }
+    await expect(mod.withTimeout(Promise.reject(boom), 50, 'x')).rejects.toBe(boom)
+  })
+
+  it('超时之后底层才回来，也不会翻案', async () => {
+    let release: (v: string) => void = () => {}
+    const late = new Promise<string>((r) => {
+      release = r
+    })
+    await expect(mod.withTimeout(late, 10, '超时啦')).rejects.toEqual({
+      code: 'timeout',
+      message: '超时啦',
+      status: 0,
+    })
+    // 迟到的结果必须被丢弃：既不能改写已拒的结果，也不能变成未捕获的 rejection。
+    release('事后才回来的结果')
+  })
+})

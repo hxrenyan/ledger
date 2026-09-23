@@ -46,7 +46,9 @@ export function useVoice(scope: VoiceScope) {
   const ignored = computed(() => countIgnored(rows.value))
   const statusText = computed(() => {
     if (recording.value) return '正在听，再点一次结束'
-    if (phase.value === 'hear') return mode.value === 'photo' ? '正在认图' : '正在识别'
+    // 认图慢是当前服务商的常态（视觉模型排队，实测首 token 30~60 秒，见 src/ocr/vision.ts），
+    // 所以文案要说清在等什么 —— 光一个「正在认图」会让人以为卡死了。
+    if (phase.value === 'hear') return mode.value === 'photo' ? '正在认图，识别模型排队中，请稍等' : '正在识别'
     if (phase.value === 'parse') return '正在整理成账'
     if (msg.value) return msg.value
     // 提示语跟着可用入口走，免得出现「按住说话」但语音其实没配。
