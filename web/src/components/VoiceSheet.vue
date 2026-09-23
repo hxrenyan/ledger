@@ -1,18 +1,19 @@
 <script setup lang="ts">
 /**
- * 底部加号里的语音浮层：就地录音、识别、核对、入账，不离开当前页面。
+ * 底部加号里的智能记账浮层：就地录音 / 拍照、识别、核对、入账，不离开当前页面。
  * 逻辑与全屏页 pages/Speak.vue 共用 useVoice，只有 scope 不同。
  */
 import { computed, onMounted, onUnmounted } from 'vue'
 import { formatYuan } from '../money.ts'
 import { useVoice, type VoiceScope } from '../voice.ts'
+import ShotButton from './ShotButton.vue'
 
 const props = defineProps<{ scope: VoiceScope }>()
 const emit = defineEmits<{ close: []; done: [string] }>()
 
 const {
-  spoken, parsedText, rows, speechOn, recording, busy, err, ignored, importable, statusText,
-  isFavorRow, checkSpeech, release, toggleMic, parseSpoken, commit,
+  spoken, parsedText, rows, speechOn, photoOn, mode, recording, busy, err, ignored, importable,
+  statusText, isFavorRow, checkSpeech, checkPhoto, release, toggleMic, parseSpoken, pickPhoto, commit,
 } = useVoice(props.scope)
 
 const title = computed(() => (props.scope === 'favor' ? '记人情' : '记一笔'))
@@ -21,11 +22,16 @@ const placeholder = computed(() =>
     ? '给张三结婚随了 500'
     : '昨天午饭 35，给张三结婚随了 500',
 )
+/** 拍照进来时框里装的是认出的文字，标题得跟着换，不然像在让你改「说的话」。 */
+const textLabel = computed(() => (mode.value === 'photo' ? '认出的文字，可以改' : '说的话，可以改'))
 /** 人情场景只看识别人情的行，流水行由下面一句提示带过。 */
 const displayRows = computed(() => (props.scope === 'tx' ? rows.value : rows.value.filter(isFavorRow)))
 
 let alive = true
-onMounted(checkSpeech)
+onMounted(() => {
+  checkSpeech()
+  checkPhoto()
+})
 onUnmounted(() => {
   alive = false
   // 录音中关闭浮层时要停麦克风，也不再转写
@@ -46,12 +52,23 @@ async function onCommit() {
     </div>
 
     <div class="voice-mic">
-      <button class="mic mic-sm" type="button" :class="{ on: recording }" :disabled="busy || !speechOn" @click="toggleMic">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 15a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
-          <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
-        </svg>
-      </button>
+      <div class="mic-row">
+        <button
+          v-if="speechOn"
+          class="mic mic-sm"
+          type="button"
+          :class="{ on: recording }"
+          :disabled="busy"
+          aria-label="点击开始说话"
+          @click="toggleMic"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 15a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
+            <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+          </svg>
+        </button>
+        <ShotButton v-if="photoOn" :disabled="busy" @picked="pickPhoto" />
+      </div>
       <p class="speak-status">{{ statusText }}</p>
     </div>
 
@@ -59,7 +76,7 @@ async function onCommit() {
 
     <div class="card speak-card">
       <div class="speak-label">
-        <span>说的话，可以改</span>
+        <span>{{ textLabel }}</span>
         <button
           v-if="spoken.trim() && spoken !== parsedText"
           class="text-btn"

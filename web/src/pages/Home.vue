@@ -179,7 +179,7 @@ async function load() {
 }
 
 onMounted(load)
-// 加号浮层里语音记完账后，这里跟着刷新
+// 加号浮层里智能记账记完后，这里跟着刷新
 onDataChange(load)
 watch([month, () => session.ledgerId], () => {
   syncCalDay()

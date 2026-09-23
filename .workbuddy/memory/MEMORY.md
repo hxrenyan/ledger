@@ -148,16 +148,39 @@ ICP 备案 —— `ledger.hxsmj.top` 的 NS 在 Cloudflare，没有境内接入�
 切账本后各 tab 靠 `onShow` 重拉；`home.js` 还要多做两件事：比对 `ledgerId` → 清筛选 →
 **先 `loadRefs()` 再 `loadMonth()`**（筛选值与账户/分类映射都是账本内的，顺序反了会出现空列表或分类名对不上）。
 
-## 提交前跑什么
+## 上线清单（提交 + 部署）
 
 ```bash
 npm run typecheck && npm run typecheck:web && npm test && npm run check:miniprogram
 ```
 
-`check:miniprogram` = `check.mjs`（语法/JSON/WXML 表达式与函数调用/路径/两端契约/账本切换入口）
-+ `smoke.mjs`（模拟微信环境把 15 页 3 组件真 require 一遍，验注册形状与 `this.xxx()`）。
+**本机跑测试必须加 `--pool=forks --poolOptions.forks.singleFork=true`** —— 默认并行池
+会被环境杀掉（exit 137）。看到 137 是环境问题，不是测试坏了，别去改测试。
+
+顺序与两个判断点：
+
+1. **有新增表就先跑远程迁移**（`node scripts/d1-migrate.mjs --remote`），**再 deploy** ——
+   反了的话新代码查不到表会 500。复用已有表（如 OCR 复用 `ai_profiles`，其 `kind` 无
+   CHECK 约束）就**不要**跑，凭空多一次写远端的机会。
+2. `npm run deploy`（= `build:web` + `wrangler deploy --env=""`）。
+3. commit + `git push origin main`。提交前扫一眼暂存区有没有硬编码密钥：
+   `git diff --cached | grep -nEi 'sk-[a-z0-9]{16,}|api[_-]?key.*=.*[a-z0-9]{16,}'`。
+   **AppSecret / API Key 只进 `wrangler secret` 或后台 ai_profiles，绝不入仓库。**
+4. 验线上：首页 `curl -o /dev/null -w '%{http_code}'` 看 200；
+   探新版是否上线看 `401` 与 `404` 的区别 —— 但**未登录时的 401 只证明「路由存在且被
+   认证中间件拦下」，证明不了业务可用**（`/api/v1/*` 一律先过认证）。要验完整性必须带 token。
+
+`check:miniprogram` = `check.mjs`（16 条：语法/JSON/WXML 表达式与函数调用/插值变量声明/
+路径/两端契约/账本切换入口/月份条/云函数 SSRF/图片入口收敛）
++ `smoke.mjs`（模拟微信环境把 19 模块 3 组件真 require 一遍，验注册形状与 `this.xxx()`）。
 **冒烟不能省**：语法检查看不到模块顶层抛异常，而小程序模块是页面加载时求值的，一抛即白屏。
 注意 `Component` 的方法在 `methods` 里、内置方法要白名单，否则全是误报。
+**新加的 check 规则必须用故意写坏的文件验证真会报错**再还原 —— 曾因路径漏一层被
+`existsSync` 跳过、检查器空转。
+
+**`miniprogram/project.private.config.json` 是开发者工具的本地私有配置**（libVersion、
+编译开关），随各人环境产生噪音 diff，惯例是忽略。当前**已入库**，要收干净就
+`.gitignore` + `git rm --cached`（文件留本地）。
 
 ## 数据库
 

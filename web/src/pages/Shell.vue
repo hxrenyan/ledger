@@ -135,14 +135,14 @@ onMounted(async () => {
               </span>
               手写
             </button>
-            <button type="button" :aria-label="inFavor ? '语音记人情' : '语音记一笔'" @click="openVoice">
+            <button type="button" :aria-label="inFavor ? '智能记人情' : '智能记一笔'" @click="openVoice">
               <span class="add-ico" aria-hidden="true">
                 <svg viewBox="0 0 24 24">
                   <path d="M12 15a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
                   <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
                 </svg>
               </span>
-              语音
+              智能记账
             </button>
           </div>
           <button class="add-cancel" type="button" @click="close">取消</button>

@@ -2,6 +2,9 @@
 
 拍一张小票 / 发票 / 支付截图 / 手写记账本，认出来 → 整理成流水行 → 逐行核对 → 存进账本。
 
+小程序（智能记账浮层的「拍一张」）和 H5（加号浮层、智能记账整页）都有这个入口，
+走的是同一套接口，区别只在客户端怎么把图压下来。
+
 链路分两步，**两步是两个不同的模型**，这点最容易踩：
 
 ```text
@@ -55,9 +58,14 @@
 
 | 位置 | 职责 |
 |------|------|
-| `miniprogram/utils/image.js` | **唯一**允许调 `wx.chooseMedia` / `wx.compressImage` 的地方 |
+| `miniprogram/utils/image.js` | 小程序端**唯一**允许调 `wx.chooseMedia` / `wx.compressImage` 的地方 |
 | `miniprogram/utils/request.js` | `scanImage()` 按通道分流；`imageLimit()` 给出对应的体积上限 |
-| `miniprogram/components/ai-panel/` | 智能记账浮层：语音与拍照两条入口，共用核对与提交 |
+| `miniprogram/components/ai-panel/` | 小程序智能记账浮层：语音与拍照两条入口，共用核对与提交 |
+| `web/src/photoSteps.ts` | H5 压图的**决策**（梯度、起始档位）。纯函数，拆出来是为了能单测 |
+| `web/src/photo.ts` | H5 压图的**执行**（canvas 重绘），与小程序那份同构 |
+| `web/src/components/ShotButton.vue` | H5 的相机入口（隐藏的 `input[type=file]`），两个 UI 处共用 |
+| `web/src/voice.ts` | H5 共用逻辑：`checkPhoto()` / `pickPhoto()`，与语音汇到同一段核对 |
+| `web/src/components/VoiceSheet.vue`、`web/src/pages/Speak.vue` | H5 的两个入口：加号浮层、智能记账整页 |
 
 ### 为什么压图必须集中在一处
 
@@ -77,13 +85,33 @@
 （按最坏情况估算，再往前让一档 —— 多压一轮只多花一两百毫秒，压过头是永久损失清晰度），
 真机上再逐档压完核对实际体积收敛。
 
-`check.mjs` 第 16 条会拦住绕开 `utils/image.js` 的写法。
+`check.mjs` 第 16 条会拦住绕开 `utils/image.js` 的写法（只覆盖小程序）。
+
+### H5 那份的差别
+
+H5 没有 `wx.compressImage`，只能自己 canvas 重绘。这份拆成两个文件：决策（梯度、起始档位）
+在 `web/src/photoSteps.ts`，canvas 执行在 `web/src/photo.ts`。**拆开是为了能单测** ——
+`test/` 是用根 tsconfig 跑的（lib 只有 ES2022、没有 DOM），直接 import 带 canvas 的模块
+会让 `npm run typecheck` 直接红。梯度、起始档位算法、取舍完全照搬小程序那份，
+**改一边就必须改另一边** —— `test/web-photo.test.ts` 有一条跨端一致性断言钉着
+（scale 逐个相等、质量取整后相等）。
+
+实现上有两处不得不不同：
+
+- canvas 的输出固定是 jpeg，所以**不需要**按文件头猜 mime
+  （`wx.compressImage` 的输出格式随机型变化，那份才要猜）；
+- 画之前**必须先铺白底**：截图多半是 png，透明区转成 jpeg 会变黑，正好糊掉小票上的字。
+
+体积上限取「直连」那一档（3MB）—— H5 走的是普通 `fetch`，没有云函数 event 的 1MB 限制。
+
+H5 的选图还多一个坑：`input[type=file]` 选完**必须把 `value` 清空**，否则第二次选同一个文件
+不会再触发 `change`，表现为「再点一次没反应」。这段集中在 `ShotButton.vue` 一处。
 
 ### 图片不留存
 
-照片只在这一次请求的内存里过一遍：不写 D1，也不进对象存储，临时文件交给微信回收。
-需求上也不需要 —— 要留凭据的话，那应该是「收据」那条链路
-（`POST /api/v1/transactions/:id/receipt`，见 `miniprogram/pages/tx-form`）。
+照片只在这一次请求的内存里过一遍：不写 D1，也不进对象存储。小程序那边临时文件交给微信回收，
+H5 那边是内存里的 blob，用完交给 GC。需求上也不需要留存 —— 要留凭据的话，那应该是「收据」
+那条链路（`POST /api/v1/transactions/:id/receipt`，见 `miniprogram/pages/tx-form`）。
 
 ## 相关代码
 
@@ -94,3 +122,6 @@
 | `src/imports/ai.ts` | 两套系统提示词（口语 / 票据）与 `mode` 分支 |
 | `src/routes/imports.ts` | `/imports/utterances`、`/imports/receipt` |
 | `web/src/pages/admin/AdminOcr.vue` | 后台配置页 |
+| `test/ocr.test.ts` | 后端：接力、两种送法、体积与类型守卫 |
+| `test/web-photo.test.ts` | H5 压图的决策逻辑 + 与小程序的一致性 |
+| `test/miniprogram-image.test.ts` | 小程序压图的决策逻辑 |

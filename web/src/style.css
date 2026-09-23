@@ -502,6 +502,17 @@ input.bare {
   padding: 4px 0;
 }
 .voice-mic .speak-status { margin: 10px 0 0; text-align: center; }
+/* 说话 / 拍小票并排；只有一个入口可用时就只渲染一个，靠 gap 自然居中 */
+.mic-row { display: flex; align-items: center; gap: 16px; }
+/* 相机是次入口：白底 + 品牌色，别跟麦克风抢注意力 */
+.mic.cam {
+  background: #fff;
+  color: var(--brand);
+  border: 1px solid var(--line);
+  box-shadow: 0 6px 16px rgba(59, 91, 219, 0.12);
+}
+/* 隐藏的文件选择器：只用来触发系统选图 */
+.file-hidden { display: none; }
 .mic-sm {
   width: 56px;
   height: 56px;

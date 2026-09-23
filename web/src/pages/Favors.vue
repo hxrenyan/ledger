@@ -81,7 +81,7 @@ onMounted(load)
       <input v-model="q" placeholder="搜姓名 / 事由" class="bare" />
     </div>
     <p v-if="err" class="err">{{ err }}</p>
-    <div v-if="!visible.length" class="card muted">还没有往来。点下面的「+」可以语音说一句，或手写记一笔。</div>
+    <div v-if="!visible.length" class="card muted">还没有往来。点下面的「+」可以说一句、或拍一张收礼 / 随礼的截图，也可以手写记一笔。</div>
     <div v-for="[day, rows] in grouped" :key="day" class="card" style="margin-bottom: 12px">
       <div class="muted">{{ day }}</div>
       <div class="row" v-for="g in rows" :key="g.id" @click="router.push(`/favors/gift/${g.id}`)">

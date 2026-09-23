@@ -1,20 +1,27 @@
 <script setup lang="ts">
 /**
- * 语音录入（全屏版）：识别 → AI 解析 → 核对 → 入账。
+ * 智能记账（全屏版）：说话或拍照 → 识别 → AI 解析 → 核对 → 入账。
  * 底部加号里的浮层（components/VoiceSheet.vue）共用同一套逻辑。
  */
-import { onMounted, onUnmounted } from 'vue'
+import { computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { formatYuan } from '../money.ts'
 import { useVoice } from '../voice.ts'
+import ShotButton from '../components/ShotButton.vue'
 
 const router = useRouter()
 const {
-  spoken, parsedText, rows, speechOn, recording, busy, err, importable, statusText,
-  checkSpeech, release, toggleMic, parseSpoken, commit,
+  spoken, parsedText, rows, speechOn, photoOn, mode, recording, busy, err, importable, statusText,
+  checkSpeech, checkPhoto, release, toggleMic, parseSpoken, pickPhoto, commit,
 } = useVoice('tx')
 
-onMounted(checkSpeech)
+/** 拍照进来时框里装的是认出的文字，标题得跟着换。 */
+const textLabel = computed(() => (mode.value === 'photo' ? '认出的文字，可以改' : '说的话，可以改'))
+
+onMounted(() => {
+  checkSpeech()
+  checkPhoto()
+})
 // 离开页面时停麦克风，别让录音一直开着
 onUnmounted(release)
 </script>
@@ -23,16 +30,27 @@ onUnmounted(release)
   <div class="page">
     <div class="head">
       <button class="back" type="button" @click="router.back()">←</button>
-      <h1 style="margin:0">语音录入</h1>
+      <h1 style="margin:0">智能记账</h1>
     </div>
 
     <div class="speak-hero">
-      <button class="mic" type="button" :class="{ on: recording }" :disabled="busy || !speechOn" @click="toggleMic">
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="M12 15a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
-          <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
-        </svg>
-      </button>
+      <div class="mic-row">
+        <button
+          v-if="speechOn"
+          class="mic"
+          type="button"
+          :class="{ on: recording }"
+          :disabled="busy"
+          aria-label="点击开始说话"
+          @click="toggleMic"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 15a3 3 0 0 0 3-3V7a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
+            <path d="M6 11a6 6 0 0 0 12 0M12 17v3" />
+          </svg>
+        </button>
+        <ShotButton v-if="photoOn" size="lg" :disabled="busy" @picked="pickPhoto" />
+      </div>
       <p class="speak-status">{{ statusText }}</p>
     </div>
 
@@ -40,7 +58,7 @@ onUnmounted(release)
 
     <div class="card speak-card">
       <div class="speak-label">
-        <span>说的话，可以改</span>
+        <span>{{ textLabel }}</span>
         <button
           v-if="spoken.trim() && spoken !== parsedText"
           class="text-btn"
