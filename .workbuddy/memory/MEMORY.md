@@ -22,6 +22,12 @@
 - `/ocr/scan` **同时收 multipart 与 JSON base64**（后者给云通道，callFunction 只送 JSON），
   两条路进同一个函数。`/ocr/status` 免账本头但**仍要登录**（写测试时踩过）。
 - 图片不留存：只在当次请求内存里过一遍。
+- **H5 也有这个入口**（加号浮层 + 智能记账整页），位置与小程序一致。压图分两个文件：
+  `web/src/photoSteps.ts`（决策，纯函数）+ `web/src/photo.ts`（canvas 执行）。
+  梯度与小程序那份**必须一起改**，`test/web-photo.test.ts` 有跨端一致性断言钉着。
+- **canvas 转 jpeg 前必须先铺白底**：截图多是 png，透明区会变黑，正好糊掉小票上的字。
+- **`input[type=file]` 选完要清 `value`**（集中在 `ShotButton.vue`），否则重选同一张
+  不触发 `change`，表现是「再点一次没反应」。
 
 ## web-view 混合架构（2026-09-23 定）
 
@@ -78,6 +84,10 @@
 - **编译失败先跑 `npm run check:miniprogram`，别猜。** 最隐蔽的是**增量开发的中间态**：
   `app.json` 的 `pages` / `usingComponents` 先登记、文件后创建，窗口期编译必然硬失败。
   项目根必须是 `miniprogram/`，不是仓库根。
+- **根 tsconfig 的 lib 只有 ES2022、没有 DOM**：`test/` 下直接 import web 里碰
+  `document` / `Image` / canvas 的模块，`npm run typecheck`（根 tsc）会报
+  `Cannot find name 'document'`。要测就把纯逻辑拆成单独文件（如 `web/src/photoSteps.ts`），
+  别让 test/ 引到浏览器 API。`typecheck:web` 用的是 `web/tsconfig.json`，那边有 DOM。
 
 ## 请求怎么送出去：传输层（2026-09-23 加）
 
@@ -169,6 +179,13 @@ npm run typecheck && npm run typecheck:web && npm test && npm run check:miniprog
 4. 验线上：首页 `curl -o /dev/null -w '%{http_code}'` 看 200；
    探新版是否上线看 `401` 与 `404` 的区别 —— 但**未登录时的 401 只证明「路由存在且被
    认证中间件拦下」，证明不了业务可用**（`/api/v1/*` 一律先过认证）。要验完整性必须带 token。
+   确认前端资源真的换了，就直接拉线上产物比对文案：
+   `curl -s https://ledger.hxsmj.top/assets/<文件名>.js | grep -o "<新文案>"`。
+5. **查线上数据/配置直接读 D1，别猜**：
+   `npx wrangler d1 execute ledger-db --remote --command "SELECT ..."`。
+   注意**本地 `.dev.vars` 的 `ADMIN_TOKEN` 与线上不是同一个**，拿它调线上 `/api/v1/admin/*`
+   只会 401；读 D1 走的是 Cloudflare 账号凭据，不需要任何 token。
+   「某个功能没生效」先这样查一遍服务端配置，往往当场就能排除一半可能。
 
 `check:miniprogram` = `check.mjs`（16 条：语法/JSON/WXML 表达式与函数调用/插值变量声明/
 路径/两端契约/账本切换入口/月份条/云函数 SSRF/图片入口收敛）
