@@ -46,12 +46,20 @@ export async function patchSchema(db: Db) {
   await db.run(
     `CREATE INDEX IF NOT EXISTS idx_import_batches_ledger ON import_batches (ledger_id, created_at)`,
   )
-  await db.run(
-    `CREATE INDEX IF NOT EXISTS idx_tx_import_batch ON transactions (import_batch_id) WHERE import_batch_id IS NOT NULL`,
-  )
-  await db.run(
-    `CREATE INDEX IF NOT EXISTS idx_gifts_import_batch ON gifts (import_batch_id) WHERE import_batch_id IS NOT NULL`,
-  )
+  // 旧版本索引定义没有把账本条件放进联合键；这里重建一次，避免旧库继续走全表过滤。
+  await db.run(`DROP INDEX IF EXISTS idx_tx_ledger_occurred`)
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_tx_ledger_occurred ON transactions (ledger_id, occurred_at, created_at)`)
+  await db.run(`DROP INDEX IF EXISTS idx_contacts_ledger`)
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_contacts_ledger ON contacts (ledger_id, archived, name COLLATE NOCASE)`)
+  await db.run(`DROP INDEX IF EXISTS idx_gifts_contact`)
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_gifts_contact ON gifts (contact_id, ledger_id, occurred_at, created_at)`)
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_gifts_ledger_occurred ON gifts (ledger_id, occurred_at, created_at)`)
+  await db.run(`DROP INDEX IF EXISTS idx_tx_import_batch`)
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_tx_import_batch ON transactions (ledger_id, import_batch_id) WHERE import_batch_id IS NOT NULL`)
+  await db.run(`DROP INDEX IF EXISTS idx_gifts_import_batch`)
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_gifts_import_batch ON gifts (ledger_id, import_batch_id, contact_id) WHERE import_batch_id IS NOT NULL`)
+  await db.run(`DROP INDEX IF EXISTS idx_ai_profiles_order`)
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_ai_profiles_order ON ai_profiles (kind, sort_order, updated_at, id)`)
   await upgradeSchema(db)
 
   await db.run(

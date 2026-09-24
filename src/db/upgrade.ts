@@ -21,7 +21,7 @@ const AI_PROFILES_DDL = `CREATE TABLE IF NOT EXISTS ai_profiles (
 
 export async function upgradeSchema(db: Db) {
   await db.run(AI_PROFILES_DDL)
-  await db.run(`CREATE INDEX IF NOT EXISTS idx_ai_profiles_order ON ai_profiles (kind, sort_order)`)
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_ai_profiles_order ON ai_profiles (kind, sort_order, updated_at, id)`)
   await mergeLegacyProfiles(db)
   await rebuildUsers(db)
   await rebuildAttachments(db)
@@ -93,7 +93,6 @@ async function rebuildUsers(db: Db) {
   await ensureColumn(db, 'users', 'disabled', 'INTEGER NOT NULL DEFAULT 0')
   await db.run(`DROP TABLE IF EXISTS users_new`)
   // 只剥微信死字段。主键必须维持旧 TEXT：这里改成整数会把 UUID 收成 0。
-  // 整数主键由 sql/migrations/001_integer_ids.sql 整表重建。
   await db.run(`CREATE TABLE users_new (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
