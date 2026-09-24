@@ -105,12 +105,12 @@ describe('OCR 输出清理', () => {
     expect(normalizeOcrText('\n\n\n\n')).toBe('')
   })
 
-  it('HTML 表格转成可直接修改的制表符文本，并解码实体', () => {
+  it('HTML 表格去掉表头，转成逐行字段文本，并解码实体', () => {
     expect(
       normalizeOcrText(
-        '<table><tr><td></td><td>姓名</td><td>礼金</td><td>备注</td></tr><tr><td>李志刚</td><td>300元</td><td>见面礼 &amp; 红包</td></tr></table>',
+        '<table><tr><td></td><td>姓名</td><td>礼金</td><td>礼品</td><td>备注</td></tr><tr><td>李志刚</td><td></td><td>300元</td><td>无</td><td>见面礼 &amp; 红包</td></tr></table>',
       ),
-    ).toBe('姓名\t礼金\t备注\n李志刚\t300元\t见面礼 & 红包')
+    ).toBe('姓名：李志刚；礼金：300元；礼品：无；备注：见面礼 & 红包')
   })
 })
 

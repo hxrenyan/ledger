@@ -147,7 +147,7 @@ export function toDataUrl(image: ImagePayload): string {
  */
 function normalizeHtmlTables(raw: string): string {
   return raw.replace(/<table\b[^>]*>[\s\S]*?<\/table>/gi, (table) => {
-    const rows: string[] = []
+    const parsedRows: string[][] = []
     const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
     let row: RegExpExecArray | null
     while ((row = rowRe.exec(table))) {
@@ -157,10 +157,44 @@ function normalizeHtmlTables(raw: string): string {
       while ((cell = cellRe.exec(row[1]))) {
         cells.push(decodeHtml(cell[1].replace(/<[^>]+>/g, ' ')))
       }
-      if (cells.length) rows.push(cells.join('\t'))
+      if (cells.length) parsedRows.push(cells)
     }
+    if (!parsedRows.length) return table
+
+    const header = parsedRows[0]
+    const headerNames = header.map(normalizeTableHeader)
+    const hasHeader = headerNames.some(Boolean)
+    if (!hasHeader) return parsedRows.map((cells) => cells.join('\t')).join('\n')
+
+    const rows = parsedRows.slice(1).map((cells) => formatTableRow(cells, headerNames)).filter(Boolean)
     return rows.join('\n') || table
   })
+}
+
+function normalizeTableHeader(value: string): string {
+  const compact = value.replace(/[\s()（）:：]/g, '')
+  if (/^(姓名|名字|人员|收款人|付款人)$/.test(compact)) return '姓名'
+  if (/^(礼金|金额|金额元|数额|收支金额)$/.test(compact)) return '礼金'
+  if (/^(礼品|礼物)$/.test(compact)) return '礼品'
+  if (/^(备注|附言|说明|用途|摘要)$/.test(compact)) return '备注'
+  if (/^(日期|时间|交易日期)$/.test(compact)) return '日期'
+  return ''
+}
+
+function formatTableRow(cells: string[], headers: string[]): string {
+  // 有些 OCR 会给首列留空表头，却把姓名放在首个数据格；此时把空格对齐纠正掉。
+  let effectiveHeaders = headers
+  let values = cells
+  if (!headers[0] && cells[0] && !cells[1] && headers[1]) {
+    effectiveHeaders = headers.slice(1)
+    values = [cells[0], ...cells.slice(2)]
+  }
+  const parts: string[] = []
+  for (let i = 0; i < effectiveHeaders.length && i < values.length; i += 1) {
+    const value = values[i]?.trim()
+    if (effectiveHeaders[i] && value) parts.push(`${effectiveHeaders[i]}：${value}`)
+  }
+  return parts.join('；')
 }
 
 function decodeHtml(value: string): string {
