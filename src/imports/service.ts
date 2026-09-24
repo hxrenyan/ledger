@@ -654,6 +654,8 @@ export type UtterancePreview = {
    */
   parser: 'ai' | 'rules' | 'none'
   ai_error: string
+  accounts: { id: number; name: string }[]
+  categories: { id: number; name: string; kind: string }[]
 }
 
 export async function previewUtterances(
@@ -712,9 +714,11 @@ export async function previewUtterances(
         items: [],
         parser: 'none',
         ai_error: '图片识别出文字之后，还需要一个文本解析模型把它整理成流水。请在后台「AI 配置」里加一套。',
+        accounts,
+        categories,
       }
     }
-    return { items: byRules(), parser: 'rules', ai_error: '' }
+    return { items: byRules(), parser: 'rules', ai_error: '', accounts, categories }
   }
   const ai = await aiParseUtterances(
     configs,
@@ -727,7 +731,9 @@ export async function previewUtterances(
     mode,
   )
   if (!ai.ok) {
-    return mode === 'photo' ? { items: [], parser: 'none', ai_error: ai.error } : { items: byRules(), parser: 'rules', ai_error: ai.error }
+    return mode === 'photo'
+      ? { items: [], parser: 'none', ai_error: ai.error, accounts, categories }
+      : { items: byRules(), parser: 'rules', ai_error: ai.error, accounts, categories }
   }
 
   const items = ai.data.map((item, index) => {
@@ -763,7 +769,7 @@ export async function previewUtterances(
     }
     return row
   })
-  return { items, parser: 'ai', ai_error: '' }
+  return { items, parser: 'ai', ai_error: '', accounts, categories }
 }
 
 function blankPreview(row: number, note: string, status: PreviewRow['status'], reason: string): PreviewRow {

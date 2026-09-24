@@ -5,15 +5,21 @@
  */
 import { computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { formatYuan } from '../money.ts'
 import { useVoice } from '../voice.ts'
 import ShotButton from '../components/ShotButton.vue'
 
 const router = useRouter()
 const {
-  spoken, parsedText, rows, speechOn, photoOn, mode, recording, busy, err, importable, statusText,
+  spoken, parsedText, rows, accounts, categories, speechOn, photoOn, mode, recording, busy, err, importable, statusText,
   checkSpeech, checkPhoto, release, toggleMic, parseSpoken, pickPhoto, commit,
 } = useVoice('tx')
+
+function setDirection(row: (typeof rows.value)[number], direction: 'expense' | 'income') {
+  row.direction = direction
+  const category = categories.value.find((item) => item.kind === direction)
+  row.category_id = category?.id ?? null
+  row.category_name = category?.name ?? ''
+}
 
 /** 拍照进来时框里装的是认出的文字，标题得跟着换。 */
 const textLabel = computed(() => (mode.value === 'photo' ? '认出的文字，可以改' : '说的话，可以改'))
@@ -70,18 +76,25 @@ onUnmounted(release)
       <textarea v-model="spoken" rows="3" placeholder="昨天午饭 35，给张三结婚随了 500"></textarea>
     </div>
 
-    <div v-if="rows.length" class="card" style="margin-top:12px">
-      <div v-for="r in rows" :key="r.row" class="row">
-        <div>
-          <div>{{ r.status === 'ok' ? r.note : r.reason }}</div>
-          <div class="muted" v-if="r.status === 'ok'">
-            {{ r.date }} · {{ r.category_name || '未分类' }} · {{ r.account_name || '未选账户' }}
-            <template v-if="r.favor_contact"> · {{ r.favor_contact }} {{ r.favor_occasion }}</template>
+    <div v-if="rows.length" class="card voice-edit-list" style="margin-top:12px">
+      <div class="voice-edit-title">识别结果（可直接修改）</div>
+      <div v-for="r in rows" :key="r.row" class="voice-edit-row">
+        <div v-if="r.status !== 'ok'" class="err">第 {{ r.row }} 行：{{ r.reason || '未识别，可补全后保存' }}</div>
+        <div class="voice-edit-head">
+          <div class="kind two">
+            <button type="button" :class="{ on: r.direction === 'expense', expense: true }" @click="setDirection(r, 'expense')">支出</button>
+            <button type="button" :class="{ on: r.direction === 'income', income: true }" @click="setDirection(r, 'income')">收入</button>
           </div>
+          <input v-model="r.amount_text" class="voice-edit-amount" inputmode="decimal" placeholder="金额" aria-label="金额（元）" />
         </div>
-        <div v-if="r.status === 'ok'" class="amount" :class="r.direction === 'expense' ? 'expense' : 'income'">
-          {{ r.direction === 'expense' ? '-' : '+' }}{{ formatYuan(r.amount_cents) }}
+        <div class="voice-edit-fields">
+          <label><span>日期</span><input v-model="r.date" type="date" /></label>
+          <label><span>分类</span><select v-model.number="r.category_id"><option :value="null">未分类</option><option v-for="c in categories.filter((x) => x.kind === r.direction)" :key="c.id" :value="c.id">{{ c.name }}</option></select></label>
+          <label><span>账户</span><select v-model.number="r.account_id"><option :value="null">未选账户</option><option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option></select></label>
+          <label><span>对方 / 姓名</span><input v-model="r.favor_contact" placeholder="可留空" /></label>
+          <label><span>备注</span><input v-model="r.note" placeholder="请输入备注" /></label>
         </div>
+        <div class="muted voice-edit-meta">分类：{{ r.category_name || '未分类' }} · 账户：{{ r.account_name || '未选账户' }}</div>
       </div>
       <button class="btn" type="button" style="margin-top:8px" :disabled="busy || !importable" @click="commit">
         {{ busy ? '记入中…' : `记入 ${importable} 笔` }}

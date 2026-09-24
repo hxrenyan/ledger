@@ -29,7 +29,9 @@ const PASS_HEADERS = ['authorization', 'x-ledger-id', 'content-type', 'accept']
 /** 云函数返回体上限约 1MB，留出余量，超了就明确报错而不是被网关截断。 */
 const MAX_RESPONSE = 900 * 1024
 
-const UPSTREAM_TIMEOUT = 20000
+// DeepSeek-OCR 首 token 可能需要几十秒；必须留出完整 OCR 请求窗口。
+// 小程序端 scanImage 同样使用 120 秒，代理要略早返回，避免客户端先断开。
+const UPSTREAM_TIMEOUT = 110000
 
 function badRequest(message) {
   return { statusCode: 400, data: { code: 'bad_request', message: message } }

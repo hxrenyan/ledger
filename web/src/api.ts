@@ -84,6 +84,8 @@ export type ImportPreviewRow = {
   favor_contact: string
   favor_kind: '' | 'give' | 'receive'
   favor_occasion: string
+  /** 识别结果编辑时使用的元字段，提交前会转换回 amount_cents。 */
+  amount_text?: string
 }
 
 export type ImportPreview = {

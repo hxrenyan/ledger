@@ -594,6 +594,22 @@ input.bare {
 }
 .mic-sm svg { width: 24px; height: 24px; }
 .voice-rows { display: flex; flex-direction: column; }
+.voice-edit-list { display: flex; flex-direction: column; gap: 10px; }
+.voice-edit-title { font-size: 13px; font-weight: 650; color: var(--text); }
+.voice-edit-row { padding: 12px 0; border-top: 1px solid var(--line); }
+.voice-edit-head { display: flex; align-items: center; gap: 10px; }
+.voice-edit-head .kind { flex: 1; }
+.voice-edit-amount { width: 112px; min-width: 0; text-align: right; font-size: 18px; font-weight: 650; }
+.voice-edit-fields { display: grid; grid-template-columns: 116px 1fr; gap: 8px 10px; margin-top: 10px; }
+.voice-edit-fields label { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.voice-edit-fields label:last-child { grid-column: 1 / -1; }
+.voice-edit-fields span { color: var(--muted); font-size: 12px; }
+.voice-edit-fields input { width: 100%; box-sizing: border-box; }
+.voice-edit-meta { margin-top: 8px; }
+@media (max-width: 420px) {
+  .voice-edit-fields { grid-template-columns: 1fr; }
+  .voice-edit-fields label:last-child { grid-column: auto; }
+}
 
 /* 记完一笔后的轻提示 */
 .toast {

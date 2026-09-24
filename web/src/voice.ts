@@ -15,7 +15,8 @@
 import { computed, ref } from 'vue'
 import { api, type ImportCommitResult, type ImportPreviewRow } from './api.ts'
 import { prepare } from './photo.ts'
-import { countIgnored, isFavorRow, pickPayable, type VoiceScope } from './voiceRows.ts'
+import { formatYuan, yuanInputToCents } from './money.ts'
+import { countIgnored, isFavorRow, type VoiceScope } from './voiceRows.ts'
 
 export { countIgnored, isFavorRow, pickPayable } from './voiceRows.ts'
 export type { VoiceScope, VoiceRowLike } from './voiceRows.ts'
@@ -24,6 +25,8 @@ export function useVoice(scope: VoiceScope) {
   const spoken = ref('')
   const parsedText = ref('')
   const rows = ref<ImportPreviewRow[]>([])
+  const accounts = ref<{ id: number; name: string }[]>([])
+  const categories = ref<{ id: number; name: string; kind: string }[]>([])
   const speechOn = ref(false)
   const photoOn = ref(false)
   /** 这一轮从哪进来的：决定「正在认图 / 正在识别」的文案，也决定重解析打哪个端点。 */
@@ -39,8 +42,13 @@ export function useVoice(scope: VoiceScope) {
   /** 页面 / 浮层关闭后置位，避免把已弃用的识别结果再写回来。 */
   let disposed = false
 
-  /** 待入账的行：人情场景只取识别人情的行。 */
-  const payable = computed(() => pickPayable(rows.value, scope))
+  /**
+   * 待入账的行：保留所有非 skip 方向的行，方便用户把 OCR/AI 标成 error 的行
+   * 直接补齐后提交。人情场景仍只收有人名和人情方向的行。
+   */
+  const payable = computed(() =>
+    rows.value.filter((r) => r.direction !== 'skip' && (scope === 'tx' || isFavorRow(r))),
+  )
   const importable = computed(() => payable.value.length)
   /** 人情浮层里被忽略的流水行条数。 */
   const ignored = computed(() => countIgnored(rows.value))
@@ -148,11 +156,19 @@ export function useVoice(scope: VoiceScope) {
     msg.value = ''
     const photo = mode.value === 'photo'
     try {
-      const data = await api<{ items: ImportPreviewRow[]; parser: 'ai' | 'rules' | 'none'; ai_error: string }>(
+      const data = await api<{
+        items: ImportPreviewRow[]
+        parser: 'ai' | 'rules' | 'none'
+        ai_error: string
+        accounts?: { id: number; name: string }[]
+        categories?: { id: number; name: string; kind: string }[]
+      }>(
         photo ? '/api/v1/imports/receipt' : '/api/v1/imports/utterances',
         { method: 'POST', body: JSON.stringify({ text: spoken.value }) },
       )
-      rows.value = data.items
+      rows.value = data.items.map((r) => ({ ...r, amount_text: formatYuan(r.amount_cents) }))
+      accounts.value = data.accounts ?? []
+      categories.value = data.categories ?? []
       parsedText.value = spoken.value
       if (data.parser === 'none') {
         // 认出了字，但没配文本解析模型。原文就摆在上面的框里，改完还能再整理一次。
@@ -212,17 +228,25 @@ export function useVoice(scope: VoiceScope) {
 
   /** 成功返回提示文案，失败返回 null（错误写在 err 里）。 */
   async function commit(): Promise<string | null> {
-    const payload = payable.value.map((r) => ({
-      date: r.date,
-      amount_cents: r.amount_cents,
-      direction: r.direction,
-      note: r.note,
-      category_id: r.category_id,
-      account_id: r.account_id,
-      favor_contact: r.favor_contact,
-      favor_kind: r.favor_kind,
-      favor_occasion: r.favor_occasion,
-    }))
+    const payload = []
+    for (const r of payable.value) {
+      const amount = yuanInputToCents(r.amount_text ?? formatYuan(r.amount_cents))
+      if (!amount) {
+        err.value = `第 ${r.row} 行金额无效，请修改后再保存`
+        return null
+      }
+      payload.push({
+        date: r.date,
+        amount_cents: amount,
+        direction: r.direction,
+        note: r.note,
+        category_id: r.category_id,
+        account_id: r.account_id,
+        favor_contact: r.favor_contact,
+        favor_kind: r.favor_kind,
+        favor_occasion: r.favor_occasion,
+      })
+    }
     if (!payload.length) {
       err.value = scope === 'favor' ? '没有可记的人情' : '没有可入账的句子'
       return null
@@ -258,6 +282,8 @@ export function useVoice(scope: VoiceScope) {
     spoken,
     parsedText,
     rows,
+    accounts,
+    categories,
     speechOn,
     photoOn,
     mode,
