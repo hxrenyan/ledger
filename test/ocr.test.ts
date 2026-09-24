@@ -160,7 +160,7 @@ describe('OCR 多套接力', () => {
     )
     expect(res).toEqual({ ok: true, text: '合计 23.00', profile: '3' })
     expect(called).toEqual(['bad', 'good'])
-    expect(maxTokens).toEqual([4096, 4096])
+    expect(maxTokens).toEqual([2048, 2048])
     expect(prompts[0]).toContain('备注')
     expect(prompts[0]).toContain('不要输出 HTML 表格、Markdown 表格、坐标或识别框')
   })
