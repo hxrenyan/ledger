@@ -135,6 +135,7 @@ describe('OCR 多套接力', () => {
     const called: string[] = []
     const maxTokens: number[] = []
     const prompts: string[] = []
+    const contentTypes: string[][] = []
     globalThis.fetch = async (_url, init) => {
       const request = JSON.parse(String(init?.body)) as {
         model: string
@@ -144,6 +145,7 @@ describe('OCR 多套接力', () => {
       const model = String(request.model)
       called.push(model)
       maxTokens.push(request.max_tokens)
+      contentTypes.push(request.messages[0].content.map((item) => item.type))
       prompts.push(request.messages[0].content.find((item) => item.type === 'text')?.text ?? '')
       if (model === 'bad') return new Response('nope', { status: 500 })
       return new Response(JSON.stringify({ choices: [{ message: { content: '合计 23.00' } }] }), {
@@ -161,8 +163,11 @@ describe('OCR 多套接力', () => {
     expect(res).toEqual({ ok: true, text: '合计 23.00', profile: '3' })
     expect(called).toEqual(['bad', 'good'])
     expect(maxTokens).toEqual([2048, 2048])
-    expect(prompts[0]).toContain('备注')
-    expect(prompts[0]).toContain('不要输出 HTML 表格、Markdown 表格、坐标或识别框')
+    expect(contentTypes).toEqual([
+      ['image_url', 'text'],
+      ['image_url', 'text'],
+    ])
+    expect(prompts[0]).toBe('<image>\nFree OCR.')
   })
 
   it('全都失败时把每套的原因汇总，而不是只报最后一条', async () => {

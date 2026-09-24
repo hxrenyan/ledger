@@ -266,12 +266,13 @@ export async function recognizeOne(
         role: 'user',
         content: [
           {
-            type: 'text',
-            text: 'Free OCR. 请完整识别图片中所有可见文字，按从上到下、从左到右输出，务必包含备注、附言、商品明细和底部小字；不要总结、不要省略、不要输出 HTML 表格、Markdown 表格、坐标或识别框。',
-          },
-          {
             type: 'image_url',
             image_url: { url: toDataUrl(image), detail: 'high' },
+          },
+          {
+            type: 'text',
+            // DeepSeek-OCR 的 OCR 模式依赖这条固定指令，不能改成结构化提示。
+            text: '<image>\nFree OCR.',
           },
         ],
       },
@@ -306,12 +307,26 @@ export async function recognizeOne(
   } catch {
     return { ok: false, error: '返回不是 JSON' }
   }
-  const choice = (payload as { choices?: { message?: { content?: unknown } }[] })?.choices?.[0]
+  const choice = (payload as { choices?: { message?: { content?: unknown; reasoning_content?: unknown } }[] })?.choices?.[0]
   const content = choice?.message?.content
-  const rawText = typeof content === 'string' ? content : ''
+  const rawText = extractOcrContent(content)
   const text = normalizeOcrText(rawText)
-  if (!text) return { ok: false, error: '这张图里没有识别出文字' }
+  if (!text || !/[\p{L}\p{N}]/u.test(text)) return { ok: false, error: '这张图里没有识别出文字' }
   return { ok: true, text: text.slice(0, 20000) }
+}
+
+function extractOcrContent(content: unknown): string {
+  if (typeof content === 'string') return content
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((part) => {
+      if (typeof part === 'string') return part
+      if (!part || typeof part !== 'object') return ''
+      const text = (part as { text?: unknown }).text
+      return typeof text === 'string' ? text : ''
+    })
+    .filter(Boolean)
+    .join('\n')
 }
 
 function clip(msg: string): string {
