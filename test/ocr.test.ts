@@ -126,11 +126,17 @@ describe('OCR 多套接力', () => {
   it('第一套失败才用下一套，停用的不参与', async () => {
     const called: string[] = []
     const maxTokens: number[] = []
+    const prompts: string[] = []
     globalThis.fetch = async (_url, init) => {
-      const request = JSON.parse(String(init?.body)) as { model: string; max_tokens: number }
+      const request = JSON.parse(String(init?.body)) as {
+        model: string
+        max_tokens: number
+        messages: { content: { type: string; text?: string }[] }[]
+      }
       const model = String(request.model)
       called.push(model)
       maxTokens.push(request.max_tokens)
+      prompts.push(request.messages[0].content.find((item) => item.type === 'text')?.text ?? '')
       if (model === 'bad') return new Response('nope', { status: 500 })
       return new Response(JSON.stringify({ choices: [{ message: { content: '合计 23.00' } }] }), {
         status: 200,
@@ -147,6 +153,8 @@ describe('OCR 多套接力', () => {
     expect(res).toEqual({ ok: true, text: '合计 23.00', profile: '3' })
     expect(called).toEqual(['bad', 'good'])
     expect(maxTokens).toEqual([4096, 4096])
+    expect(prompts[0]).toContain('备注')
+    expect(prompts[0]).toContain('不要输出坐标或识别框')
   })
 
   it('全都失败时把每套的原因汇总，而不是只报最后一条', async () => {

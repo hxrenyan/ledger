@@ -406,6 +406,8 @@ input.bare {
   font-size: 14px;
 }
 .speak-card textarea {
+  display: block;
+  width: 100%;
   border: 0;
   padding: 0;
   min-height: 72px;

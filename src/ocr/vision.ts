@@ -5,8 +5,8 @@
  *
  * protocol 目前只有 openai-vision，即 OpenAI 兼容的 chat/completions 里塞
  * 一条 image_url（data URL）。硅基流动的 deepseek-ai/DeepSeek-OCR 走这条：
- * 调用时只发送图片，返回识别文本，
- * 所以这里不拼任何提示词 —— 结构化留给第二步（kind=llm 的票据文本解析）。
+ * 调用时发送「完整 OCR」提示和图片，返回识别文本；提示只约束识字范围，
+ * 不要求模型做结构化，结构化仍留给第二步（kind=llm 的票据文本解析）。
  *
  * 图片只在这次请求的内存里过一遍：不写 D1，也不进对象存储。
  */
@@ -185,13 +185,18 @@ export async function recognizeOne(
   const endpoint = resolveOcrEndpoint(profile.baseUrl)
   if (!endpoint) return { ok: false, error: 'base_url 为空' }
 
-  // 只发图片、不发文字指令：OCR 只负责识字，结构化交给第二步的语言模型。
+  // 明确要求完整识别，避免模型只摘录金额等重点字段而漏掉备注和底部小字。
+  // 不要求 JSON 或坐标框，结构化交给第二步的语言模型。
   const body = {
     model: profile.model,
     messages: [
       {
         role: 'user',
         content: [
+          {
+            type: 'text',
+            text: 'Free OCR. 请完整识别图片中所有可见文字，按从上到下、从左到右输出，务必包含备注、附言、商品明细和底部小字；不要总结、不要省略、不要输出坐标或识别框。',
+          },
           {
             type: 'image_url',
             image_url: { url: toDataUrl(image), detail: 'high' },
