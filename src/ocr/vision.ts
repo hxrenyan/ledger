@@ -4,8 +4,8 @@
  * 和语音识别同一套路：一套超时、HTTP 失败或没有文本，就换下一套。
  *
  * protocol 目前只有 openai-vision，即 OpenAI 兼容的 chat/completions 里塞
- * 一条 image_url（data URL）。硅基流动的 PaddleOCR-VL-1.5 走这条：
- * 它的官方调用方式是「只发图片、不发文字指令」，返回的是带版面标记的纯文本，
+ * 一条 image_url（data URL）。硅基流动的 deepseek-ai/DeepSeek-OCR 走这条：
+ * 调用时只发送图片，返回识别文本，
  * 所以这里不拼任何提示词 —— 结构化留给第二步（kind=llm 的票据文本解析）。
  *
  * 图片只在这次请求的内存里过一遍：不写 D1，也不进对象存储。
@@ -15,17 +15,15 @@ import type { Db } from '../db/types.ts'
 import { maskSecret, readProfiles, replaceProfiles, type Profile } from '../profiles.ts'
 
 export const MAX_OCR_PROFILES = 8
-export const DEFAULT_OCR_MODEL = 'PaddlePaddle/PaddleOCR-VL-1.5'
+export const DEFAULT_OCR_MODEL = 'deepseek-ai/DeepSeek-OCR'
 export const DEFAULT_OCR_BASE = 'https://api.siliconflow.cn/v1'
 export const OCR_PROTOCOL = 'openai-vision'
 
 /**
  * 单套配置的上限。
  *
- * 实测（同一张 332 字节的图标，硅基流动）：PaddleOCR-VL-1.5 30.9s / 45.5s、
- * Qwen3-VL-8B 36.5s、Qwen3-VL-30B-A3B 64.9s —— 而且图标只产出 4 个 token，
- * 说明耗时几乎全在排队/冷启动，与图的大小、输出长度无关。真实小票更长。
- * 所以这里给得宽：小票本就该等，等不到再换下一套也没意义（下一套同样慢）。
+ * 视觉模型可能受排队和冷启动影响，小票识别需要比普通文本请求更长的等待时间。
+ * 所以这里给得宽，超时后才交给下一套配置接力。
  */
 const REQUEST_TIMEOUT_MS = 90_000
 /**
@@ -143,7 +141,7 @@ export function toDataUrl(image: ImagePayload): string {
 /**
  * 收拾 OCR 输出里的版面标记。
  *
- * PaddleOCR-VL 用 <nl> 表示换行、<fcel>/<ecel>/... 表示表格单元格边界。
+ * 部分 OCR 模型会用 <nl> 表示换行、<fcel>/<ecel>/... 表示表格单元格边界。
  * 这些标记对第二步的语言模型不但没用、还会干扰断句，所以在这里清掉。
  * 只动白名单里的标记，其余原样保留 —— 别把正文里正当的尖括号内容也删了。
  */
@@ -184,8 +182,7 @@ export async function recognizeOne(
   const endpoint = resolveOcrEndpoint(profile.baseUrl)
   if (!endpoint) return { ok: false, error: 'base_url 为空' }
 
-  // 只发图片、不发文字指令：PaddleOCR-VL 是这样训练的，
-  // 多加一句「请提取 JSON」反而会让它跑偏。结构化交给第二步的语言模型。
+  // 只发图片、不发文字指令：OCR 只负责识字，结构化交给第二步的语言模型。
   const body = {
     model: profile.model,
     messages: [

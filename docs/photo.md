@@ -18,7 +18,7 @@
   → POST /api/v1/imports/commit
 ```
 
-第一步只发图片、不发文字指令 —— 硅基流动上的 `PaddlePaddle/PaddleOCR-VL-1.5` 是这样训练的，
+第一步只发图片、不发文字指令 —— 当前默认使用硅基流动上的 `deepseek-ai/DeepSeek-OCR`，
 多补一句「请提取 JSON」反而会让它跑偏。结构化交给第二步的语言模型。
 **换句话说：只配了 ocr 没配 llm，能认出字但整理不成流水**，界面会把识别出的原文直接摆出来让人照着手动记。
 
@@ -48,7 +48,7 @@
 | 字段 | 值 |
 |------|-----|
 | `base_url` | `https://api.siliconflow.cn/v1`（带不带 `/v1`、给不给完整 endpoint 都会归一化） |
-| `model` | `PaddlePaddle/PaddleOCR-VL-1.5` |
+| `model` | `deepseek-ai/DeepSeek-OCR` |
 | `api_key` | 只写不读，保存后仅回显掩码 |
 
 和语音一样按 `sort_order` 接力：一套超时 / HTTP 失败 / 没认出文字，就换下一套。

@@ -23,7 +23,7 @@ type OcrItem = {
 
 const SILICON = {
   base_url: 'https://api.siliconflow.cn/v1',
-  model: 'PaddlePaddle/PaddleOCR-VL-1.5',
+  model: 'deepseek-ai/DeepSeek-OCR',
 }
 
 const items = ref<OcrItem[]>([])
@@ -127,7 +127,7 @@ onMounted(() => {
     <div class="admin-config-title"><div><h2>图片识别</h2>
     <p class="muted">
       拍照记账的第一步。可配置多套，按顺序接力，上一套超时或失败才换下一套。协议是 OpenAI 兼容的
-      <code>/chat/completions</code>，图片以 data URL 放进 <code>image_url</code>（硅基流动的 PaddleOCR-VL 走这条）。
+      <code>/chat/completions</code>，图片以 data URL 放进 <code>image_url</code>（当前默认模型为 SiliconFlow 的 DeepSeek-OCR）。
       <br />
       注意：这一步只把图上的字读出来。要变成可入账的流水，还要在「AI 配置」里配一套文本模型做整理；两套都配上，
       拍照才能一路走到记账。图片只在当次请求里识别，不保存。
@@ -150,7 +150,7 @@ onMounted(() => {
       </div>
       <div class="field">
         <span>名称</span>
-        <input v-model="item.name" placeholder="硅基流动" />
+        <input v-model="item.name" placeholder="DeepSeek-OCR" />
       </div>
       <div class="field">
         <span>base_url</span>
@@ -158,7 +158,7 @@ onMounted(() => {
       </div>
       <div class="field">
         <span>model</span>
-        <input v-model="item.model" placeholder="PaddlePaddle/PaddleOCR-VL-1.5" />
+        <input v-model="item.model" placeholder="deepseek-ai/DeepSeek-OCR" />
       </div>
       <div class="field">
         <span>api_key{{ item.key_hint ? `（已保存：${item.key_hint}，留空不改）` : '' }}</span>
