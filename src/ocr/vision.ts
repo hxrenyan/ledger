@@ -142,6 +142,43 @@ export function toDataUrl(image: ImagePayload): string {
 }
 
 /**
+ * 把模型偶尔输出的 HTML 表格转成可直接编辑的制表符文本。
+ * OCR 结果不是网页，保留 `<table>` 标签只会让用户看到一串不可读的标记。
+ */
+function normalizeHtmlTables(raw: string): string {
+  return raw.replace(/<table\b[^>]*>[\s\S]*?<\/table>/gi, (table) => {
+    const rows: string[] = []
+    const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi
+    let row: RegExpExecArray | null
+    while ((row = rowRe.exec(table))) {
+      const cells: string[] = []
+      const cellRe = /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi
+      let cell: RegExpExecArray | null
+      while ((cell = cellRe.exec(row[1]))) {
+        cells.push(decodeHtml(cell[1].replace(/<[^>]+>/g, ' ')))
+      }
+      if (cells.length) rows.push(cells.join('\t'))
+    }
+    return rows.join('\n') || table
+  })
+}
+
+function decodeHtml(value: string): string {
+  const named: Record<string, string> = { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }
+  return value
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (all, code: string) => {
+      if (code[0] === '#') {
+        const hex = code[1].toLowerCase() === 'x'
+        const n = Number.parseInt(code.slice(hex ? 2 : 1), hex ? 16 : 10)
+        return Number.isFinite(n) ? String.fromCodePoint(n) : all
+      }
+      return named[code.toLowerCase()] ?? all
+    })
+    .replace(/[ \t]+\n/g, '\n')
+    .trim()
+}
+
+/**
  * 收拾 OCR 输出里的版面标记。
  *
  * 部分 OCR 模型会用 <nl> 表示换行、<fcel>/<ecel>/... 表示表格单元格边界。
@@ -149,7 +186,7 @@ export function toDataUrl(image: ImagePayload): string {
  * 只动白名单里的标记，其余原样保留 —— 别把正文里正当的尖括号内容也删了。
  */
 export function normalizeOcrText(raw: string): string {
-  return raw
+  return normalizeHtmlTables(raw)
     .replace(/<nl>/gi, '\n')
     .replace(/<\/?(?:fcel|ecel|lcel|ucel|xcel)>/gi, ' ')
     .replace(/[ \t]+\n/g, '\n')
@@ -195,7 +232,7 @@ export async function recognizeOne(
         content: [
           {
             type: 'text',
-            text: 'Free OCR. 请完整识别图片中所有可见文字，按从上到下、从左到右输出，务必包含备注、附言、商品明细和底部小字；不要总结、不要省略、不要输出坐标或识别框。',
+            text: 'Free OCR. 请完整识别图片中所有可见文字，按从上到下、从左到右输出，务必包含备注、附言、商品明细和底部小字；不要总结、不要省略、不要输出 HTML 表格、Markdown 表格、坐标或识别框。',
           },
           {
             type: 'image_url',

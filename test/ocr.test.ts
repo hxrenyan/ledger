@@ -104,6 +104,14 @@ describe('OCR 输出清理', () => {
     expect(normalizeOcrText('备注 <重要> 别删')).toBe('备注 <重要> 别删')
     expect(normalizeOcrText('\n\n\n\n')).toBe('')
   })
+
+  it('HTML 表格转成可直接修改的制表符文本，并解码实体', () => {
+    expect(
+      normalizeOcrText(
+        '<table><tr><td></td><td>姓名</td><td>礼金</td><td>备注</td></tr><tr><td>李志刚</td><td>300元</td><td>见面礼 &amp; 红包</td></tr></table>',
+      ),
+    ).toBe('姓名\t礼金\t备注\n李志刚\t300元\t见面礼 & 红包')
+  })
 })
 
 describe('OCR 图片入参', () => {
@@ -154,7 +162,7 @@ describe('OCR 多套接力', () => {
     expect(called).toEqual(['bad', 'good'])
     expect(maxTokens).toEqual([4096, 4096])
     expect(prompts[0]).toContain('备注')
-    expect(prompts[0]).toContain('不要输出坐标或识别框')
+    expect(prompts[0]).toContain('不要输出 HTML 表格、Markdown 表格、坐标或识别框')
   })
 
   it('全都失败时把每套的原因汇总，而不是只报最后一条', async () => {
