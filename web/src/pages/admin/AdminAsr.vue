@@ -120,14 +120,14 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="card">
-    <h2>语音识别</h2>
-    <p class="muted" style="margin-top:0">
+  <div class="admin-config-page">
+    <div class="admin-config-title"><div><h2>语音识别</h2>
+    <p class="muted">
       可配置多套，按顺序接力，不是只启用其中一套。上一套超时或失败才换下一套。协议目前是 OpenAI 兼容的
       <code>/audio/transcriptions</code>（硅基流动 XingChenASR 走这条）。录音只在当次请求里转写，不保存。
-    </p>
-    <div v-for="(item, index) in items" :key="item.id || index" class="card" style="margin-bottom:12px">
-      <div class="row">
+    </p></div></div>
+    <div v-for="(item, index) in items" :key="item.id || index" class="admin-config-block">
+      <div class="admin-block-heading">
         <strong>第 {{ index + 1 }} 套</strong>
         <div class="inline">
           <button class="btn ghost compact" type="button" :disabled="index === 0" @click="move(index, -1)">上移</button>
@@ -166,7 +166,8 @@ onMounted(() => {
     </div>
     <p v-if="err" class="err">{{ err }}</p>
     <p v-if="msg" class="muted">{{ msg }}</p>
-    <div class="admin-actions">
+    <div class="admin-savebar">
+      <span class="muted">录音仅用于本次测试，不会保存</span>
       <button class="btn ghost" type="button" :disabled="busy || items.length >= 8" @click="add">添加一套</button>
       <button class="btn" type="button" :disabled="busy" @click="save">保存</button>
     </div>

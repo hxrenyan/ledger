@@ -123,17 +123,17 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="card">
-    <h2>图片识别</h2>
-    <p class="muted" style="margin-top:0">
+  <div class="admin-config-page">
+    <div class="admin-config-title"><div><h2>图片识别</h2>
+    <p class="muted">
       拍照记账的第一步。可配置多套，按顺序接力，上一套超时或失败才换下一套。协议是 OpenAI 兼容的
       <code>/chat/completions</code>，图片以 data URL 放进 <code>image_url</code>（硅基流动的 PaddleOCR-VL 走这条）。
       <br />
       注意：这一步只把图上的字读出来。要变成可入账的流水，还要在「AI 配置」里配一套文本模型做整理；两套都配上，
       拍照才能一路走到记账。图片只在当次请求里识别，不保存。
-    </p>
-    <div v-for="(item, index) in items" :key="item.id || index" class="card" style="margin-bottom:12px">
-      <div class="row">
+    </p></div></div>
+    <div v-for="(item, index) in items" :key="item.id || index" class="admin-config-block">
+      <div class="admin-block-heading">
         <strong>第 {{ index + 1 }} 套</strong>
         <div class="inline">
           <button class="btn ghost compact" type="button" :disabled="index === 0" @click="move(index, -1)">上移</button>
@@ -172,7 +172,8 @@ onMounted(() => {
     </div>
     <p v-if="err" class="err">{{ err }}</p>
     <pre v-if="msg" class="muted" style="white-space:pre-wrap">{{ msg }}</pre>
-    <div class="admin-actions">
+    <div class="admin-savebar">
+      <span class="muted">图片只用于本次测试，不会保存</span>
       <button class="btn ghost" type="button" :disabled="busy || items.length >= 8" @click="add">添加一套</button>
       <button class="btn" type="button" :disabled="busy" @click="save">保存</button>
     </div>

@@ -130,13 +130,13 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="card">
-    <h2>AI 解析配置</h2>
-    <p class="muted" style="margin-top:0">
+  <div class="admin-config-page">
+    <div class="admin-config-title"><div><h2>AI 解析配置</h2>
+    <p class="muted">
       可配置多套，按顺序接力，不是只启用其中一套。上一套超时、报错或返回无法解析时，自动换下一套。不配置也能导入，规则解析照常可用。
-    </p>
-    <div v-for="(item, index) in items" :key="item.id || index" class="card" style="margin-bottom:12px">
-      <div class="row">
+    </p></div></div>
+    <div v-for="(item, index) in items" :key="item.id || index" class="admin-config-block">
+      <div class="admin-block-heading">
         <strong>第 {{ index + 1 }} 套</strong>
         <div class="inline">
           <button class="btn ghost compact" type="button" :disabled="index === 0" @click="move(index, -1)">上移</button>
@@ -179,7 +179,8 @@ onMounted(() => {
     </div>
     <p v-if="err" class="err">{{ err }}</p>
     <p v-if="msg" class="muted">{{ msg }}</p>
-    <div class="admin-actions">
+    <div class="admin-savebar">
+      <span class="muted">密钥留空表示不修改已保存值</span>
       <button class="btn ghost" type="button" :disabled="busy || items.length >= 8" @click="add">添加一套</button>
       <button class="btn" type="button" :disabled="busy" @click="save">保存</button>
     </div>
