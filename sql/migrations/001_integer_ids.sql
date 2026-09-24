@@ -41,7 +41,7 @@ CREATE TABLE users_v2 (
   nickname TEXT NOT NULL DEFAULT '',
   disabled INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
-  old_id TEXT NOT NULL UNIQUE
+  old_id TEXT NOT NULL -- D1 不能 DROP UNIQUE 列，映射列不建唯一约束
 );
 INSERT INTO users_v2 (username, password_hash, nickname, disabled, created_at, old_id)
 SELECT username, password_hash, nickname, disabled, created_at, id FROM users;
@@ -52,7 +52,7 @@ CREATE TABLE ledgers_v2 (
   owner_id INTEGER NOT NULL,
   invite_code TEXT,
   created_at INTEGER NOT NULL,
-  old_id TEXT NOT NULL UNIQUE
+  old_id TEXT NOT NULL
 );
 INSERT INTO ledgers_v2 (name, owner_id, invite_code, created_at, old_id)
 SELECT l.name, u.id, l.invite_code, l.created_at, l.id
@@ -80,7 +80,7 @@ CREATE TABLE accounts_v2 (
   archived INTEGER NOT NULL DEFAULT 0,
   current_cents INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
-  old_id TEXT NOT NULL UNIQUE
+  old_id TEXT NOT NULL
 );
 INSERT INTO accounts_v2 (ledger_id, name, type, sort_order, archived, current_cents, created_at, old_id)
 SELECT l.id, a.name, a.type, a.sort_order, a.archived, a.current_cents, a.created_at, a.id
@@ -94,7 +94,7 @@ CREATE TABLE categories_v2 (
   sort_order INTEGER NOT NULL DEFAULT 0,
   archived INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
-  old_id TEXT NOT NULL UNIQUE
+  old_id TEXT NOT NULL
 );
 INSERT INTO categories_v2 (ledger_id, name, kind, sort_order, archived, created_at, old_id)
 SELECT l.id, c.name, c.kind, c.sort_order, c.archived, c.created_at, c.id
@@ -107,7 +107,7 @@ CREATE TABLE contacts_v2 (
   relation TEXT NOT NULL DEFAULT '',
   archived INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL,
-  old_id TEXT NOT NULL UNIQUE
+  old_id TEXT NOT NULL
 );
 INSERT INTO contacts_v2 (ledger_id, name, relation, archived, created_at, old_id)
 SELECT l.id, c.name, c.relation, c.archived, c.created_at, c.id
@@ -127,7 +127,7 @@ CREATE TABLE import_batches_v2 (
   created_by INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   undone_at INTEGER,
-  old_id TEXT NOT NULL UNIQUE
+  old_id TEXT NOT NULL
 );
 INSERT INTO import_batches_v2 (
   ledger_id, source, filename, parsed_rows, imported_rows, skipped_rows, duplicate_rows,
@@ -155,7 +155,7 @@ CREATE TABLE transactions_v2 (
   created_by INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  old_id TEXT NOT NULL UNIQUE
+  old_id TEXT NOT NULL
 );
 INSERT INTO transactions_v2 (
   ledger_id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note,
