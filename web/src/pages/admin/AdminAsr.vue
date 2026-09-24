@@ -7,7 +7,7 @@ import { onMounted, ref } from 'vue'
 import { adminApi } from '../../adminApi.ts'
 
 type AsrItem = {
-  id: string
+  id: number | ''
   name: string
   enabled: boolean
   base_url: string
@@ -94,7 +94,7 @@ async function test(item: AsrItem, event: Event) {
   try {
     const fd = new FormData()
     fd.append('file', file)
-    if (item.id) fd.append('id', item.id)
+    if (item.id) fd.append('id', String(item.id))
     fd.append('name', item.name)
     fd.append('base_url', item.base_url)
     fd.append('model', item.model)

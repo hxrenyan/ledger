@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { cors } from 'hono/cors'
 import type { Db } from './db/types.ts'
 import { verifyToken } from './auth/jwt.ts'
+import { parseId } from './id.ts'
 import { badRequest, forbidden, HttpError, unauthorized } from './http.ts'
 import { registerAuthRoutes } from './routes/auth.ts'
 import { registerAccountRoutes } from './routes/accounts.ts'
@@ -24,8 +25,8 @@ export type AppEnv = {
     db: Db
     jwtSecret: string
     adminToken: string
-    userId: string
-    ledgerId: string
+    userId: number
+    ledgerId: number
     memberRole: string
     isAdmin: boolean
     exchangeWechatCode: WechatCodeExchange | null
@@ -104,10 +105,12 @@ export function createApp(cfg: AppConfig) {
       if (payload.admin) {
         if (!path.startsWith('/api/v1/admin')) throw forbidden('管理员令牌不能访问用户接口')
         c.set('isAdmin', true)
-        c.set('userId', 'admin')
+        c.set('userId', 0)
         return next()
       }
-      c.set('userId', payload.sub)
+      const userId = parseId(payload.sub)
+      if (userId == null) throw unauthorized('登录已过期')
+      c.set('userId', userId)
     } catch (e) {
       if (e instanceof HttpError) throw e
       throw unauthorized('登录已过期')
@@ -145,10 +148,10 @@ export function createApp(cfg: AppConfig) {
       return next()
     }
     const userId = c.get('userId')
-    const ledgerId = c.req.header('X-Ledger-Id') ?? c.req.query('ledger_id')
+    const ledgerId = parseId(c.req.header('X-Ledger-Id') ?? c.req.query('ledger_id'))
     // 用 400 而不是 401：这里用户已经通过鉴权，只是请求没带账本，语义上不是「未登录」。
     // 用 401 会让客户端误判成掉登录，把用户踢回登录页。
-    if (!ledgerId) throw badRequest('缺少账本')
+    if (ledgerId == null) throw badRequest('缺少账本')
     const row = await c.get('db').first<{ role: string }>(
       `SELECT role FROM members WHERE ledger_id = ? AND user_id = ?`,
       [ledgerId, userId],

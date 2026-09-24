@@ -70,8 +70,8 @@ Page({
   },
 
   switchLedger(e) {
-    const id = e.currentTarget.dataset.id
-    if (id === session.getLedgerId()) return
+    const id = require('../../utils/id').toId(e.currentTarget.dataset.id)
+    if (!id || id === session.getLedgerId()) return
     session.setLedger(id)
     this.renderLedgers()
     this.loadMembers()
@@ -153,7 +153,7 @@ Page({
 
   onMember(e) {
     if (!this.data.isOwner) return
-    const userId = e.currentTarget.dataset.user
+    const userId = require('../../utils/id').toId(e.currentTarget.dataset.user)
     const member = this.data.members.find((m) => m.userId === userId)
     if (!member || member.isMe) return
     if (member.isOwner) {

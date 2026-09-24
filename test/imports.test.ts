@@ -215,14 +215,14 @@ describe('表格结构识别', () => {
 
 describe('分类与账户建议', () => {
   const categories = [
-    { id: 'c1', name: '餐饮', kind: 'expense' as const },
-    { id: 'c2', name: '交通', kind: 'expense' as const },
-    { id: 'c3', name: '工资', kind: 'income' as const },
+    { id: 1, name: '餐饮', kind: 'expense' as const },
+    { id: 2, name: '交通', kind: 'expense' as const },
+    { id: 3, name: '工资', kind: 'income' as const },
   ]
   const accounts = [
-    { id: 'a1', name: '现金' },
-    { id: 'a2', name: '微信' },
-    { id: 'a3', name: '支付宝' },
+    { id: 1, name: '现金' },
+    { id: 2, name: '微信' },
+    { id: 3, name: '支付宝' },
   ]
 
   it('关键词命中分类', () => {
@@ -241,7 +241,7 @@ describe('分类与账户建议', () => {
     expect(suggestAccount('现金支付', accounts)?.name).toBe('现金')
     // 关键词命中「银行卡」但账本里没有该账户时返回 null，由调用方决定兜底
     expect(suggestAccount('招商银行储蓄卡', accounts)).toBeNull()
-    expect(suggestAccount('招商银行储蓄卡', [...accounts, { id: 'a4', name: '银行卡' }])?.name).toBe('银行卡')
+    expect(suggestAccount('招商银行储蓄卡', [...accounts, { id: 4, name: '银行卡' }])?.name).toBe('银行卡')
   })
 })
 
@@ -556,9 +556,10 @@ describe('AI 失败换下一套', () => {
     globalThis.fetch = original
   })
 
+  let nextId = 1
   function cfg(name: string, model: string, enabled = true): AiConfig {
     return {
-      id: name,
+      id: nextId++,
       name,
       enabled,
       baseUrl: 'https://example.com/v1',

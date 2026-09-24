@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import LedgerName from '../components/LedgerName.vue'
 import { api, type Account, type Category, type Tx } from '../api.ts'
 import { formatYuan, yuanInputToCents } from '../money.ts'
+import { toId } from '../id.ts'
 import { loadPrefs, savePrefs } from '../prefs.ts'
 import { useSession } from '../stores/session.ts'
 import { addDays, occurredAtToDate, shanghaiDate } from '@server/time.ts'
@@ -12,14 +13,14 @@ const session = useSession()
 
 const route = useRoute()
 const router = useRouter()
-const id = computed(() => (route.params.id as string | undefined) ?? null)
+const id = computed(() => toId(route.params.id))
 const kind = ref<'expense' | 'income' | 'transfer'>('expense')
 const amount = ref('')
 const date = ref(shanghaiDate())
 const note = ref('')
-const accountId = ref('')
-const toAccountId = ref('')
-const categoryId = ref('')
+const accountId = ref<number | ''>('')
+const toAccountId = ref<number | ''>('')
+const categoryId = ref<number | ''>('')
 const accounts = ref<Account[]>([])
 const categories = ref<Category[]>([])
 const hasReceipt = ref(false)
@@ -33,7 +34,7 @@ const originalCents = ref(0)
 const monthStats = ref<{
   expense_cents: number
   budget_cents: number
-  by_category: { category_id: string; name: string; amount_cents: number; budget_cents: number }[]
+  by_category: { category_id: number; name: string; amount_cents: number; budget_cents: number }[]
 } | null>(null)
 const today = shanghaiDate()
 const yesterday = addDays(today, -1)
@@ -83,7 +84,7 @@ async function load() {
   ])
   accounts.value = acc.items.filter((a) => !a.archived)
   categories.value = cat.items
-  const prefs = loadPrefs(session.ledgerId)
+  const prefs = session.ledgerId ? loadPrefs(session.ledgerId) : {}
   accountId.value = (prefs.accountId && accounts.value.some((a) => a.id === prefs.accountId) ? prefs.accountId : accounts.value[0]?.id) ?? ''
   toAccountId.value = accounts.value.find((a) => a.id !== accountId.value)?.id ?? accounts.value[0]?.id ?? ''
   excluded.value = false
@@ -102,7 +103,7 @@ async function load() {
     excluded.value = !!tx.excluded
     originalCents.value = tx.kind === 'expense' && !tx.excluded ? tx.amount_cents : 0
   } else {
-    const prefs = loadPrefs(session.ledgerId)
+    const prefs = session.ledgerId ? loadPrefs(session.ledgerId) : {}
     // 新建流水固定从「支出」开始（见函数开头的 kind.value = 'expense'），
     // 因此只用支出默认分类。历史遗留的 income 分支在此不可达（vue-tsc 的 TS2367 告警即指向它），
     // 保留行为不变，是否修复由用户决定。
@@ -159,11 +160,13 @@ async function save(again = false) {
       fd.append('file', file.value)
       await api(`/api/v1/transactions/${saved.id}/receipt`, { method: 'POST', body: fd })
     }
-    savePrefs(session.ledgerId, {
-      accountId: accountId.value,
-      expenseCat: kind.value === 'expense' ? categoryId.value : undefined,
-      incomeCat: kind.value === 'income' ? categoryId.value : undefined,
-    })
+    if (session.ledgerId) {
+      savePrefs(session.ledgerId, {
+        accountId: accountId.value || undefined,
+        expenseCat: kind.value === 'expense' && categoryId.value ? categoryId.value : undefined,
+        incomeCat: kind.value === 'income' && categoryId.value ? categoryId.value : undefined,
+      })
+    }
     if (again) {
       amount.value = ''
       note.value = ''
@@ -197,7 +200,7 @@ async function viewReceipt() {
   const res = await fetch(`/api/v1/transactions/${id.value}/receipt`, {
     headers: {
       authorization: `Bearer ${session.token}`,
-      'x-ledger-id': session.ledgerId,
+      'x-ledger-id': session.ledgerId ? String(session.ledgerId) : '',
     },
   })
   if (!res.ok) return

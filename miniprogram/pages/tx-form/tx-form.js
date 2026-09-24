@@ -11,6 +11,7 @@
  * 3. 看收据要把 token 带上去，previewImage 不能加请求头，先用 downloadFile 下到本地。
  */
 
+const { toId } = require('../../utils/id')
 const request = require('../../utils/request')
 const config = require('../../config')
 const image = require('../../utils/image')
@@ -57,7 +58,7 @@ Page({
     const date = q.date || time.todayISO()
     const kind = q.kind === 'income' ? 'income' : 'expense'
     this.setData({
-      id: q.id || '',
+      id: toId(q.id) || '',
       kind: kind,
       date: date,
       dateQuick: this.buildQuick(date),
@@ -187,7 +188,7 @@ Page({
   },
 
   pickCategory(e) {
-    this.setData({ categoryId: e.currentTarget.dataset.id })
+    this.setData({ categoryId: toId(e.currentTarget.dataset.id) || '' })
   },
 
   pickAccount(e) {

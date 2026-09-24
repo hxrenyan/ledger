@@ -7,7 +7,7 @@ import { onMounted, ref } from 'vue'
 import { adminApi } from '../../adminApi.ts'
 
 type AiItem = {
-  id: string
+  id: number | ''
   name: string
   enabled: boolean
   base_url: string

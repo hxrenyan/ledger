@@ -2,13 +2,14 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api.ts'
+import { toId } from '../id.ts'
 import { formatYuan } from '../money.ts'
 import { onDataChange } from '../refresh.ts'
 import { occurredAtToDate } from '@server/time.ts'
 
 type Gift = {
-  id: string
-  contact_id: string
+  id: number
+  contact_id: number
   kind: 'give' | 'receive'
   amount_cents: number
   occasion: string
@@ -18,7 +19,7 @@ type Gift = {
 
 const route = useRoute()
 const router = useRouter()
-const contactId = computed(() => route.params.id as string)
+const contactId = computed(() => toId(route.params.id))
 const name = ref('')
 const items = ref<Gift[]>([])
 const err = ref('')
@@ -30,7 +31,7 @@ const lastRecv = computed(() => items.value.find((g) => g.kind === 'receive') ??
 async function load() {
   err.value = ''
   try {
-    const contacts = await api<{ items: { id: string; name: string }[] }>('/api/v1/contacts')
+    const contacts = await api<{ items: { id: number; name: string }[] }>('/api/v1/contacts')
     name.value = contacts.items.find((c) => c.id === contactId.value)?.name ?? '往来'
     items.value = (await api<{ items: Gift[] }>(`/api/v1/gifts?contact_id=${contactId.value}`)).items
   } catch (e) {

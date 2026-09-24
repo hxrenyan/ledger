@@ -194,12 +194,15 @@ describe('migrate old sqlite', () => {
       n: 9,
     })
 
-    expect(
-      await db.all(`SELECT kind, id, name, api_key FROM ai_profiles ORDER BY kind`),
-    ).toEqual([
-      { kind: 'asr', id: 'same', name: '语音', api_key: 'k2' },
-      { kind: 'llm', id: 'same', name: '解析', api_key: 'k1' },
+    const profiles = await db.all<{ kind: string; id: number; name: string; api_key: string }>(
+      `SELECT kind, id, name, api_key FROM ai_profiles ORDER BY kind`,
+    )
+    expect(profiles.map(({ kind, name, api_key }) => ({ kind, name, api_key }))).toEqual([
+      { kind: 'asr', name: '语音', api_key: 'k2' },
+      { kind: 'llm', name: '解析', api_key: 'k1' },
     ])
+    expect(profiles.every((row) => Number.isInteger(row.id) && row.id > 0)).toBe(true)
+    expect(new Set(profiles.map((row) => row.id)).size).toBe(2)
     const tables = (await db.all<{ name: string }>(`SELECT name FROM sqlite_master WHERE type = 'table'`)).map((row) => row.name)
     expect(tables).not.toContain('ai_settings')
     expect(tables).not.toContain('asr_profiles')

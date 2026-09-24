@@ -2,6 +2,7 @@ import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { signAdminToken } from '../auth/jwt.ts'
 import { badRequest, notFound, unauthorized } from '../http.ts'
+import { parseId, routeId } from '../id.ts'
 import { readAiConfigs, replaceAiConfigs, resolveEndpoint, testAi, toPublicAi, type AiConfig } from '../imports/ai.ts'
 import { readAudio } from './speech.ts'
 import { readAsrProfiles, replaceAsrProfiles, toPublicAsr, transcribeOne, type AsrProfile } from '../speech/asr.ts'
@@ -35,7 +36,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
 
   app.get('/api/v1/admin/users', async (c) => {
     const rows = await c.get('db').all<{
-      id: string
+      id: number
       username: string
       nickname: string
       disabled: number
@@ -60,7 +61,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
   })
 
   app.patch('/api/v1/admin/users/:id', async (c) => {
-    const id = c.req.param('id')
+    const id = routeId(c.req.param('id'), '用户')
     const body = await c.req.json().catch(() => ({}))
     if (typeof body.disabled !== 'boolean') throw badRequest('请提供 disabled')
     const db = c.get('db')
@@ -71,7 +72,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
   })
 
   app.get('/api/v1/admin/ledgers', async (c) => {    const rows = await c.get('db').all<{
-      id: string
+      id: number
       name: string
       owner_username: string
       member_count: number
@@ -111,10 +112,10 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
   /** 测一套，不走接力。密钥留空则用该 id 已保存的。 */
   app.post('/api/v1/admin/ai/test', async (c) => {
     const body = await c.req.json().catch(() => ({}))
-    const id = typeof body.id === 'string' ? body.id : ''
-    const stored = (await readAiConfigs(c.get('db'))).find((item) => item.id === id)
+    const id = parseId(body.id)
+    const stored = id == null ? undefined : (await readAiConfigs(c.get('db'))).find((item) => item.id === id)
     const cfg: AiConfig = {
-      id: stored?.id ?? '',
+      id: stored?.id ?? 0,
       name: typeof body.name === 'string' ? body.name : (stored?.name ?? ''),
       enabled: true,
       baseUrl: typeof body.base_url === 'string' && body.base_url.trim() ? body.base_url.trim() : (stored?.baseUrl ?? ''),
@@ -151,10 +152,10 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
     const form = await c.req.raw.formData().catch(() => null)
     if (!form) throw badRequest('请上传音频')
     const audio = await readAudio(form)
-    const id = typeof form.get('id') === 'string' ? String(form.get('id')) : ''
-    const stored = (await readAsrProfiles(c.get('db'))).find((p) => p.id === id)
+    const id = parseId(form.get('id'))
+    const stored = id == null ? undefined : (await readAsrProfiles(c.get('db'))).find((p) => p.id === id)
     const profile: AsrProfile = {
-      id: stored?.id ?? '',
+      id: stored?.id ?? 0,
       name: typeof form.get('name') === 'string' ? String(form.get('name')) : (stored?.name ?? ''),
       enabled: true,
       protocol: 'openai-audio',
@@ -190,10 +191,10 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
     const file = form.get('file')
     if (!(file instanceof File)) throw badRequest('请上传图片')
     const image = await imageFromFile(file)
-    const id = typeof form.get('id') === 'string' ? String(form.get('id')) : ''
-    const stored = (await readOcrProfiles(c.get('db'))).find((p) => p.id === id)
+    const id = parseId(form.get('id'))
+    const stored = id == null ? undefined : (await readOcrProfiles(c.get('db'))).find((p) => p.id === id)
     const profile: OcrProfile = {
-      id: stored?.id ?? '',
+      id: stored?.id ?? 0,
       name: typeof form.get('name') === 'string' ? String(form.get('name')) : (stored?.name ?? ''),
       enabled: true,
       protocol: OCR_PROTOCOL,

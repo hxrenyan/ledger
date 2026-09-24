@@ -1,12 +1,12 @@
-const key = (ledgerId: string) => `ledger.prefs.${ledgerId}`
+const key = (ledgerId: number) => `ledger.prefs.${ledgerId}`
 
 export type Prefs = {
-  accountId?: string
-  expenseCat?: string
-  incomeCat?: string
+  accountId?: number
+  expenseCat?: number
+  incomeCat?: number
 }
 
-export function loadPrefs(ledgerId: string): Prefs {
+export function loadPrefs(ledgerId: number): Prefs {
   try {
     return JSON.parse(localStorage.getItem(key(ledgerId)) || '{}') as Prefs
   } catch {
@@ -14,6 +14,6 @@ export function loadPrefs(ledgerId: string): Prefs {
   }
 }
 
-export function savePrefs(ledgerId: string, patch: Prefs) {
+export function savePrefs(ledgerId: number, patch: Prefs) {
   localStorage.setItem(key(ledgerId), JSON.stringify({ ...loadPrefs(ledgerId), ...patch }))
 }

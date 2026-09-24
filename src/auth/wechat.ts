@@ -2,7 +2,7 @@ import type { Db } from '../db/types.ts'
 import { HttpError, badRequest, conflict, unauthorized } from '../http.ts'
 import { mergeUserStmts } from './mergeUser.ts'
 import { verifyPassword } from './password.ts'
-import { bootstrapLedgerStmts, newId } from '../seed.ts'
+import { bootstrapLedgerStmts } from '../seed.ts'
 
 const WECHAT = 'wechat'
 const NICKNAME = '微信用户'
@@ -11,7 +11,7 @@ export type WechatIdentity = { openid: string; unionid: string | null }
 
 export type WechatCodeExchange = (code: string) => Promise<WechatIdentity>
 
-export type SessionUser = { id: string; username: string; nickname: string }
+export type SessionUser = { id: number; username: string; nickname: string }
 
 type WechatConfig = {
   wechatAppId?: string
@@ -93,7 +93,7 @@ export async function loginWithWechat(db: Db, identity: WechatIdentity): Promise
  */
 export async function bindWechatToExistingAccount(
   db: Db,
-  currentUserId: string,
+  currentUserId: number,
   username: string,
   password: string,
 ): Promise<SessionUser> {
@@ -104,7 +104,7 @@ export async function bindWechatToExistingAccount(
   if (!identity) throw badRequest('当前账号还没有微信登录，无法绑定')
 
   const target = await db.first<{
-    id: string
+    id: number
     username: string
     nickname: string
     password_hash: string | null
@@ -132,7 +132,7 @@ export async function bindWechatToExistingAccount(
     if (isUnique(e)) throw conflict('该账号已绑定其他微信')
     throw e
   }
-  const moved = await db.first<{ user_id: string }>(
+  const moved = await db.first<{ user_id: number }>(
     `SELECT user_id FROM user_identities WHERE provider = ? AND openid = ?`,
     [WECHAT, identity.openid],
   )
@@ -159,7 +159,7 @@ function wechatId(raw: unknown): string | null {
 }
 
 async function findWechatUser(db: Db, openid: string): Promise<SessionUser | null> {
-  const row = await db.first<{ id: string; username: string; nickname: string; disabled: number }>(
+  const row = await db.first<{ id: number; username: string; nickname: string; disabled: number }>(
     `SELECT u.id, u.username, u.nickname, u.disabled
      FROM user_identities i JOIN users u ON u.id = i.user_id
      WHERE i.provider = ? AND i.openid = ?`,
@@ -183,22 +183,26 @@ async function createWechatUser(db: Db, identity: WechatIdentity): Promise<Sessi
     const username = wechatUsername()
     const exists = await db.first(`SELECT id FROM users WHERE username = ?`, [username])
     if (exists) continue
-    const userId = newId()
     const now = Date.now()
     const { stmts } = bootstrapLedgerStmts({
-      userId,
       username,
       nickname: NICKNAME,
       passwordHash: null,
       now,
     })
     stmts.push({
-      sql: `INSERT INTO user_identities (provider, openid, user_id, unionid, created_at) VALUES (?, ?, ?, ?, ?)`,
-      params: [WECHAT, identity.openid, userId, identity.unionid, now],
+      sql: `INSERT INTO user_identities (provider, openid, user_id, unionid, created_at)
+            SELECT ?, ?, id, ?, ? FROM users WHERE username = ?`,
+      params: [WECHAT, identity.openid, identity.unionid, now, username],
     })
     try {
       await db.batch(stmts)
-      return { id: userId, username, nickname: NICKNAME }
+      const created = await db.first<SessionUser>(
+        `SELECT id, username, nickname FROM users WHERE username = ?`,
+        [username],
+      )
+      if (!created) throw conflict('创建微信账号失败，请重试')
+      return created
     } catch (e) {
       if (!isUnique(e)) throw e
       if (uniqueOnOpenid(e)) throw e

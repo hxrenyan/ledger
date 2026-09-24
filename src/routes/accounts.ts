@@ -1,12 +1,12 @@
 import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { badRequest, notFound } from '../http.ts'
-import { newId } from '../seed.ts'
+import { routeId } from '../id.ts'
 
 const TYPES = new Set(['cash', 'bank', 'alipay', 'wechat', 'credit', 'other'])
 
 type AccountRow = {
-  id: string
+  id: number
   name: string
   type: string
   sort_order: number
@@ -31,18 +31,18 @@ export function registerAccountRoutes(app: Hono<AppEnv>) {
     const name = assertName(body.name)
     const type = typeof body.type === 'string' && TYPES.has(body.type) ? body.type : 'other'
     const current = parseCents(body.current_cents)
-    const id = newId()
     const now = Date.now()
-    await c.get('db').run(
-      `INSERT INTO accounts (id, ledger_id, name, type, sort_order, archived, current_cents, created_at)
-       VALUES (?, ?, ?, ?, 100, 0, ?, ?)`,
-      [id, c.get('ledgerId'), name, type, current, now],
+    const created = await c.get('db').first<{ id: number }>(
+      `INSERT INTO accounts (ledger_id, name, type, sort_order, archived, current_cents, created_at)
+       VALUES (?, ?, ?, 100, 0, ?, ?) RETURNING id`,
+      [c.get('ledgerId'), name, type, current, now],
     )
-    return c.json({ id, name, type, sort_order: 100, archived: false, current_cents: current }, 201)
+    if (!created) throw new Error('账户创建失败')
+    return c.json({ id: created.id, name, type, sort_order: 100, archived: false, current_cents: current }, 201)
   })
 
   app.patch('/api/v1/accounts/:id', async (c) => {
-    const id = c.req.param('id')
+    const id = routeId(c.req.param('id'), '账户')
     const db = c.get('db')
     const row = await db.first<AccountRow>(
       `SELECT id, name, type, sort_order, archived, current_cents FROM accounts WHERE id = ? AND ledger_id = ?`,

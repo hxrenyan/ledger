@@ -5,7 +5,7 @@ import { api } from '../api.ts'
 import { formatYuan } from '../money.ts'
 
 type Contact = {
-  id: string
+  id: number
   name: string
   relation: string
   archived: boolean

@@ -22,7 +22,7 @@ function dayLabel(d: string) {
 import { onDataChange } from '../refresh.ts'
 import { useSession } from '../stores/session.ts'
 
-type CategoryStat = { category_id: string; name: string; kind: string; amount_cents: number; budget_cents: number }
+type CategoryStat = { category_id: number; name: string; kind: string; amount_cents: number; budget_cents: number }
 type Overview = {
   income_cents: number
   expense_cents: number
@@ -42,8 +42,8 @@ const tab = ref<'list' | 'cal' | 'chart'>('list')
 const month = ref(shanghaiMonth())
 const q = ref('')
 const calDay = ref<string | null>(shanghaiDate())
-const filterCat = ref('')
-const filterAcc = ref('')
+const filterCat = ref<number | ''>('')
+const filterAcc = ref<number | ''>('')
 const items = ref<Tx[]>([])
 const cats = ref<Category[]>([])
 const accounts = ref<Account[]>([])

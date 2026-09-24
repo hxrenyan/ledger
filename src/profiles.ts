@@ -5,12 +5,12 @@
 
 import type { Db, Stmt } from './db/types.ts'
 import { badRequest } from './http.ts'
-import { newId } from './seed.ts'
+import { parseId } from './id.ts'
 
 export type ProfileKind = 'llm' | 'asr' | 'ocr'
 
 export type Profile = {
-  id: string
+  id: number
   name: string
   enabled: boolean
   protocol: string
@@ -39,7 +39,7 @@ export function maskSecret(key: string): string {
 
 export async function readProfiles(db: Db, kind: ProfileKind): Promise<Profile[]> {
   const rows = await db.all<{
-    id: string
+    id: number
     name: string
     enabled: number
     protocol: string
@@ -79,17 +79,17 @@ export async function replaceProfiles(
   if (items.length > opts.max) throw badRequest(opts.tooMany)
   const existing = await readProfiles(db, kind)
   const byId = new Map(existing.map((item) => [item.id, item]))
-  const seen = new Set<string>()
+  const seen = new Set<number>()
   const now = Date.now()
   const next: Profile[] = []
 
   items.forEach((raw, index) => {
     const item = (raw ?? {}) as SaveItem
-    const requestedId = typeof item.id === 'string' ? item.id.trim() : ''
-    const prev = requestedId ? byId.get(requestedId) : undefined
-    const id = prev ? prev.id : newId()
-    if (seen.has(id)) throw badRequest('配置 id 重复')
-    seen.add(id)
+    const requestedId = parseId(item.id)
+    const prev = requestedId != null ? byId.get(requestedId) : undefined
+    const id = prev ? prev.id : 0
+    if (id && seen.has(id)) throw badRequest('配置 id 重复')
+    if (id) seen.add(id)
 
     const name = typeof item.name === 'string' ? item.name.trim().slice(0, 40) : (prev?.name ?? '')
     const enabled = item.enabled === true
@@ -121,15 +121,24 @@ export async function replaceProfiles(
     if (!seen.has(old.id)) stmts.push({ sql: `DELETE FROM ai_profiles WHERE kind = ? AND id = ?`, params: [kind, old.id] })
   }
   for (const row of next) {
-    stmts.push({
-      sql: `INSERT INTO ai_profiles (kind, id, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(kind, id) DO UPDATE SET
-              name = excluded.name, enabled = excluded.enabled, protocol = excluded.protocol,
-              base_url = excluded.base_url, api_key = excluded.api_key, model = excluded.model,
-              sort_order = excluded.sort_order, updated_at = excluded.updated_at`,
-      params: [kind, row.id, row.name, row.enabled ? 1 : 0, row.protocol, row.baseUrl, row.apiKey, row.model, row.sortOrder, now],
-    })
+    if (row.id) {
+      stmts.push({
+        sql: `INSERT INTO ai_profiles (id, kind, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                kind = excluded.kind,
+                name = excluded.name, enabled = excluded.enabled, protocol = excluded.protocol,
+                base_url = excluded.base_url, api_key = excluded.api_key, model = excluded.model,
+                sort_order = excluded.sort_order, updated_at = excluded.updated_at`,
+        params: [row.id, kind, row.name, row.enabled ? 1 : 0, row.protocol, row.baseUrl, row.apiKey, row.model, row.sortOrder, now],
+      })
+    } else {
+      stmts.push({
+        sql: `INSERT INTO ai_profiles (kind, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [kind, row.name, row.enabled ? 1 : 0, row.protocol, row.baseUrl, row.apiKey, row.model, row.sortOrder, now],
+      })
+    }
   }
   if (stmts.length) await db.batch(stmts)
   return readProfiles(db, kind)

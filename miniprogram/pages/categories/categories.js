@@ -66,7 +66,7 @@ Page({
   },
 
   onCategory(e) {
-    const id = e.currentTarget.dataset.id
+    const id = require('../../utils/id').toId(e.currentTarget.dataset.id)
     const item = (this.all || []).find((c) => c.id === id)
     if (!item) return
     const options = ['改名字', item.archived ? '取消归档' : '归档']

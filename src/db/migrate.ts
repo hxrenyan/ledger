@@ -19,7 +19,7 @@ export async function ensureMigrated(db: Db) {
   await ensureColumn(db, 'ledgers', 'invite_code', 'TEXT')
   await ensureColumn(db, 'transactions', 'has_receipt', 'INTEGER NOT NULL DEFAULT 0')
   await ensureColumn(db, 'transactions', 'excluded', 'INTEGER NOT NULL DEFAULT 0')
-  await ensureColumn(db, 'transactions', 'import_batch_id', 'TEXT')
+  await ensureColumn(db, 'transactions', 'import_batch_id', 'INTEGER')
   if (indexSql.trim()) await db.exec(indexSql)
   await backfillInviteCodes(db)
   if (addedBalance) await backfillBalances(db)
@@ -34,7 +34,7 @@ async function ensureColumn(db: Db, table: string, column: string, def: string):
 }
 
 async function backfillInviteCodes(db: Db) {
-  const rows = await db.all<{ id: string }>(
+  const rows = await db.all<{ id: number }>(
     `SELECT id FROM ledgers WHERE invite_code IS NULL OR invite_code = ''`,
   )
   for (const row of rows) {

@@ -42,7 +42,7 @@ const MIN_SLICE_MS = 5_000
 const MAX_OUTPUT_TOKENS = 8192
 
 export type OcrProfile = {
-  id: string
+  id: number
   name: string
   enabled: boolean
   protocol: string

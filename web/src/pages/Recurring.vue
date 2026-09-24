@@ -5,11 +5,11 @@ import { api, type Account, type Category } from '../api.ts'
 import { formatYuan, yuanInputToCents } from '../money.ts'
 
 type Rec = {
-  id: string
+  id: number
   kind: string
   amount_cents: number
-  account_id: string
-  category_id: string
+  account_id: number
+  category_id: number
   note: string
   day_of_month: number
   enabled: number
@@ -22,8 +22,8 @@ const cats = ref<Category[]>([])
 const kind = ref<'expense' | 'income'>('expense')
 const amount = ref('')
 const day = ref(1)
-const accountId = ref('')
-const categoryId = ref('')
+const accountId = ref<number | ''>('')
+const categoryId = ref<number | ''>('')
 const note = ref('房租')
 const err = ref('')
 

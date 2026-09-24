@@ -1,10 +1,10 @@
 import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { badRequest, notFound } from '../http.ts'
-import { newId } from '../seed.ts'
+import { routeId } from '../id.ts'
 
 type CatRow = {
-  id: string
+  id: number
   name: string
   kind: string
   sort_order: number
@@ -34,18 +34,18 @@ export function registerCategoryRoutes(app: Hono<AppEnv>) {
     const name = assertName(body.name)
     const kind = body.kind === 'income' ? 'income' : body.kind === 'expense' ? 'expense' : null
     if (!kind) throw badRequest('分类类型须为 expense 或 income')
-    const id = newId()
     const now = Date.now()
-    await c.get('db').run(
-      `INSERT INTO categories (id, ledger_id, name, kind, sort_order, archived, created_at)
-       VALUES (?, ?, ?, ?, 100, 0, ?)`,
-      [id, c.get('ledgerId'), name, kind, now],
+    const created = await c.get('db').first<{ id: number }>(
+      `INSERT INTO categories (ledger_id, name, kind, sort_order, archived, created_at)
+       VALUES (?, ?, ?, 100, 0, ?) RETURNING id`,
+      [c.get('ledgerId'), name, kind, now],
     )
-    return c.json({ id, name, kind, sort_order: 100, archived: false }, 201)
+    if (!created) throw new Error('分类创建失败')
+    return c.json({ id: created.id, name, kind, sort_order: 100, archived: false }, 201)
   })
 
   app.patch('/api/v1/categories/:id', async (c) => {
-    const id = c.req.param('id')
+    const id = routeId(c.req.param('id'), '分类')
     const db = c.get('db')
     const row = await db.first<CatRow>(
       `SELECT id, name, kind, sort_order, archived FROM categories WHERE id = ? AND ledger_id = ?`,

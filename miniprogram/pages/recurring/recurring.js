@@ -131,7 +131,7 @@ Page({
   },
 
   onItem(e) {
-    const id = e.currentTarget.dataset.id
+    const id = require('../../utils/id').toId(e.currentTarget.dataset.id)
     const item = this.data.items.find((r) => r.id === id)
     if (!item) return
     const options = [item.enabled ? '停用' : '启用', '删除']

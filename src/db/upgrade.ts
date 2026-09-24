@@ -7,8 +7,8 @@ import type { Db } from './types.ts'
  */
 
 const AI_PROFILES_DDL = `CREATE TABLE IF NOT EXISTS ai_profiles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   kind TEXT NOT NULL,
-  id TEXT NOT NULL,
   name TEXT NOT NULL DEFAULT '',
   enabled INTEGER NOT NULL DEFAULT 0,
   protocol TEXT NOT NULL DEFAULT '',
@@ -16,8 +16,7 @@ const AI_PROFILES_DDL = `CREATE TABLE IF NOT EXISTS ai_profiles (
   api_key TEXT NOT NULL DEFAULT '',
   model TEXT NOT NULL DEFAULT '',
   sort_order INTEGER NOT NULL DEFAULT 0,
-  updated_at INTEGER NOT NULL,
-  PRIMARY KEY (kind, id)
+  updated_at INTEGER NOT NULL
 )`
 
 export async function upgradeSchema(db: Db) {
@@ -31,25 +30,51 @@ export async function upgradeSchema(db: Db) {
 }
 
 async function mergeLegacyProfiles(db: Db) {
+  const integerId = await columnType(db, 'ai_profiles', 'id') === 'INTEGER'
   if (await tableExists(db, 'ai_settings')) {
     await ensureColumn(db, 'ai_settings', 'name', `TEXT NOT NULL DEFAULT ''`)
     await ensureColumn(db, 'ai_settings', 'sort_order', 'INTEGER NOT NULL DEFAULT 0')
-    await db.run(
-      `INSERT INTO ai_profiles (kind, id, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
-       SELECT 'llm', id, IFNULL(name, ''), enabled, '', base_url, api_key, model, IFNULL(sort_order, 0), updated_at
-       FROM ai_settings
-       WHERE NOT EXISTS (SELECT 1 FROM ai_profiles p WHERE p.kind = 'llm' AND p.id = ai_settings.id)`,
-    )
+    if (integerId) {
+      await db.run(
+        `INSERT INTO ai_profiles (kind, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
+         SELECT 'llm', IFNULL(name, ''), enabled, '', base_url, api_key, model, IFNULL(sort_order, 0), updated_at
+         FROM ai_settings
+         WHERE NOT EXISTS (
+           SELECT 1 FROM ai_profiles p
+           WHERE p.kind = 'llm' AND p.api_key = ai_settings.api_key AND p.model = ai_settings.model
+         )`,
+      )
+    } else {
+      await db.run(
+        `INSERT INTO ai_profiles (kind, id, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
+         SELECT 'llm', id, IFNULL(name, ''), enabled, '', base_url, api_key, model, IFNULL(sort_order, 0), updated_at
+         FROM ai_settings
+         WHERE NOT EXISTS (SELECT 1 FROM ai_profiles p WHERE p.kind = 'llm' AND p.id = ai_settings.id)`,
+      )
+    }
     await db.run(`DROP TABLE ai_settings`)
   }
   if (await tableExists(db, 'asr_profiles')) {
-    await db.run(
-      `INSERT INTO ai_profiles (kind, id, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
-       SELECT 'asr', id, IFNULL(name, ''), enabled, IFNULL(protocol, 'openai-audio'), base_url, api_key, model,
-              IFNULL(sort_order, 0), updated_at
-       FROM asr_profiles
-       WHERE NOT EXISTS (SELECT 1 FROM ai_profiles p WHERE p.kind = 'asr' AND p.id = asr_profiles.id)`,
-    )
+    if (integerId) {
+      await db.run(
+        `INSERT INTO ai_profiles (kind, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
+         SELECT 'asr', IFNULL(name, ''), enabled, IFNULL(protocol, 'openai-audio'), base_url, api_key, model,
+                IFNULL(sort_order, 0), updated_at
+         FROM asr_profiles
+         WHERE NOT EXISTS (
+           SELECT 1 FROM ai_profiles p
+           WHERE p.kind = 'asr' AND p.api_key = asr_profiles.api_key AND p.model = asr_profiles.model
+         )`,
+      )
+    } else {
+      await db.run(
+        `INSERT INTO ai_profiles (kind, id, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
+         SELECT 'asr', id, IFNULL(name, ''), enabled, IFNULL(protocol, 'openai-audio'), base_url, api_key, model,
+                IFNULL(sort_order, 0), updated_at
+         FROM asr_profiles
+         WHERE NOT EXISTS (SELECT 1 FROM ai_profiles p WHERE p.kind = 'asr' AND p.id = asr_profiles.id)`,
+      )
+    }
     await db.run(`DROP TABLE asr_profiles`)
   }
 }
@@ -67,6 +92,8 @@ async function rebuildUsers(db: Db) {
   }
   await ensureColumn(db, 'users', 'disabled', 'INTEGER NOT NULL DEFAULT 0')
   await db.run(`DROP TABLE IF EXISTS users_new`)
+  // 只剥微信死字段。主键必须维持旧 TEXT：这里改成整数会把 UUID 收成 0。
+  // 整数主键由 sql/migrations/001_integer_ids.sql 整表重建。
   await db.run(`CREATE TABLE users_new (
     id TEXT PRIMARY KEY,
     username TEXT NOT NULL UNIQUE,
@@ -130,4 +157,9 @@ async function tableExists(db: Db, name: string): Promise<boolean> {
 async function columnNames(db: Db, table: string): Promise<string[]> {
   const cols = await db.all<{ name: string }>(`PRAGMA table_info(${table})`)
   return cols.map((col) => col.name)
+}
+
+async function columnType(db: Db, table: string, column: string): Promise<string> {
+  const cols = await db.all<{ name: string; type: string }>(`PRAGMA table_info(${table})`)
+  return (cols.find((col) => col.name === column)?.type ?? '').toUpperCase()
 }

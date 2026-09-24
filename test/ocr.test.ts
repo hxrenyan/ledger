@@ -72,7 +72,7 @@ const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00
 
 function profile(partial: Partial<OcrProfile> & Pick<OcrProfile, 'id' | 'model'>): OcrProfile {
   return {
-    name: partial.id,
+    name: String(partial.id),
     enabled: true,
     protocol: 'openai-vision',
     baseUrl: 'https://api.siliconflow.cn/v1',
@@ -135,27 +135,27 @@ describe('OCR 多套接力', () => {
     }
     const res = await recognizeChain(
       [
-        profile({ id: 'a', model: 'bad', sortOrder: 0 }),
-        profile({ id: 'b', model: 'off', enabled: false, sortOrder: 1 }),
-        profile({ id: 'c', model: 'good', sortOrder: 2 }),
+        profile({ id: 1, model: 'bad', sortOrder: 0 }),
+        profile({ id: 2, model: 'off', enabled: false, sortOrder: 1 }),
+        profile({ id: 3, model: 'good', sortOrder: 2 }),
       ],
       { bytes: PNG, filename: 'p.png', mime: 'image/png' },
     )
-    expect(res).toEqual({ ok: true, text: '合计 23.00', profile: 'c' })
+    expect(res).toEqual({ ok: true, text: '合计 23.00', profile: '3' })
     expect(called).toEqual(['bad', 'good'])
   })
 
   it('全都失败时把每套的原因汇总，而不是只报最后一条', async () => {
     globalThis.fetch = async () => new Response('boom', { status: 503 })
-    const res = await recognizeChain([profile({ id: 'a', model: 'm1' }), profile({ id: 'b', model: 'm2' })], {
+    const res = await recognizeChain([profile({ id: 1, model: 'm1' }), profile({ id: 2, model: 'm2' })], {
       bytes: PNG,
       filename: 'p.png',
       mime: 'image/png',
     })
     expect(res.ok).toBe(false)
     if (res.ok) return
-    expect(res.error).toContain('a')
-    expect(res.error).toContain('b')
+    expect(res.error).toContain('1')
+    expect(res.error).toContain('2')
     expect(res.error).toContain('503')
   })
 
@@ -165,7 +165,7 @@ describe('OCR 多套接力', () => {
       calls += 1
       return new Response('{}', { status: 200 })
     }
-    const res = await recognizeChain([profile({ id: 'a', model: 'm', enabled: false })], {
+    const res = await recognizeChain([profile({ id: 1, model: 'm', enabled: false })], {
       bytes: PNG,
       filename: 'p.png',
       mime: 'image/png',
@@ -183,7 +183,7 @@ describe('OCR 多套接力', () => {
       if (model === 'm1') return new Response(JSON.stringify({ choices: [{ message: { content: '  ' } }] }), { status: 200 })
       return new Response(JSON.stringify({ choices: [{ message: { content: '午饭 23' } }] }), { status: 200 })
     }
-    const res = await recognizeChain([profile({ id: 'a', model: 'm1' }), profile({ id: 'b', model: 'm2' })], {
+    const res = await recognizeChain([profile({ id: 1, model: 'm1' }), profile({ id: 2, model: 'm2' })], {
       bytes: PNG,
       filename: 'p.png',
       mime: 'image/png',

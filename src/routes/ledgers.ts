@@ -1,11 +1,12 @@
 import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { badRequest, forbidden, notFound } from '../http.ts'
+import { routeId } from '../id.ts'
 import { ledgerOnlyStmts, randomInviteCode } from '../seed.ts'
 
 export function registerLedgerRoutes(app: Hono<AppEnv>) {
   app.get('/api/v1/ledgers', async (c) => {
-    const rows = await c.get('db').all<{ id: string; name: string; role: string }>(
+    const rows = await c.get('db').all<{ id: number; name: string; role: string }>(
       `SELECT l.id, l.name, m.role
        FROM members m JOIN ledgers l ON l.id = m.ledger_id
        WHERE m.user_id = ?
@@ -20,9 +21,11 @@ export function registerLedgerRoutes(app: Hono<AppEnv>) {
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     if (!name || name.length > 32) throw badRequest('账本名称须为 1–32 字')
     const userId = c.get('userId')
-    const { stmts, ledgerId } = ledgerOnlyStmts({ userId, name, now: Date.now() })
+    const { stmts, inviteCode } = ledgerOnlyStmts({ userId, name, now: Date.now() })
     await c.get('db').batch(stmts)
-    return c.json({ id: ledgerId, name, role: 'owner' }, 201)
+    const created = await c.get('db').first<{ id: number }>(`SELECT id FROM ledgers WHERE invite_code = ?`, [inviteCode])
+    if (!created) throw new Error('账本创建失败')
+    return c.json({ id: created.id, name, role: 'owner' }, 201)
   })
 
   app.post('/api/v1/ledgers/join', async (c) => {
@@ -30,7 +33,7 @@ export function registerLedgerRoutes(app: Hono<AppEnv>) {
     const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : ''
     if (!code) throw badRequest('请填写邀请码')
     const db = c.get('db')
-    const ledger = await db.first<{ id: string; name: string }>(
+    const ledger = await db.first<{ id: number; name: string }>(
       `SELECT id, name FROM ledgers WHERE invite_code = ?`,
       [code],
     )
@@ -60,7 +63,7 @@ export function registerLedgerRoutes(app: Hono<AppEnv>) {
   app.get('/api/v1/members', async (c) => {
     const db = c.get('db')
     const ledgerId = c.get('ledgerId')
-    const items = await db.all<{ user_id: string; role: string; username: string; nickname: string }>(
+    const items = await db.all<{ user_id: number; role: string; username: string; nickname: string }>(
       `SELECT m.user_id, m.role, u.username, u.nickname
        FROM members m JOIN users u ON u.id = m.user_id
        WHERE m.ledger_id = ?
@@ -87,7 +90,7 @@ export function registerLedgerRoutes(app: Hono<AppEnv>) {
 
   app.delete('/api/v1/members/:userId', async (c) => {
     requireOwner(c.get('memberRole'))
-    const target = c.req.param('userId')
+    const target = routeId(c.req.param('userId'), '成员')
     if (target === c.get('userId')) throw badRequest('不能移除自己')
     const row = await c.get('db').first(
       `SELECT role FROM members WHERE ledger_id = ? AND user_id = ?`,

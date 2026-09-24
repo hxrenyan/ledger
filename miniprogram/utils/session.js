@@ -3,6 +3,8 @@
  * 存储键与 web/src/stores/session.ts 对齐（ledger.*），方便排查。
  */
 
+const { toId } = require('./id')
+
 const TOKEN = 'ledger.token'
 const LEDGER = 'ledger.id'
 const USER = 'ledger.user'
@@ -13,7 +15,7 @@ function getToken() {
 }
 
 function getLedgerId() {
-  return wx.getStorageSync(LEDGER) || ''
+  return toId(wx.getStorageSync(LEDGER)) || ''
 }
 
 function getUser() {
@@ -33,7 +35,8 @@ function currentLedger() {
 }
 
 function setLedger(id) {
-  wx.setStorageSync(LEDGER, id || '')
+  const n = toId(id)
+  wx.setStorageSync(LEDGER, n ? String(n) : '')
 }
 
 /**
@@ -46,12 +49,10 @@ function apply(body) {
   if (body.user) wx.setStorageSync(USER, body.user)
   if (Array.isArray(body.ledgers)) {
     wx.setStorageSync(LEDGERS, body.ledgers)
-    const preferred =
-      typeof body.ledger_id === 'string' && body.ledgers.some((l) => l.id === body.ledger_id)
-        ? body.ledger_id
-        : ''
-    if (preferred) {
-      setLedger(preferred)
+    const preferred = toId(body.ledger_id)
+    const hit = preferred && body.ledgers.some((l) => l.id === preferred) ? preferred : ''
+    if (hit) {
+      setLedger(hit)
       return
     }
     const keep = body.ledgers.some((l) => l.id === getLedgerId())

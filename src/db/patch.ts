@@ -6,16 +6,16 @@ export async function patchSchema(db: Db) {
   await ensureColumn(db, 'accounts', 'current_cents', 'INTEGER NOT NULL DEFAULT 0')
   await ensureColumn(db, 'transactions', 'excluded', 'INTEGER NOT NULL DEFAULT 0')
   await ensureColumn(db, 'transactions', 'has_receipt', 'INTEGER NOT NULL DEFAULT 0')
-  await ensureColumn(db, 'transactions', 'import_batch_id', 'TEXT')
-  await ensureColumn(db, 'gifts', 'import_batch_id', 'TEXT')
+  await ensureColumn(db, 'transactions', 'import_batch_id', 'INTEGER')
+  await ensureColumn(db, 'gifts', 'import_batch_id', 'INTEGER')
   await db.run(
     `CREATE TABLE IF NOT EXISTS recurrences (
-      id TEXT PRIMARY KEY,
-      ledger_id TEXT NOT NULL,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ledger_id INTEGER NOT NULL,
       kind TEXT NOT NULL,
       amount_cents INTEGER NOT NULL,
-      account_id TEXT NOT NULL,
-      category_id TEXT,
+      account_id INTEGER NOT NULL,
+      category_id INTEGER,
       note TEXT NOT NULL DEFAULT '',
       day_of_month INTEGER NOT NULL,
       next_at INTEGER NOT NULL,
@@ -28,8 +28,8 @@ export async function patchSchema(db: Db) {
   )
   await db.run(
     `CREATE TABLE IF NOT EXISTS import_batches (
-      id TEXT PRIMARY KEY,
-      ledger_id TEXT NOT NULL,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ledger_id INTEGER NOT NULL,
       source TEXT NOT NULL,
       filename TEXT NOT NULL DEFAULT '',
       parsed_rows INTEGER NOT NULL DEFAULT 0,
@@ -38,7 +38,7 @@ export async function patchSchema(db: Db) {
       duplicate_rows INTEGER NOT NULL DEFAULT 0,
       ai_used INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL DEFAULT 'done',
-      created_by TEXT NOT NULL,
+      created_by INTEGER NOT NULL,
       created_at INTEGER NOT NULL,
       undone_at INTEGER
     )`,
@@ -58,7 +58,7 @@ export async function patchSchema(db: Db) {
     `CREATE TABLE IF NOT EXISTS user_identities (
       provider TEXT NOT NULL,
       openid TEXT NOT NULL,
-      user_id TEXT NOT NULL,
+      user_id INTEGER NOT NULL,
       unionid TEXT,
       created_at INTEGER NOT NULL,
       PRIMARY KEY (provider, openid)
@@ -79,8 +79,8 @@ export async function patchSchema(db: Db) {
   await db.run(
     `CREATE TABLE IF NOT EXISTS handoff_codes (
       code_hash TEXT PRIMARY KEY,
-      user_id TEXT NOT NULL,
-      ledger_id TEXT NOT NULL DEFAULT '',
+      user_id INTEGER NOT NULL,
+      ledger_id INTEGER NOT NULL DEFAULT 0,
       expires_at INTEGER NOT NULL,
       used_at INTEGER,
       created_at INTEGER NOT NULL

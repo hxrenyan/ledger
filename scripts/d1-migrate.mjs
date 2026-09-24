@@ -66,6 +66,7 @@ function listColumns(table) {
 
 const whenColumnRe = /^--\s*@when-column\s+(\w+)\.(\w+)\s*$/;
 const whenTableRe = /^--\s*@when-table\s+(\w+)\s*$/;
+const whenColumnTypeRe = /^--\s*@when-column-type\s+(\w+)\.(\w+)\s+(\w+)\s*$/m;
 const endWhenRe = /^--\s*@end-when\s*$/;
 
 /** 去掉普通注释，保留 @when-* 分组。同一组里的语句共享同一个 gate 对象。 */
@@ -125,6 +126,22 @@ function namesFrom(result) {
   let m;
   while ((m = re.exec(text))) names.add(m[1]);
   return names;
+}
+
+function columnType(table, column) {
+  if (!/^\w+$/.test(table) || !/^\w+$/.test(column)) throw new Error(`非法标识符 ${table}.${column}`);
+  if (!tableExists(table)) return null;
+  const r = runWrangler(["--command", `PRAGMA table_info(${table});`]);
+  if (r.status !== 0) {
+    throw new Error(`PRAGMA table_info(${table}) 失败：${r.stderr || r.stdout}`);
+  }
+  const text = `${r.stdout || ""}\n${r.stderr || ""}`;
+  const re = /"name"\s*:\s*"([^"]+)"\s*,\s*"type"\s*:\s*"([^"]*)"/g;
+  let m;
+  while ((m = re.exec(text))) {
+    if (m[1] === column) return m[2];
+  }
+  return null;
 }
 
 function tableExists(table) {
@@ -209,6 +226,16 @@ console.log(
 for (const file of files) {
   const full = join(migrationsDir, file);
   const sql = readFileSync(full, "utf8");
+  const typeGate = sql.match(whenColumnTypeRe);
+  if (typeGate) {
+    const actual = columnType(typeGate[1], typeGate[2]);
+    if (!actual || actual.toUpperCase() !== typeGate[3].toUpperCase()) {
+      console.log(
+        `\n→ ${file} skip（${typeGate[1]}.${typeGate[2]} 当前是 ${actual ?? "不存在"}，不是 ${typeGate[3]}）`,
+      );
+      continue;
+    }
+  }
   const executeWholeFile = /^\s*--\s*@execute-whole-file\b/m.test(sql);
   if (executeWholeFile) {
     console.log(`\n→ ${file}（整文件事务）`);

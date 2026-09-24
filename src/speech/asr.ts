@@ -16,7 +16,7 @@ export const ASR_PROTOCOL = 'openai-audio'
 const REQUEST_TIMEOUT_MS = 60_000
 
 export type AsrProfile = {
-  id: string
+  id: number
   name: string
   enabled: boolean
   protocol: string

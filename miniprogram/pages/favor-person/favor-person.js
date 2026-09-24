@@ -5,6 +5,7 @@
  * 下次还礼时照着看——这是人情账最实际的用法。
  */
 
+const { toId } = require('../../utils/id')
 const request = require('../../utils/request')
 const session = require('../../utils/session')
 const nav = require('../../utils/nav')
@@ -28,7 +29,7 @@ Page({
 
   onLoad(query) {
     if (!session.ensure()) return
-    const id = (query && query.id) || ''
+    const id = toId(query && query.id) || ''
     this.setData({ contactId: id })
     this.load()
   },

@@ -2,15 +2,16 @@
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api.ts'
+import { toId } from '../id.ts'
 import { formatYuan, yuanInputToCents } from '../money.ts'
 import { occurredAtToDate, shanghaiDate } from '@server/time.ts'
 
 const OCCASIONS = ['结婚', '满月', '搬家', '寿宴', '升学', '丧事', '过年', '其他']
 
-type Contact = { id: string; name: string; relation: string; archived: boolean }
+type Contact = { id: number; name: string; relation: string; archived: boolean }
 type Gift = {
-  id: string
-  contact_id: string
+  id: number
+  contact_id: number
   kind: 'give' | 'receive'
   amount_cents: number
   occasion: string
@@ -20,9 +21,9 @@ type Gift = {
 
 const route = useRoute()
 const router = useRouter()
-const id = computed(() => (typeof route.params.id === 'string' ? route.params.id : null))
+const id = computed(() => toId(route.params.id))
 const kind = ref<'give' | 'receive'>('give')
-const contactId = ref('')
+const contactId = ref<number | ''>('')
 const contacts = ref<Contact[]>([])
 const amount = ref('')
 const date = ref(shanghaiDate())
@@ -48,7 +49,7 @@ async function load() {
   reset()
   contacts.value = (await api<{ items: Contact[] }>('/api/v1/contacts')).items
   const alive = options.value
-  const preset = typeof route.query.contact === 'string' ? route.query.contact : ''
+  const preset = toId(route.query.contact)
   contactId.value = (preset && alive.some((c) => c.id === preset) ? preset : alive[0]?.id) ?? ''
   if (!id.value) return
   const g = await api<Gift>(`/api/v1/gifts/${id.value}`)
@@ -61,7 +62,7 @@ async function load() {
 }
 
 function onPick(e: Event) {
-  contactId.value = (e.target as HTMLSelectElement).value
+  contactId.value = toId((e.target as HTMLSelectElement).value) ?? ''
 }
 
 async function save(again = false) {

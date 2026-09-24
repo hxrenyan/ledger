@@ -87,7 +87,7 @@ function request(options) {
   const header = Object.assign(
     { 'content-type': 'application/json' },
     token ? { authorization: 'Bearer ' + token } : {},
-    withLedger && ledgerId ? { 'x-ledger-id': ledgerId } : {},
+    withLedger && ledgerId ? { 'x-ledger-id': String(ledgerId) } : {},
     opts.header || {},
   )
 
@@ -159,7 +159,7 @@ function upload(options) {
       formData: opts.formData || {},
       header: Object.assign(
         token ? { authorization: 'Bearer ' + token } : {},
-        ledgerId ? { 'x-ledger-id': ledgerId } : {},
+        ledgerId ? { 'x-ledger-id': String(ledgerId) } : {},
       ),
       timeout: opts.timeout || 120000,
       success: function (res) {
@@ -295,7 +295,7 @@ function uploadReceipt(txId, filePath, mime) {
           header: Object.assign(
             { 'content-type': 'multipart/form-data; boundary=' + packed.boundary },
             token ? { authorization: 'Bearer ' + token } : {},
-            ledgerId ? { 'x-ledger-id': ledgerId } : {},
+            ledgerId ? { 'x-ledger-id': String(ledgerId) } : {},
           ),
           data: packed.body,
           timeout: 60000,
@@ -363,7 +363,7 @@ function uploadBinary(options) {
         header: Object.assign(
           { 'content-type': 'multipart/form-data; boundary=' + packed.boundary },
           token ? { authorization: 'Bearer ' + token } : {},
-          ledgerId ? { 'x-ledger-id': ledgerId } : {},
+          ledgerId ? { 'x-ledger-id': String(ledgerId) } : {},
         ),
         data: packed.body,
         // 这个参数也传着，但真正兜底的是下面那层 withTimeout ——

@@ -17,7 +17,7 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const isFD = typeof FormData !== 'undefined' && init.body instanceof FormData
   if (!isFD && !headers.has('content-type') && init.body) headers.set('content-type', 'application/json')
   if (session.token) headers.set('authorization', `Bearer ${session.token}`)
-  if (session.ledgerId) headers.set('x-ledger-id', session.ledgerId)
+  if (session.ledgerId) headers.set('x-ledger-id', String(session.ledgerId))
   const res = await fetch(path, { ...init, headers })
   if (res.status === 401) {
     session.clear()
@@ -40,21 +40,21 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   return data as T
 }
 
-export type Ledger = { id: string; name: string; role: string }
+export type Ledger = { id: number; name: string; role: string }
 export type SessionBody = {
   token: string
-  user: { id: string; username: string; nickname: string; has_password: boolean; wechat_bound: boolean }
+  user: { id: number; username: string; nickname: string; has_password: boolean; wechat_bound: boolean }
   ledgers: Ledger[]
-  /** 仅 web-view 交接登录返回：小程序当时的账本，用于对齐首屏账本。 */
-  ledger_id?: string
+  /** 仅 web-view 交接登录返回：小程序当时的账本，用于对齐首屏账本。未指定时是空字符串。 */
+  ledger_id?: number | ''
 }
-export type Account = { id: string; name: string; type: string; archived: boolean; current_cents: number }
-export type Category = { id: string; name: string; kind: 'expense' | 'income'; archived: boolean }
+export type Account = { id: number; name: string; type: string; archived: boolean; current_cents: number }
+export type Category = { id: number; name: string; kind: 'expense' | 'income'; archived: boolean }
 export type Tx = {
-  id: string
-  account_id: string
-  to_account_id: string | null
-  category_id: string | null
+  id: number
+  account_id: number
+  to_account_id: number | null
+  category_id: number | null
   kind: 'expense' | 'income' | 'transfer'
   amount_cents: number
   occurred_at: number
@@ -74,9 +74,9 @@ export type ImportPreviewRow = {
   direction: 'expense' | 'income' | 'skip'
   note: string
   counterparty: string
-  category_id: string
+  category_id: number | null
   category_name: string
-  account_id: string
+  account_id: number | null
   account_name: string
   status: 'ok' | 'skip' | 'error'
   reason: string
@@ -98,12 +98,12 @@ export type ImportPreview = {
   truncated: boolean
   ai: { available: boolean; used: boolean; error?: string; truncated?: boolean }
   rows: ImportPreviewRow[]
-  accounts: { id: string; name: string }[]
+  accounts: { id: number; name: string }[]
   categories: Category[]
 }
 
 export type ImportCommitResult = {
-  batch_id: string
+  batch_id: number
   imported: number
   duplicates: number
   skipped: number
@@ -112,7 +112,7 @@ export type ImportCommitResult = {
 }
 
 export type ImportBatch = {
-  id: string
+  id: number
   source: string
   filename: string
   parsed_rows: number

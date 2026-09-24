@@ -1,22 +1,22 @@
 import type { Context, Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { badRequest, notFound } from '../http.ts'
+import { routeId } from '../id.ts'
 import { assertAmountCents } from '../money.ts'
 import { dateToOccurredAt } from '../time.ts'
-import { newId } from '../seed.ts'
 
 const OCCASION_MAX = 16
 
 type ContactRow = {
-  id: string
+  id: number
   name: string
   relation: string
   archived: number
 }
 
 type GiftRow = {
-  id: string
-  contact_id: string
+  id: number
+  contact_id: number
   kind: string
   amount_cents: number
   occasion: string
@@ -66,7 +66,7 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
     const saved = await upsertContact(
       c.get('db'),
       c.get('ledgerId'),
-      c.req.param('id'),
+      routeId(c.req.param('id'), '联系人'),
       await c.req.json().catch(() => ({})),
     )
     return c.json(saved)
@@ -78,7 +78,7 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
     let extra = ''
     if (contactId) {
       extra = ' AND g.contact_id = ?'
-      params.push(contactId)
+      params.push(routeId(contactId, '联系人'))
     }
     const rows = await c.get('db').all<GiftRow & { contact_name: string }>(
       `SELECT g.id, g.contact_id, g.kind, g.amount_cents, g.occasion, g.occurred_at, g.note, g.created_at, g.updated_at,
@@ -97,7 +97,7 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
               c.name AS contact_name
        FROM gifts g JOIN contacts c ON c.id = g.contact_id
        WHERE g.id = ? AND g.ledger_id = ?`,
-      [c.req.param('id'), c.get('ledgerId')],
+      [routeId(c.req.param('id'), '往来'), c.get('ledgerId')],
     )
     if (!row) throw notFound('往来记录不存在')
     return c.json(shapeGift(row))
@@ -109,7 +109,7 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
   })
 
   app.patch('/api/v1/gifts/:id', async (c) => {
-    const saved = await upsertGift(c, c.req.param('id'), await c.req.json().catch(() => ({})))
+    const saved = await upsertGift(c, routeId(c.req.param('id'), '往来'), await c.req.json().catch(() => ({})))
     return c.json(saved)
   })
 
@@ -117,10 +117,10 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
     const db = c.get('db')
     const row = await db.first(
       `SELECT id FROM gifts WHERE id = ? AND ledger_id = ?`,
-      [c.req.param('id'), c.get('ledgerId')],
+      [routeId(c.req.param('id'), '往来'), c.get('ledgerId')],
     )
     if (!row) throw notFound('往来记录不存在')
-    await db.run(`DELETE FROM gifts WHERE id = ?`, [c.req.param('id')])
+    await db.run(`DELETE FROM gifts WHERE id = ?`, [routeId(c.req.param('id'), '往来')])
     return c.json({ ok: true })
   })
 }
@@ -149,8 +149,8 @@ function assertName(raw: unknown, label: string): string {
 
 async function upsertContact(
   db: AppEnv['Variables']['db'],
-  ledgerId: string,
-  id: string | null,
+  ledgerId: number,
+  id: number | null,
   body: Record<string, unknown>,
 ) {
   const name = body.name != null ? assertName(body.name, '姓名') : ''
@@ -165,14 +165,14 @@ async function upsertContact(
     if (existing) {
       return { ...existing, archived: !!existing.archived }
     }
-    const cid = newId()
     const now = Date.now()
-    await db.run(
-      `INSERT INTO contacts (id, ledger_id, name, relation, archived, created_at)
-       VALUES (?, ?, ?, ?, 0, ?)`,
-      [cid, ledgerId, name, relation, now],
+    const created = await db.first<{ id: number }>(
+      `INSERT INTO contacts (ledger_id, name, relation, archived, created_at)
+       VALUES (?, ?, ?, 0, ?) RETURNING id`,
+      [ledgerId, name, relation, now],
     )
-    return { id: cid, name, relation, archived: false }
+    if (!created) throw new Error('联系人创建失败')
+    return { id: created.id, name, relation, archived: false }
   }
   const row = await db.first<ContactRow>(
     `SELECT id, name, relation, archived FROM contacts WHERE id = ? AND ledger_id = ?`,
@@ -189,7 +189,7 @@ async function upsertContact(
   return { id, name: nextName, relation: nextRel, archived: !!archived }
 }
 
-async function upsertGift(c: Context<AppEnv>, id: string | null, body: Record<string, unknown>) {
+async function upsertGift(c: Context<AppEnv>, id: number | null, body: Record<string, unknown>) {
   const db = c.get('db')
   const ledgerId = c.get('ledgerId')
   const kind = body.kind === 'give' || body.kind === 'receive' ? body.kind : null
@@ -204,19 +204,19 @@ async function upsertGift(c: Context<AppEnv>, id: string | null, body: Record<st
         ? body.occurred_at
         : Date.now()
 
-  const contactId = typeof body.contact_id === 'string' ? body.contact_id : ''
-  if (!contactId) throw badRequest('请选择对方')
+  const contactId = routeId(body.contact_id, '联系人')
   const contactRow = await db.first(`SELECT id FROM contacts WHERE id = ? AND ledger_id = ?`, [contactId, ledgerId])
   if (!contactRow) throw badRequest('联系人不存在')
 
   const now = Date.now()
   if (!id) {
-    const gid = newId()
-    await db.run(
-      `INSERT INTO gifts (id, ledger_id, contact_id, kind, amount_cents, occasion, occurred_at, note, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [gid, ledgerId, contactId, kind, amount, occasion, occurredAt, note, c.get('userId'), now, now],
+    const created = await db.first<{ id: number }>(
+      `INSERT INTO gifts (ledger_id, contact_id, kind, amount_cents, occasion, occurred_at, note, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [ledgerId, contactId, kind, amount, occasion, occurredAt, note, c.get('userId'), now, now],
     )
+    if (!created) throw new Error('往来记录创建失败')
+    const gid = created.id
     const contact = await db.first<{ name: string }>(`SELECT name FROM contacts WHERE id = ?`, [contactId])
     return shapeGift({
       id: gid,

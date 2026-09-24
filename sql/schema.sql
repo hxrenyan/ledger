@@ -21,13 +21,17 @@
 --
 -- 约定：表之间只保留逻辑关联字段，不定义数据库外键；
 --       关联完整性由应用层校验，多语句写入走 D1 batch。
+--       业务主键是 INTEGER PRIMARY KEY AUTOINCREMENT（从 1 起，不复用已删除的号）。
+--       外部标识保持 TEXT：openid / unionid、app_configs.key、handoff_codes.code_hash、invite_code。
+--       budgets.category_id = 0 表示不限分类的总预算。
+--       handoff_codes.ledger_id = 0 表示未指定账本。
 
 -- ---------------------------------------------------------------------------
 -- users
 -- password_hash 为空：微信登录新建的账号，还没有密码。绑定已有账号后，数据并入对方，这个用户删除。
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT,
   nickname TEXT NOT NULL DEFAULT '',
@@ -43,7 +47,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS user_identities (
   provider TEXT NOT NULL,
   openid TEXT NOT NULL,
-  user_id TEXT NOT NULL,
+  user_id INTEGER NOT NULL,
   unionid TEXT,
   created_at INTEGER NOT NULL,
   PRIMARY KEY (provider, openid)
@@ -53,9 +57,9 @@ CREATE TABLE IF NOT EXISTS user_identities (
 -- ledgers
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ledgers (
-  id TEXT PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
-  owner_id TEXT NOT NULL,
+  owner_id INTEGER NOT NULL,
   invite_code TEXT,
   created_at INTEGER NOT NULL
 );
@@ -64,8 +68,8 @@ CREATE TABLE IF NOT EXISTS ledgers (
 -- members
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS members (
-  ledger_id TEXT NOT NULL,
-  user_id TEXT NOT NULL,
+  ledger_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
   role TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   PRIMARY KEY (ledger_id, user_id)
@@ -75,8 +79,8 @@ CREATE TABLE IF NOT EXISTS members (
 -- accounts
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS accounts (
-  id TEXT PRIMARY KEY,
-  ledger_id TEXT NOT NULL,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id INTEGER NOT NULL,
   name TEXT NOT NULL,
   type TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
@@ -89,8 +93,8 @@ CREATE TABLE IF NOT EXISTS accounts (
 -- categories
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS categories (
-  id TEXT PRIMARY KEY,
-  ledger_id TEXT NOT NULL,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id INTEGER NOT NULL,
   name TEXT NOT NULL,
   kind TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
@@ -102,19 +106,19 @@ CREATE TABLE IF NOT EXISTS categories (
 -- transactions
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS transactions (
-  id TEXT PRIMARY KEY,
-  ledger_id TEXT NOT NULL,
-  account_id TEXT NOT NULL,
-  to_account_id TEXT,
-  category_id TEXT,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id INTEGER NOT NULL,
+  account_id INTEGER NOT NULL,
+  to_account_id INTEGER,
+  category_id INTEGER,
   kind TEXT NOT NULL,
   amount_cents INTEGER NOT NULL,
   occurred_at INTEGER NOT NULL,
   note TEXT NOT NULL DEFAULT '',
   has_receipt INTEGER NOT NULL DEFAULT 0,
   excluded INTEGER NOT NULL DEFAULT 0,
-  import_batch_id TEXT,
-  created_by TEXT NOT NULL,
+  import_batch_id INTEGER,
+  created_by INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
@@ -123,9 +127,9 @@ CREATE TABLE IF NOT EXISTS transactions (
 -- budgets
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS budgets (
-  id TEXT PRIMARY KEY,
-  ledger_id TEXT NOT NULL,
-  category_id TEXT NOT NULL DEFAULT '',
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id INTEGER NOT NULL,
+  category_id INTEGER NOT NULL DEFAULT 0,
   month TEXT NOT NULL,
   amount_cents INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
@@ -136,8 +140,8 @@ CREATE TABLE IF NOT EXISTS budgets (
 -- attachments
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS attachments (
-  transaction_id TEXT PRIMARY KEY,
-  ledger_id TEXT NOT NULL,
+  transaction_id INTEGER PRIMARY KEY,
+  ledger_id INTEGER NOT NULL,
   mime TEXT NOT NULL,
   bytes BLOB NOT NULL,
   created_at INTEGER NOT NULL
@@ -147,8 +151,8 @@ CREATE TABLE IF NOT EXISTS attachments (
 -- contacts / gifts（人情往来）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS contacts (
-  id TEXT PRIMARY KEY,
-  ledger_id TEXT NOT NULL,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id INTEGER NOT NULL,
   name TEXT NOT NULL,
   relation TEXT NOT NULL DEFAULT '',
   archived INTEGER NOT NULL DEFAULT 0,
@@ -156,27 +160,27 @@ CREATE TABLE IF NOT EXISTS contacts (
 );
 
 CREATE TABLE IF NOT EXISTS gifts (
-  id TEXT PRIMARY KEY,
-  ledger_id TEXT NOT NULL,
-  contact_id TEXT NOT NULL,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id INTEGER NOT NULL,
+  contact_id INTEGER NOT NULL,
   kind TEXT NOT NULL,
   amount_cents INTEGER NOT NULL,
   occasion TEXT NOT NULL DEFAULT '',
   occurred_at INTEGER NOT NULL,
   note TEXT NOT NULL DEFAULT '',
-  created_by TEXT NOT NULL,
+  created_by INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  import_batch_id TEXT
+  import_batch_id INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS recurrences (
-  id TEXT PRIMARY KEY,
-  ledger_id TEXT NOT NULL,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id INTEGER NOT NULL,
   kind TEXT NOT NULL,
   amount_cents INTEGER NOT NULL,
-  account_id TEXT NOT NULL,
-  category_id TEXT,
+  account_id INTEGER NOT NULL,
+  category_id INTEGER,
   note TEXT NOT NULL DEFAULT '',
   day_of_month INTEGER NOT NULL,
   next_at INTEGER NOT NULL,
@@ -188,8 +192,8 @@ CREATE TABLE IF NOT EXISTS recurrences (
 -- import_batches（账单导入批次；流水通过 transactions.import_batch_id 归属批次）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS import_batches (
-  id TEXT PRIMARY KEY,
-  ledger_id TEXT NOT NULL,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id INTEGER NOT NULL,
   source TEXT NOT NULL,
   filename TEXT NOT NULL DEFAULT '',
   parsed_rows INTEGER NOT NULL DEFAULT 0,
@@ -198,7 +202,7 @@ CREATE TABLE IF NOT EXISTS import_batches (
   duplicate_rows INTEGER NOT NULL DEFAULT 0,
   ai_used INTEGER NOT NULL DEFAULT 0,
   status TEXT NOT NULL DEFAULT 'done',
-  created_by TEXT NOT NULL,
+  created_by INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   undone_at INTEGER
 );
@@ -207,10 +211,11 @@ CREATE TABLE IF NOT EXISTS import_batches (
 -- ai_profiles（解析与语音共用一张配置表）
 -- kind：llm = 账单解析；asr = 语音识别；ocr = 图片识别。同一 kind 内按 sort_order 失败换下一套。
 -- protocol：asr 目前只实现 openai-audio；ocr 目前只有 openai-vision；llm 留空（走 chat/completions）。
+-- id 全局自增。SQLite 的 AUTOINCREMENT 不能挂在复合主键上，所以不再用 (kind, id)。
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ai_profiles (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   kind TEXT NOT NULL,
-  id TEXT NOT NULL,
   name TEXT NOT NULL DEFAULT '',
   enabled INTEGER NOT NULL DEFAULT 0,
   protocol TEXT NOT NULL DEFAULT '',
@@ -218,8 +223,7 @@ CREATE TABLE IF NOT EXISTS ai_profiles (
   api_key TEXT NOT NULL DEFAULT '',
   model TEXT NOT NULL DEFAULT '',
   sort_order INTEGER NOT NULL DEFAULT 0,
-  updated_at INTEGER NOT NULL,
-  PRIMARY KEY (kind, id)
+  updated_at INTEGER NOT NULL
 );
 
 -- ---------------------------------------------------------------------------
@@ -240,8 +244,8 @@ CREATE TABLE IF NOT EXISTS app_configs (
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS handoff_codes (
   code_hash TEXT PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  ledger_id TEXT NOT NULL DEFAULT '',
+  user_id INTEGER NOT NULL,
+  ledger_id INTEGER NOT NULL DEFAULT 0,
   expires_at INTEGER NOT NULL,
   used_at INTEGER,
   created_at INTEGER NOT NULL

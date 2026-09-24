@@ -1,17 +1,17 @@
 import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { badRequest, notFound } from '../http.ts'
+import { parseOptionalId, routeId } from '../id.ts'
 import { assertAmountCents } from '../money.ts'
 import { shanghaiMonth } from '../time.ts'
-import { newId } from '../seed.ts'
 
 export function registerBudgetRoutes(app: Hono<AppEnv>) {
   app.get('/api/v1/budgets', async (c) => {
     const month = c.req.query('month') || shanghaiMonth()
     if (!/^\d{4}-\d{2}$/.test(month)) throw badRequest('月份格式应为 YYYY-MM')
     const rows = await c.get('db').all<{
-      id: string
-      category_id: string
+      id: number
+      category_id: number
       amount_cents: number
     }>(
       `SELECT id, category_id, amount_cents FROM budgets WHERE ledger_id = ? AND month = ?`,
@@ -32,7 +32,7 @@ export function registerBudgetRoutes(app: Hono<AppEnv>) {
     const month = typeof body.month === 'string' ? body.month : shanghaiMonth()
     if (!/^\d{4}-\d{2}$/.test(month)) throw badRequest('月份格式应为 YYYY-MM')
     const amount = assertAmountCents(body.amount_cents)
-    const categoryId = typeof body.category_id === 'string' ? body.category_id : ''
+    const categoryId = parseOptionalId(body.category_id, '分类') ?? 0
     const db = c.get('db')
     const ledgerId = c.get('ledgerId')
     if (categoryId) {
@@ -42,7 +42,7 @@ export function registerBudgetRoutes(app: Hono<AppEnv>) {
       )
       if (!cat) throw badRequest('只能给支出分类设预算')
     }
-    const existing = await db.first<{ id: string }>(
+    const existing = await db.first<{ id: number }>(
       `SELECT id FROM budgets WHERE ledger_id = ? AND month = ? AND category_id = ?`,
       [ledgerId, month, categoryId],
     )
@@ -50,22 +50,22 @@ export function registerBudgetRoutes(app: Hono<AppEnv>) {
       await db.run(`UPDATE budgets SET amount_cents = ? WHERE id = ?`, [amount, existing.id])
       return c.json({ id: existing.id, category_id: categoryId || null, amount_cents: amount, month })
     }
-    const id = newId()
-    await db.run(
-      `INSERT INTO budgets (id, ledger_id, category_id, month, amount_cents, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [id, ledgerId, categoryId, month, amount, Date.now()],
+    const created = await db.first<{ id: number }>(
+      `INSERT INTO budgets (ledger_id, category_id, month, amount_cents, created_at)
+       VALUES (?, ?, ?, ?, ?) RETURNING id`,
+      [ledgerId, categoryId, month, amount, Date.now()],
     )
-    return c.json({ id, category_id: categoryId || null, amount_cents: amount, month }, 201)
+    if (!created) throw new Error('预算保存失败')
+    return c.json({ id: created.id, category_id: categoryId || null, amount_cents: amount, month }, 201)
   })
 
   app.delete('/api/v1/budgets/:id', async (c) => {
     const row = await c.get('db').first(
       `SELECT id FROM budgets WHERE id = ? AND ledger_id = ?`,
-      [c.req.param('id'), c.get('ledgerId')],
+      [routeId(c.req.param('id'), '预算'), c.get('ledgerId')],
     )
     if (!row) throw notFound('预算不存在')
-    await c.get('db').run(`DELETE FROM budgets WHERE id = ?`, [c.req.param('id')])
+    await c.get('db').run(`DELETE FROM budgets WHERE id = ?`, [routeId(c.req.param('id'), '预算')])
     return c.json({ ok: true })
   })
 }

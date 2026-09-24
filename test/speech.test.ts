@@ -55,7 +55,7 @@ describe('语音识别多套接力', () => {
 
   function profile(partial: Partial<AsrProfile> & Pick<AsrProfile, 'id' | 'model'>): AsrProfile {
     return {
-      name: partial.id,
+      name: String(partial.id),
       enabled: true,
       protocol: 'openai-audio',
       baseUrl: 'https://api.siliconflow.cn/v1',
@@ -76,13 +76,13 @@ describe('语音识别多套接力', () => {
     }
     const res = await transcribeChain(
       [
-        profile({ id: 'a', model: 'bad', sortOrder: 0 }),
-        profile({ id: 'off', model: 'skip', enabled: false, sortOrder: 1 }),
-        profile({ id: 'b', model: 'XingChenAGI/XingChenASR-V3.2-Ultra', sortOrder: 2 }),
+        profile({ id: 1, model: 'bad', sortOrder: 0 }),
+        profile({ id: 2, model: 'skip', enabled: false, sortOrder: 1 }),
+        profile({ id: 3, model: 'XingChenAGI/XingChenASR-V3.2-Ultra', sortOrder: 2 }),
       ],
       { bytes: new Uint8Array([1, 2, 3]), filename: 'a.webm', mime: 'audio/webm' },
     )
-    expect(res).toMatchObject({ ok: true, text: '给张三随了500', profile: 'b' })
+    expect(res).toMatchObject({ ok: true, text: '给张三随了500', profile: '3' })
     expect(called).toEqual(['bad', 'XingChenAGI/XingChenASR-V3.2-Ultra'])
   })
 
@@ -166,8 +166,8 @@ describe('自然语言入账', () => {
     const ledgerId = (reg.body as { ledgers: { id: string }[] }).ledgers[0].id
     const headers = { authorization: `Bearer ${token}`, 'x-ledger-id': ledgerId, 'content-type': 'application/json' }
     await db.run(
-      `INSERT INTO ai_profiles (kind, id, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
-       VALUES ('llm', 'default', '测', 1, '', 'https://example.com/v1', 'sk-test', 'demo', 0, 1)`,
+      `INSERT INTO ai_profiles (kind, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
+       VALUES ('llm', '测', 1, '', 'https://example.com/v1', 'sk-test', 'demo', 0, 1)`,
     )
     globalThis.fetch = async () =>
       new Response(

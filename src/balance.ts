@@ -3,8 +3,8 @@ import type { Stmt } from './db/types.ts'
 export type TxMoney = {
   kind: string
   amount_cents: number
-  account_id: string
-  to_account_id: string | null
+  account_id: number
+  to_account_id: number | null
 }
 
 /** sign=1 入账，sign=-1 冲销。 */

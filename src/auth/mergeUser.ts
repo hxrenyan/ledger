@@ -10,8 +10,8 @@ const WECHAT = 'wechat'
  */
 export async function mergeUserStmts(
   db: Db,
-  sourceUserId: string,
-  targetUserId: string,
+  sourceUserId: number,
+  targetUserId: number,
   openid: string,
 ): Promise<Stmt[]> {
   const guard = `EXISTS (SELECT 1 FROM user_identities WHERE provider = ? AND openid = ? AND user_id = ?)`
@@ -23,11 +23,11 @@ export async function mergeUserStmts(
     },
   ]
 
-  const targetOwned = await db.all<{ id: string }>(
+  const targetOwned = await db.all<{ id: number }>(
     `SELECT id FROM ledgers WHERE owner_id = ? ORDER BY created_at ASC, id ASC`,
     [targetUserId],
   )
-  const sourceOwned = await db.all<{ id: string }>(
+  const sourceOwned = await db.all<{ id: number }>(
     `SELECT id FROM ledgers WHERE owner_id = ? ORDER BY created_at ASC, id ASC`,
     [sourceUserId],
   )
@@ -46,7 +46,7 @@ export async function mergeUserStmts(
     }
   }
 
-  const memberships = await db.all<{ ledger_id: string }>(
+  const memberships = await db.all<{ ledger_id: number }>(
     `SELECT ledger_id FROM members WHERE user_id = ?`,
     [sourceUserId],
   )
@@ -74,9 +74,9 @@ export async function mergeUserStmts(
 
 async function foldLedgerStmts(
   db: Db,
-  sourceLedgerId: string,
-  destLedgerId: string,
-  sourceUserId: string,
+  sourceLedgerId: number,
+  destLedgerId: number,
+  sourceUserId: number,
   guard: string,
   guardParams: unknown[],
 ): Promise<Stmt[]> {
@@ -122,20 +122,20 @@ async function foldLedgerStmts(
   return stmts
 }
 
-type IdRow = { id: string }
+type IdRow = { id: number }
 
 async function mergeAccounts(
   db: Db,
-  sourceLedgerId: string,
-  destLedgerId: string,
+  sourceLedgerId: number,
+  destLedgerId: number,
   guard: string,
   guardParams: unknown[],
 ): Promise<{ stmts: Stmt[] }> {
-  const destRows = await db.all<{ id: string; name: string }>(
+  const destRows = await db.all<{ id: number; name: string }>(
     `SELECT id, name FROM accounts WHERE ledger_id = ? ORDER BY archived ASC, sort_order ASC, created_at ASC`,
     [destLedgerId],
   )
-  const sourceRows = await db.all<{ id: string; name: string; current_cents: number }>(
+  const sourceRows = await db.all<{ id: number; name: string; current_cents: number }>(
     `SELECT id, name, current_cents FROM accounts WHERE ledger_id = ? ORDER BY archived ASC, sort_order ASC, created_at ASC`,
     [sourceLedgerId],
   )
@@ -179,21 +179,21 @@ async function mergeAccounts(
 
 async function mergeCategories(
   db: Db,
-  sourceLedgerId: string,
-  destLedgerId: string,
+  sourceLedgerId: number,
+  destLedgerId: number,
   guard: string,
   guardParams: unknown[],
-): Promise<{ stmts: Stmt[]; map: Map<string, string> }> {
-  const destRows = await db.all<{ id: string; name: string; kind: string }>(
+): Promise<{ stmts: Stmt[]; map: Map<number, number> }> {
+  const destRows = await db.all<{ id: number; name: string; kind: string }>(
     `SELECT id, name, kind FROM categories WHERE ledger_id = ? ORDER BY archived ASC, sort_order ASC, created_at ASC`,
     [destLedgerId],
   )
-  const sourceRows = await db.all<{ id: string; name: string; kind: string }>(
+  const sourceRows = await db.all<{ id: number; name: string; kind: string }>(
     `SELECT id, name, kind FROM categories WHERE ledger_id = ? ORDER BY archived ASC, sort_order ASC, created_at ASC`,
     [sourceLedgerId],
   )
   const byKey = indexBy(destRows, (row) => categoryKey(row.name, row.kind))
-  const map = new Map<string, string>()
+  const map = new Map<number, number>()
   const stmts: Stmt[] = []
   for (const src of sourceRows) {
     const hit = byKey.get(categoryKey(src.name, src.kind))
@@ -227,22 +227,22 @@ async function mergeCategories(
 
 async function mergeBudgets(
   db: Db,
-  sourceLedgerId: string,
-  destLedgerId: string,
-  categoryMap: Map<string, string>,
+  sourceLedgerId: number,
+  destLedgerId: number,
+  categoryMap: Map<number, number>,
   guard: string,
   guardParams: unknown[],
 ): Promise<Stmt[]> {
-  const destRows = await db.all<{ id: string; month: string; category_id: string; amount_cents: number }>(
+  const destRows = await db.all<{ id: number; month: string; category_id: number; amount_cents: number }>(
     `SELECT id, month, category_id, amount_cents FROM budgets WHERE ledger_id = ?`,
     [destLedgerId],
   )
-  const sourceRows = await db.all<{ id: string; month: string; category_id: string; amount_cents: number }>(
+  const sourceRows = await db.all<{ id: number; month: string; category_id: number; amount_cents: number }>(
     `SELECT id, month, category_id, amount_cents FROM budgets WHERE ledger_id = ?`,
     [sourceLedgerId],
   )
   const destByKey = indexBy(destRows, (row) => budgetKey(row.month, row.category_id))
-  const grouped = new Map<string, { categoryId: string; month: string; amount: number; ids: string[] }>()
+  const grouped = new Map<string, { categoryId: number; month: string; amount: number; ids: number[] }>()
   for (const row of sourceRows) {
     const categoryId = categoryMap.get(row.category_id) ?? row.category_id
     const key = budgetKey(row.month, categoryId)
@@ -281,8 +281,8 @@ async function mergeBudgets(
 
 async function mergeContacts(
   db: Db,
-  sourceLedgerId: string,
-  destLedgerId: string,
+  sourceLedgerId: number,
+  destLedgerId: number,
   guard: string,
   guardParams: unknown[],
 ): Promise<Stmt[]> {
@@ -321,9 +321,9 @@ async function mergeContacts(
 }
 
 function transferOwnedLedger(
-  ledgerId: string,
-  sourceUserId: string,
-  targetUserId: string,
+  ledgerId: number,
+  sourceUserId: number,
+  targetUserId: number,
   guard: string,
   guardParams: unknown[],
 ): Stmt[] {
@@ -341,9 +341,9 @@ function transferOwnedLedger(
 }
 
 function transferMembership(
-  ledgerId: string,
-  sourceUserId: string,
-  targetUserId: string,
+  ledgerId: number,
+  sourceUserId: number,
+  targetUserId: number,
   guard: string,
   guardParams: unknown[],
 ): Stmt[] {
@@ -365,7 +365,7 @@ function categoryKey(name: string, kind: string): string {
   return `${kind}\0${name}`
 }
 
-function budgetKey(month: string, categoryId: string): string {
+function budgetKey(month: string, categoryId: number): string {
   return `${month}\0${categoryId}`
 }
 

@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
-import type { Db, Stmt } from './types.ts'
+import { insertedId, type Db, type Stmt } from './types.ts'
 
 export function createSqliteDb(path: string): Db {
   if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true })
@@ -24,9 +24,12 @@ export function createSqliteDb(path: string): Db {
     },
     async batch(stmts: Stmt[]) {
       const tx = raw.transaction(() => {
-        for (const s of stmts) raw.prepare(s.sql).run(...(s.params ?? []))
+        return stmts.map((s) => {
+          const info = raw.prepare(s.sql).run(...(s.params ?? []))
+          return { lastId: insertedId(s.sql, info.changes, Number(info.lastInsertRowid)) }
+        })
       })
-      tx()
+      return tx()
     },
   }
 }

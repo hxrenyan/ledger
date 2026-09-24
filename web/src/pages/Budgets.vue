@@ -5,8 +5,8 @@ import { api, type Category } from '../api.ts'
 import { formatYuan, yuanInputToCents } from '../money.ts'
 import { addMonth, shanghaiMonth } from '@server/time.ts'
 
-type Budget = { id: string; category_id: string | null; amount_cents: number }
-type CatStat = { category_id: string; name: string; kind: string; amount_cents: number; budget_cents: number }
+type Budget = { id: number; category_id: number | null; amount_cents: number }
+type CatStat = { category_id: number; name: string; kind: string; amount_cents: number; budget_cents: number }
 
 /**
  * 预算页，布局与小程序 pages/budgets 同构。
@@ -17,9 +17,9 @@ type CatStat = { category_id: string; name: string; kind: string; amount_cents: 
 const maxMonth = addMonth(shanghaiMonth(), 1)
 const month = ref(shanghaiMonth())
 const totalYuan = ref('')
-const totalBudgetId = ref('')
-const catYuan = ref<Record<string, string>>({})
-const editing = ref('')
+const totalBudgetId = ref<number | ''>('')
+const catYuan = ref<Record<number, string>>({})
+const editing = ref<number | ''>('')
 const cats = ref<Category[]>([])
 const budgets = ref<Budget[]>([])
 const stats = ref<{ expense_cents: number; budget_cents: number; by_category: CatStat[] }>({
@@ -36,20 +36,20 @@ const totalPct = computed(() =>
 )
 const totalOver = computed(() => totalCents.value > 0 && stats.value.expense_cents > totalCents.value)
 
-function spentOf(catId: string) {
+function spentOf(catId: number) {
   return stats.value.by_category.find((x) => x.category_id === catId)?.amount_cents ?? 0
 }
-function budgetOf(catId: string) {
+function budgetOf(catId: number) {
   return budgets.value.find((x) => x.category_id === catId)?.amount_cents ?? 0
 }
-function budgetIdOf(catId: string) {
+function budgetIdOf(catId: number) {
   return budgets.value.find((x) => x.category_id === catId)?.id ?? ''
 }
-function pctOf(catId: string) {
+function pctOf(catId: number) {
   const b = budgetOf(catId)
   return b ? Math.min(100, Math.round((spentOf(catId) / b) * 100)) : 0
 }
-function overOf(catId: string) {
+function overOf(catId: number) {
   const b = budgetOf(catId)
   return b > 0 && spentOf(catId) > b
 }
@@ -66,7 +66,7 @@ async function load() {
   cats.value = c.items
   totalBudgetId.value = b.items.find((x) => !x.category_id)?.id ?? ''
   totalYuan.value = totalBudgetId.value ? formatYuan(totalCents.value) : ''
-  const next: Record<string, string> = {}
+  const next: Record<number, string> = {}
   for (const x of b.items) {
     if (x.category_id) next[x.category_id] = formatYuan(x.amount_cents)
   }
@@ -95,7 +95,7 @@ async function saveTotal() {
   }
 }
 
-async function saveCat(id: string) {
+async function saveCat(id: number) {
   err.value = ''
   const cents = yuanInputToCents(catYuan.value[id] ?? '')
   try {

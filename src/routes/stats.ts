@@ -86,7 +86,7 @@ export function registerStatsRoutes(app: Hono<AppEnv>) {
 
 async function monthStats(
   db: AppEnv['Variables']['db'],
-  ledgerId: string,
+  ledgerId: number,
   month: string,
   start: number,
   end: number,
@@ -104,7 +104,7 @@ async function monthStats(
     if (t.kind === 'income') income_cents = Number(t.total) || 0
     if (t.kind === 'expense') expense_cents = Number(t.total) || 0
   }
-  const byCategory = await db.all<{ category_id: string; name: string; kind: string; total: number }>(
+  const byCategory = await db.all<{ category_id: number; name: string; kind: string; total: number }>(
     `SELECT t.category_id, c.name, t.kind, SUM(t.amount_cents) AS total
      FROM transactions t
      JOIN categories c ON c.id = t.category_id
@@ -113,7 +113,7 @@ async function monthStats(
      ORDER BY total DESC`,
     [ledgerId, start, end],
   )
-  const budgets = await db.all<{ category_id: string; amount_cents: number }>(
+  const budgets = await db.all<{ category_id: number; amount_cents: number }>(
     `SELECT category_id, amount_cents FROM budgets WHERE ledger_id = ? AND month = ?`,
     [ledgerId, month],
   )
@@ -121,7 +121,7 @@ async function monthStats(
   return {
     income_cents,
     expense_cents,
-    budget_cents: budgetMap.get('') ?? 0,
+    budget_cents: budgetMap.get(0) ?? 0,
     budget_used_cents: expense_cents,
     by_category: byCategory.map((r) => ({
       category_id: r.category_id,

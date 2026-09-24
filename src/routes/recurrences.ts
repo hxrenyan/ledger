@@ -2,8 +2,8 @@ import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { balanceStmts } from '../balance.ts'
 import { badRequest, notFound } from '../http.ts'
+import { routeId } from '../id.ts'
 import { assertAmountCents } from '../money.ts'
-import { newId } from '../seed.ts'
 import { dateToOccurredAt, nextMonthSameDay, shanghaiDate } from '../time.ts'
 
 export function registerRecurrenceRoutes(app: Hono<AppEnv>) {
@@ -21,10 +21,9 @@ export function registerRecurrenceRoutes(app: Hono<AppEnv>) {
     const kind = body.kind === 'income' || body.kind === 'expense' ? body.kind : null
     if (!kind) throw badRequest('周期记账仅支持收入或支出')
     const amount = assertAmountCents(body.amount_cents)
-    const accountId = typeof body.account_id === 'string' ? body.account_id : ''
-    const categoryId = typeof body.category_id === 'string' ? body.category_id : ''
+    const accountId = routeId(body.account_id, '账户')
+    const categoryId = routeId(body.category_id, '分类')
     const day = Number(body.day_of_month)
-    if (!accountId || !categoryId) throw badRequest('请选择账户和分类')
     if (!Number.isInteger(day) || day < 1 || day > 28) throw badRequest('日期须为 1–28')
     const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : ''
     const ymd = shanghaiDate()
@@ -32,20 +31,21 @@ export function registerRecurrenceRoutes(app: Hono<AppEnv>) {
     const thisMonth = `${y}-${m}-${String(day).padStart(2, '0')}`
     let nextAt = dateToOccurredAt(thisMonth)
     if (nextAt < Date.now() - 12 * 3600 * 1000) nextAt = nextMonthSameDay(nextAt)
-    const id = newId()
-    await c.get('db').run(
-      `INSERT INTO recurrences (id, ledger_id, kind, amount_cents, account_id, category_id, note, day_of_month, next_at, enabled, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)`,
-      [id, c.get('ledgerId'), kind, amount, accountId, categoryId, note, day, nextAt, Date.now()],
+    const created = await c.get('db').first<{ id: number }>(
+      `INSERT INTO recurrences (ledger_id, kind, amount_cents, account_id, category_id, note, day_of_month, next_at, enabled, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?) RETURNING id`,
+      [c.get('ledgerId'), kind, amount, accountId, categoryId, note, day, nextAt, Date.now()],
     )
-    return c.json({ id, kind, amount_cents: amount, account_id: accountId, category_id: categoryId, note, day_of_month: day, next_at: nextAt, enabled: true }, 201)
+    if (!created) throw new Error('周期记账创建失败')
+    return c.json({ id: created.id, kind, amount_cents: amount, account_id: accountId, category_id: categoryId, note, day_of_month: day, next_at: nextAt, enabled: true }, 201)
   })
 
   app.patch('/api/v1/recurrences/:id', async (c) => {
     const db = c.get('db')
-    const row = await db.first<{ id: string }>(
+    const id = routeId(c.req.param('id'), '周期')
+    const row = await db.first<{ id: number }>(
       `SELECT id FROM recurrences WHERE id = ? AND ledger_id = ?`,
-      [c.req.param('id'), c.get('ledgerId')],
+      [id, c.get('ledgerId')],
     )
     if (!row) throw notFound('周期不存在')
     const body = await c.req.json().catch(() => ({}))
@@ -58,7 +58,7 @@ export function registerRecurrenceRoutes(app: Hono<AppEnv>) {
   app.delete('/api/v1/recurrences/:id', async (c) => {
     await c.get('db').run(
       `DELETE FROM recurrences WHERE id = ? AND ledger_id = ?`,
-      [c.req.param('id'), c.get('ledgerId')],
+      [routeId(c.req.param('id'), '周期'), c.get('ledgerId')],
     )
     return c.json({ ok: true })
   })
@@ -68,11 +68,11 @@ export function registerRecurrenceRoutes(app: Hono<AppEnv>) {
     const ledgerId = c.get('ledgerId')
     const userId = c.get('userId')
     const due = await db.all<{
-      id: string
+      id: number
       kind: string
       amount_cents: number
-      account_id: string
-      category_id: string
+      account_id: number
+      category_id: number
       note: string
       next_at: number
     }>(
@@ -82,14 +82,13 @@ export function registerRecurrenceRoutes(app: Hono<AppEnv>) {
     )
     let created = 0
     for (const r of due) {
-      const txId = newId()
       const now = Date.now()
       await db.batch([
         {
           sql: `INSERT INTO transactions
-            (id, ledger_id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note, has_receipt, excluded, created_by, created_at, updated_at)
-           VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,
-          params: [txId, ledgerId, r.account_id, r.category_id, r.kind, r.amount_cents, r.next_at, r.note || '周期记账', userId, now, now],
+            (ledger_id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note, has_receipt, excluded, created_by, created_at, updated_at)
+           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,
+          params: [ledgerId, r.account_id, r.category_id, r.kind, r.amount_cents, r.next_at, r.note || '周期记账', userId, now, now],
         },
         ...balanceStmts(
           { kind: r.kind, amount_cents: r.amount_cents, account_id: r.account_id, to_account_id: null },

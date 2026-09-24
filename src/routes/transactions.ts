@@ -1,19 +1,19 @@
 import type { Context, Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { badRequest, notFound } from '../http.ts'
+import { parseOptionalId, routeId } from '../id.ts'
 import { assertAmountCents, centsToYuan } from '../money.ts'
 import { balanceStmts, type TxMoney } from '../balance.ts'
 import { dateToOccurredAt, occurredAtToDate, shanghaiDayRange, shanghaiMonth, shanghaiMonthRange } from '../time.ts'
-import { newId } from '../seed.ts'
 
 const RECEIPT_MAX = 512 * 1024
 const RECEIPT_MIME = new Set(['image/jpeg', 'image/png', 'image/webp'])
 
 type TxRow = {
-  id: string
-  account_id: string
-  to_account_id: string | null
-  category_id: string | null
+  id: number
+  account_id: number
+  to_account_id: number | null
+  category_id: number | null
   kind: string
   amount_cents: number
   occurred_at: number
@@ -36,12 +36,13 @@ export function registerTransactionRoutes(app: Hono<AppEnv>) {
     const params: unknown[] = [c.get('ledgerId'), range.start, range.end]
     let extra = ''
     if (accountId) {
+      const id = routeId(accountId, '账户')
       extra += ' AND (account_id = ? OR to_account_id = ?)'
-      params.push(accountId, accountId)
+      params.push(id, id)
     }
     if (categoryId) {
       extra += ' AND category_id = ?'
-      params.push(categoryId)
+      params.push(routeId(categoryId, '分类'))
     }
     if (q) {
       extra += ' AND note LIKE ?'
@@ -61,7 +62,7 @@ export function registerTransactionRoutes(app: Hono<AppEnv>) {
     const row = await c.get('db').first<TxRow>(
       `SELECT id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note, has_receipt, excluded, created_at, updated_at
        FROM transactions WHERE id = ? AND ledger_id = ?`,
-      [c.req.param('id'), c.get('ledgerId')],
+      [routeId(c.req.param('id'), '流水'), c.get('ledgerId')],
     )
     if (!row) throw notFound('流水不存在')
     return c.json(shape(row))
@@ -74,7 +75,7 @@ export function registerTransactionRoutes(app: Hono<AppEnv>) {
   })
 
   app.patch('/api/v1/transactions/:id', async (c) => {
-    const saved = await upsertTx(c, c.req.param('id'), await c.req.json().catch(() => ({})))
+    const saved = await upsertTx(c, routeId(c.req.param('id'), '流水'), await c.req.json().catch(() => ({})))
     return c.json(saved)
   })
 
@@ -82,13 +83,14 @@ export function registerTransactionRoutes(app: Hono<AppEnv>) {
     const db = c.get('db')
     const row = await db.first<TxMoney>(
       `SELECT kind, amount_cents, account_id, to_account_id FROM transactions WHERE id = ? AND ledger_id = ?`,
-      [c.req.param('id'), c.get('ledgerId')],
+      [routeId(c.req.param('id'), '流水'), c.get('ledgerId')],
     )
     if (!row) throw notFound('流水不存在')
+    const txId = routeId(c.req.param('id'), '流水')
     await db.batch([
       ...balanceStmts(row, -1),
-      { sql: `DELETE FROM attachments WHERE transaction_id = ?`, params: [c.req.param('id')] },
-      { sql: `DELETE FROM transactions WHERE id = ?`, params: [c.req.param('id')] },
+      { sql: `DELETE FROM attachments WHERE transaction_id = ?`, params: [txId] },
+      { sql: `DELETE FROM transactions WHERE id = ?`, params: [txId] },
     ])
     return c.json({ ok: true })
   })
@@ -96,7 +98,7 @@ export function registerTransactionRoutes(app: Hono<AppEnv>) {
   app.post('/api/v1/transactions/:id/receipt', async (c) => {
     const db = c.get('db')
     const ledgerId = c.get('ledgerId')
-    const txId = c.req.param('id')
+    const txId = routeId(c.req.param('id'), '流水')
     const tx = await db.first(`SELECT id FROM transactions WHERE id = ? AND ledger_id = ?`, [txId, ledgerId])
     if (!tx) throw notFound('流水不存在')
     const form = await c.req.formData()
@@ -121,7 +123,7 @@ export function registerTransactionRoutes(app: Hono<AppEnv>) {
   app.get('/api/v1/transactions/:id/receipt', async (c) => {
     const row = await c.get('db').first<{ mime: string; bytes: unknown }>(
       `SELECT mime, bytes FROM attachments WHERE transaction_id = ? AND ledger_id = ?`,
-      [c.req.param('id'), c.get('ledgerId')],
+      [routeId(c.req.param('id'), '流水'), c.get('ledgerId')],
     )
     if (!row) throw notFound('没有收据')
     return new Response(asBytes(row.bytes), {
@@ -131,7 +133,7 @@ export function registerTransactionRoutes(app: Hono<AppEnv>) {
 
   app.delete('/api/v1/transactions/:id/receipt', async (c) => {
     const db = c.get('db')
-    const txId = c.req.param('id')
+    const txId = routeId(c.req.param('id'), '流水')
     const tx = await db.first(`SELECT id FROM transactions WHERE id = ? AND ledger_id = ?`, [txId, c.get('ledgerId')])
     if (!tx) throw notFound('流水不存在')
     await db.batch([
@@ -252,7 +254,7 @@ function shape(row: TxRow) {
   }
 }
 
-async function upsertTx(c: Context<AppEnv>, id: string | null, body: Record<string, unknown>) {
+async function upsertTx(c: Context<AppEnv>, id: number | null, body: Record<string, unknown>) {
   const db = c.get('db')
   const ledgerId = c.get('ledgerId')
   const userId = c.get('userId')
@@ -260,9 +262,9 @@ async function upsertTx(c: Context<AppEnv>, id: string | null, body: Record<stri
     body.kind === 'income' || body.kind === 'expense' || body.kind === 'transfer' ? body.kind : null
   if (!kind) throw badRequest('类型须为 expense、income 或 transfer')
   const amount = assertAmountCents(body.amount_cents)
-  const accountId = typeof body.account_id === 'string' ? body.account_id : ''
-  const toAccountId = typeof body.to_account_id === 'string' ? body.to_account_id : ''
-  const categoryId = typeof body.category_id === 'string' ? body.category_id : ''
+  const accountId = parseOptionalId(body.account_id, '账户')
+  const toAccountId = parseOptionalId(body.to_account_id, '转入账户')
+  const categoryId = parseOptionalId(body.category_id, '分类')
   if (!accountId) throw badRequest('请选择账户')
   const occurredAt =
     typeof body.date === 'string'
@@ -273,17 +275,17 @@ async function upsertTx(c: Context<AppEnv>, id: string | null, body: Record<stri
   const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : ''
   const excluded = body.excluded ? 1 : 0
 
-  const account = await db.first<{ id: string; archived: number }>(
+  const account = await db.first<{ id: number; archived: number }>(
     `SELECT id, archived FROM accounts WHERE id = ? AND ledger_id = ?`,
     [accountId, ledgerId],
   )
   if (!account) throw badRequest('账户不存在')
 
-  let toAccount: { id: string; archived: number } | null = null
+  let toAccount: { id: number; archived: number } | null = null
   if (kind === 'transfer') {
     if (!toAccountId) throw badRequest('请选择转入账户')
     if (toAccountId === accountId) throw badRequest('转出与转入不能相同')
-    toAccount = await db.first<{ id: string; archived: number }>(
+    toAccount = await db.first<{ id: number; archived: number }>(
       `SELECT id, archived FROM accounts WHERE id = ? AND ledger_id = ?`,
       [toAccountId, ledgerId],
     )
@@ -292,9 +294,9 @@ async function upsertTx(c: Context<AppEnv>, id: string | null, body: Record<stri
     throw badRequest('请选择分类')
   }
 
-  let category: { id: string; kind: string; archived: number } | null = null
+  let category: { id: number; kind: string; archived: number } | null = null
   if (kind !== 'transfer') {
-    category = await db.first<{ id: string; kind: string; archived: number }>(
+    category = await db.first<{ id: number; kind: string; archived: number }>(
       `SELECT id, kind, archived FROM categories WHERE id = ? AND ledger_id = ?`,
       [categoryId, ledgerId],
     )
@@ -312,18 +314,18 @@ async function upsertTx(c: Context<AppEnv>, id: string | null, body: Record<stri
   const next: TxMoney = { kind, amount_cents: amount, account_id: accountId, to_account_id: toVal }
 
   if (!id) {
-    const txId = newId()
-    await db.batch([
+    const [inserted] = await db.batch([
       {
         sql: `INSERT INTO transactions
-          (id, ledger_id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note, has_receipt, excluded, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
-        params: [txId, ledgerId, accountId, toVal, catVal, kind, amount, occurredAt, note, excluded, userId, now, now],
+          (ledger_id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note, has_receipt, excluded, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+        params: [ledgerId, accountId, toVal, catVal, kind, amount, occurredAt, note, excluded, userId, now, now],
       },
       ...balanceStmts(next, 1),
     ])
+    if (!inserted?.lastId) throw new Error('流水写入失败')
     return shape({
-      id: txId,
+      id: inserted.lastId,
       account_id: accountId,
       to_account_id: toVal,
       category_id: catVal,

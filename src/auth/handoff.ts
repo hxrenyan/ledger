@@ -53,7 +53,7 @@ export function assertHandoffCode(input: unknown): string {
  */
 export async function issueHandoff(
   db: Db,
-  input: { userId: string; ledgerId?: string; now?: number },
+  input: { userId: number; ledgerId?: number | null; now?: number },
 ): Promise<{ code: string; expires_in: number }> {
   const now = input.now ?? Date.now()
   const code = newHandoffCode()
@@ -63,7 +63,7 @@ export async function issueHandoff(
     {
       sql: `INSERT INTO handoff_codes (code_hash, user_id, ledger_id, expires_at, created_at)
             VALUES (?, ?, ?, ?, ?)`,
-      params: [codeHash, input.userId, input.ledgerId ?? '', now + HANDOFF_TTL_MS, now],
+      params: [codeHash, input.userId, input.ledgerId ?? 0, now + HANDOFF_TTL_MS, now],
     },
   ])
   return { code, expires_in: Math.floor(HANDOFF_TTL_MS / 1000) }
@@ -77,14 +77,14 @@ export async function redeemHandoff(
   db: Db,
   code: string,
   now = Date.now(),
-): Promise<{ userId: string; ledgerId: string } | null> {
+): Promise<{ userId: number; ledgerId: number | null } | null> {
   const codeHash = await hashHandoffCode(code)
-  const row = await db.first<{ user_id: string; ledger_id: string }>(
+  const row = await db.first<{ user_id: number; ledger_id: number }>(
     `UPDATE handoff_codes SET used_at = ?
      WHERE code_hash = ? AND used_at IS NULL AND expires_at > ?
      RETURNING user_id, ledger_id`,
     [now, codeHash, now],
   )
   if (!row) return null
-  return { userId: row.user_id, ledgerId: row.ledger_id ?? '' }
+  return { userId: row.user_id, ledgerId: row.ledger_id > 0 ? row.ledger_id : null }
 }

@@ -5,18 +5,18 @@ import { signToken } from '../auth/jwt.ts'
 import { assertHandoffCode, redeemHandoff } from '../auth/handoff.ts'
 import { bindWechatToExistingAccount, loginWithWechat } from '../auth/wechat.ts'
 import { HttpError, badRequest, conflict, unauthorized } from '../http.ts'
-import { bootstrapLedgerStmts, newId } from '../seed.ts'
+import { bootstrapLedgerStmts } from '../seed.ts'
 
 type UserRow = {
-  id: string
+  id: number
   username: string
   nickname: string
   password_hash: string | null
   disabled?: number
 }
 
-async function sessionPayload(db: AppEnv['Variables']['db'], user: { id: string; username: string; nickname: string }, token: string) {
-  const ledgers = await db.all<{ id: string; name: string; role: string }>(
+async function sessionPayload(db: AppEnv['Variables']['db'], user: { id: number; username: string; nickname: string }, token: string) {
+  const ledgers = await db.all<{ id: number; name: string; role: string }>(
     `SELECT l.id, l.name, m.role
      FROM members m JOIN ledgers l ON l.id = m.ledger_id
      WHERE m.user_id = ?
@@ -57,16 +57,9 @@ export function registerAuthRoutes(app: Hono<AppEnv>) {
     const exists = await db.first(`SELECT id FROM users WHERE username = ?`, [username])
     if (exists) throw conflict('用户名已被占用')
 
-    const userId = newId()
     const now = Date.now()
     const passwordHash = await hashPassword(password)
-    const { stmts } = bootstrapLedgerStmts({
-      userId,
-      username,
-      nickname,
-      passwordHash,
-      now,
-    })
+    const { stmts } = bootstrapLedgerStmts({ username, nickname, passwordHash, now })
     try {
       await db.batch(stmts)
     } catch (e) {
@@ -75,9 +68,11 @@ export function registerAuthRoutes(app: Hono<AppEnv>) {
       throw e
     }
 
-    const token = await signToken(c.get('jwtSecret'), userId)
+    const created = await db.first<{ id: number }>(`SELECT id FROM users WHERE username = ?`, [username])
+    if (!created) throw new Error('注册失败')
+    const token = await signToken(c.get('jwtSecret'), created.id)
     return c.json(
-      await sessionPayload(db, { id: userId, username, nickname }, token),
+      await sessionPayload(db, { id: created.id, username, nickname }, token),
       201,
     )
   })
@@ -143,7 +138,7 @@ export function registerAuthRoutes(app: Hono<AppEnv>) {
         payload.ledgers.unshift(hit)
       }
     }
-    return c.json({ ...payload, ledger_id: claim.ledgerId })
+    return c.json({ ...payload, ledger_id: claim.ledgerId ?? '' })
   })
 
   app.post('/api/v1/me/wechat/bind', async (c) => {

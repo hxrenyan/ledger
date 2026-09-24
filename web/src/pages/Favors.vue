@@ -8,8 +8,8 @@ import { onDataChange } from '../refresh.ts'
 import { occurredAtToDate, shanghaiMonth } from '@server/time.ts'
 
 type Gift = {
-  id: string
-  contact_id: string
+  id: number
+  contact_id: number
   contact_name: string
   kind: 'give' | 'receive'
   amount_cents: number
@@ -18,7 +18,7 @@ type Gift = {
   note: string
 }
 type Contact = {
-  id: string
+  id: number
   name: string
   relation: string
   archived: boolean

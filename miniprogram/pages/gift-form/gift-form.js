@@ -7,6 +7,7 @@
  * 传 contact_id 进来就是「给某人记一笔」（从某人明细页过来）。
  */
 
+const { toId } = require('../../utils/id')
 const request = require('../../utils/request')
 const session = require('../../utils/session')
 const money = require('../../utils/money')
@@ -42,8 +43,8 @@ Page({
     const q = query || {}
     const date = q.date || time.todayISO()
     this.setData({
-      id: q.id || '',
-      contactId: q.contact_id || '',
+      id: toId(q.id) || '',
+      contactId: toId(q.contact_id) || '',
       date: date,
       dateQuick: this.buildQuick(date),
     })

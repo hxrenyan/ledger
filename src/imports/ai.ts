@@ -15,7 +15,7 @@ import { parseAmountCents, parseDateYmd, parseDirection, type Direction } from '
 export const MAX_AI_PROFILES = 8
 
 export type AiConfig = {
-  id: string
+  id: number
   name: string
   enabled: boolean
   baseUrl: string
@@ -39,7 +39,7 @@ export function aiLabel(cfg: AiConfig): string {
   return cfg.name.trim() || cfg.model.trim() || '未命名配置'
 }
 
-function toAiConfig(row: { id: string; name: string; enabled: boolean; baseUrl: string; apiKey: string; model: string; sortOrder: number; updatedAt: number }): AiConfig {
+function toAiConfig(row: { id: number; name: string; enabled: boolean; baseUrl: string; apiKey: string; model: string; sortOrder: number; updatedAt: number }): AiConfig {
   return {
     id: row.id,
     name: row.name,

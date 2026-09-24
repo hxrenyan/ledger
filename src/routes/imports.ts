@@ -1,6 +1,7 @@
 import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { badRequest } from '../http.ts'
+import { routeId } from '../id.ts'
 import { buildPreview, commitImport, listBatches, previewUtterances, suggestWithAi, undoBatch } from '../imports/service.ts'
 
 /**
@@ -87,7 +88,7 @@ export function registerImportRoutes(app: Hono<AppEnv>) {
   })
 
   app.post('/api/v1/imports/batches/:id/undo', async (c) => {
-    const result = await undoBatch(c.get('db'), c.get('ledgerId'), c.req.param('id'))
+    const result = await undoBatch(c.get('db'), c.get('ledgerId'), routeId(c.req.param('id'), '批次'))
     return c.json({ ok: true, ...result })
   })
 }

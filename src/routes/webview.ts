@@ -13,6 +13,7 @@
 import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { issueHandoff } from '../auth/handoff.ts'
+import { parseId } from '../id.ts'
 import { badRequest } from '../http.ts'
 
 /** 只能原生的页面：依赖微信专属能力（wx.login / 录音 / 拍照 / 选文件），或就是高频主路径。 */
@@ -147,16 +148,17 @@ export function registerWebviewRoutes(app: Hono<AppEnv>) {
    */
   app.post('/api/v1/webview/handoff', async (c) => {
     const body = await c.req.json().catch(() => ({} as Record<string, unknown>))
-    const raw = typeof body.ledger_id === 'string' ? body.ledger_id : c.req.header('X-Ledger-Id') ?? ''
+    const raw = body.ledger_id != null && body.ledger_id !== '' ? body.ledger_id : c.req.header('X-Ledger-Id')
     const userId = c.get('userId')
+    const requested = parseId(raw)
 
-    let ledgerId = ''
-    if (raw) {
+    let ledgerId: number | null = null
+    if (requested) {
       const row = await c.get('db').first(
         `SELECT role FROM members WHERE ledger_id = ? AND user_id = ?`,
-        [raw, userId],
+        [requested, userId],
       )
-      if (row) ledgerId = raw
+      if (row) ledgerId = requested
     }
 
     return c.json(await issueHandoff(c.get('db'), { userId, ledgerId }))

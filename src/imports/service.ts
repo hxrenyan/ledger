@@ -12,7 +12,7 @@ import { balanceStmts, type TxMoney } from '../balance.ts'
 import type { Db, Stmt } from '../db/types.ts'
 import { badRequest } from '../http.ts'
 import { assertAmountCents } from '../money.ts'
-import { newId } from '../seed.ts'
+import { parseId } from '../id.ts'
 import { dateToOccurredAt, shanghaiDate } from '../time.ts'
 import {
   aiParseTable,
@@ -49,9 +49,9 @@ export type PreviewRow = {
   direction: 'expense' | 'income' | 'skip'
   note: string
   counterparty: string
-  category_id: string
+  category_id: number | null
   category_name: string
-  account_id: string
+  account_id: number | null
   account_name: string
   status: 'ok' | 'skip' | 'error'
   reason: string
@@ -77,13 +77,13 @@ export type PreviewResult = {
   categories: CategoryLite[]
 }
 
-export async function buildPreview(db: Db, ledgerId: string, input: PreviewInput, opts: { useAi?: boolean } = {}): Promise<PreviewResult> {
+export async function buildPreview(db: Db, ledgerId: number, input: PreviewInput, opts: { useAi?: boolean } = {}): Promise<PreviewResult> {
   const table = readTable(input)
-  const accounts = await db.all<{ id: string; name: string }>(
+  const accounts = await db.all<{ id: number; name: string }>(
     `SELECT id, name FROM accounts WHERE ledger_id = ? AND archived = 0 ORDER BY sort_order ASC, created_at ASC`,
     [ledgerId],
   )
-  const categories = await db.all<{ id: string; name: string; kind: string }>(
+  const categories = await db.all<{ id: number; name: string; kind: string }>(
     `SELECT id, name, kind FROM categories WHERE ledger_id = ? AND archived = 0 ORDER BY sort_order ASC, created_at ASC`,
     [ledgerId],
   )
@@ -156,7 +156,7 @@ export async function buildPreview(db: Db, ledgerId: string, input: PreviewInput
   for (const r of previewRows) {
     if (r.status === 'error') continue
     const occurredAt = toOccurredAt(r.date)
-    if (occurredAt) r.duplicate = existing.has(signature(r.account_id, r.amount_cents, occurredAt, r.note))
+    if (occurredAt && r.account_id) r.duplicate = existing.has(signature(r.account_id, r.amount_cents, occurredAt, r.note))
   }
 
   // 账本没有可用账户时无法导入，直接标出来而不是等到提交才报错
@@ -220,8 +220,8 @@ export type CommitRowInput = {
   date?: string
   amount_cents?: number
   direction?: string
-  category_id?: string
-  account_id?: string
+  category_id?: string | number | null
+  account_id?: string | number | null
   note?: string
   /** 未传则按备注自动识别；传空字符串表示用户明确不要记人情。 */
   favor_contact?: string
@@ -239,7 +239,7 @@ export type CommitInput = {
 }
 
 export type CommitResult = {
-  batch_id: string
+  batch_id: number
   imported: number
   duplicates: number
   skipped: number
@@ -247,17 +247,17 @@ export type CommitResult = {
   gifts: number
 }
 
-export async function commitImport(db: Db, ledgerId: string, userId: string, input: CommitInput): Promise<CommitResult> {
+export async function commitImport(db: Db, ledgerId: number, userId: number, input: CommitInput): Promise<CommitResult> {
   const rawRows = Array.isArray(input.rows) ? input.rows : []
   if (!rawRows.length) throw badRequest('没有可导入的行')
   if (rawRows.length > MAX_ROWS) throw badRequest(`单次最多导入 ${MAX_ROWS} 行`)
   const dedupe = input.dedupe !== false
 
-  const accounts = await db.all<{ id: string; name: string; archived: number }>(
+  const accounts = await db.all<{ id: number; name: string; archived: number }>(
     `SELECT id, name, archived FROM accounts WHERE ledger_id = ?`,
     [ledgerId],
   )
-  const categories = await db.all<{ id: string; name: string; kind: string; archived: number }>(
+  const categories = await db.all<{ id: number; name: string; kind: string; archived: number }>(
     `SELECT id, name, kind, archived FROM categories WHERE ledger_id = ?`,
     [ledgerId],
   )
@@ -271,8 +271,8 @@ export async function commitImport(db: Db, ledgerId: string, userId: string, inp
     occurredAt: number
     amountCents: number
     direction: 'expense' | 'income'
-    accountId: string
-    categoryId: string
+    accountId: number
+    categoryId: number
     note: string
     favor: { contact: string; kind: 'give' | 'receive'; occasion: string } | null
   }
@@ -298,7 +298,8 @@ export async function commitImport(db: Db, ledgerId: string, userId: string, inp
       failed.push({ row: rowNo, reason: '金额无效' })
       return
     }
-    const account = accountById.get(String(row.account_id ?? ''))
+    const accountId = parseId(row.account_id)
+    const account = accountId == null ? undefined : accountById.get(accountId)
     if (!account) {
       failed.push({ row: rowNo, reason: '账户不存在' })
       return
@@ -307,7 +308,8 @@ export async function commitImport(db: Db, ledgerId: string, userId: string, inp
       failed.push({ row: rowNo, reason: '账户已归档' })
       return
     }
-    const category = categoryById.get(String(row.category_id ?? ''))
+    const categoryId = parseId(row.category_id)
+    const category = categoryId == null ? undefined : categoryById.get(categoryId)
     if (!category) {
       failed.push({ row: rowNo, reason: '分类不存在' })
       return
@@ -347,30 +349,28 @@ export async function commitImport(db: Db, ledgerId: string, userId: string, inp
     }
   }
 
-  const batchId = newId()
   const now = Date.now()
   const source = normalizeSource(input.source)
   const filename = (input.filename ?? '').toString().slice(0, 200)
 
-  await db.run(
-    `INSERT INTO import_batches (id, ledger_id, source, filename, parsed_rows, imported_rows, skipped_rows, duplicate_rows, ai_used, status, created_by, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'done', ?, ?)`,
-    [batchId, ledgerId, source, filename, rawRows.length, toInsert.length, skipped, duplicates, input.ai_used ? 1 : 0, userId, now],
+  const batch = await db.first<{ id: number }>(
+    `INSERT INTO import_batches (ledger_id, source, filename, parsed_rows, imported_rows, skipped_rows, duplicate_rows, ai_used, status, created_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'done', ?, ?) RETURNING id`,
+    [ledgerId, source, filename, rawRows.length, toInsert.length, skipped, duplicates, input.ai_used ? 1 : 0, userId, now],
   )
+  if (!batch) throw new Error('导入批次创建失败')
+  const batchId = batch.id
 
-  const insertedIds: string[] = []
   try {
     for (let offset = 0; offset < toInsert.length; offset += COMMIT_CHUNK) {
       const chunk = toInsert.slice(offset, offset + COMMIT_CHUNK)
       const stmts: Stmt[] = []
       for (const p of chunk) {
-        const txId = newId()
-        insertedIds.push(txId)
         stmts.push({
           sql: `INSERT INTO transactions
-            (id, ledger_id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note, has_receipt, excluded, import_batch_id, created_by, created_at, updated_at)
-           VALUES (?, ?, ?, NULL, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)`,
-          params: [txId, ledgerId, p.accountId, p.categoryId, p.direction, p.amountCents, p.occurredAt, p.note, batchId, userId, now, now],
+            (ledger_id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note, has_receipt, excluded, import_batch_id, created_by, created_at, updated_at)
+           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?)`,
+          params: [ledgerId, p.accountId, p.categoryId, p.direction, p.amountCents, p.occurredAt, p.note, batchId, userId, now, now],
         })
         const money: TxMoney = { kind: p.direction, amount_cents: p.amountCents, account_id: p.accountId, to_account_id: null }
         stmts.push(...balanceStmts(money, 1))
@@ -381,25 +381,23 @@ export async function commitImport(db: Db, ledgerId: string, userId: string, inp
     return { batch_id: batchId, imported: toInsert.length, duplicates, skipped, failed, gifts }
   } catch (e) {
     // 写库中途失败：流水、余额、这次带上的人情一起回滚。原始文件本身没有入库。
-    await rollbackInserted(db, ledgerId, batchId, insertedIds)
+    await rollbackInserted(db, ledgerId, batchId)
     throw e
   }
 }
 
-async function rollbackInserted(db: Db, ledgerId: string, batchId: string, ids: string[]) {
+async function rollbackInserted(db: Db, ledgerId: number, batchId: number) {
   try {
-    if (ids.length) {
-      for (let offset = 0; offset < ids.length; offset += COMMIT_CHUNK) {
-        const chunk = ids.slice(offset, offset + COMMIT_CHUNK)
-        const rows = await db.all<TxMoney>(
-          `SELECT kind, amount_cents, account_id, to_account_id FROM transactions WHERE ledger_id = ? AND id IN (${chunk.map(() => '?').join(',')})`,
-          [ledgerId, ...chunk],
-        )
-        const stmts: Stmt[] = rows.flatMap((r) => balanceStmts({ ...r, amount_cents: Number(r.amount_cents) }, -1))
-        stmts.push({ sql: `DELETE FROM transactions WHERE ledger_id = ? AND id IN (${chunk.map(() => '?').join(',')})`, params: [ledgerId, ...chunk] })
-        await db.batch(stmts)
-      }
+    const rows = await db.all<TxMoney>(
+      `SELECT kind, amount_cents, account_id, to_account_id FROM transactions WHERE ledger_id = ? AND import_batch_id = ?`,
+      [ledgerId, batchId],
+    )
+    for (let offset = 0; offset < rows.length; offset += COMMIT_CHUNK) {
+      const chunk = rows.slice(offset, offset + COMMIT_CHUNK)
+      const stmts: Stmt[] = chunk.flatMap((r) => balanceStmts({ ...r, amount_cents: Number(r.amount_cents) }, -1))
+      await db.batch(stmts)
     }
+    await db.run(`DELETE FROM transactions WHERE ledger_id = ? AND import_batch_id = ?`, [ledgerId, batchId])
   } finally {
     await db.run(`DELETE FROM gifts WHERE ledger_id = ? AND import_batch_id = ?`, [ledgerId, batchId])
     await db.run(`DELETE FROM import_batches WHERE id = ?`, [batchId])
@@ -407,7 +405,7 @@ async function rollbackInserted(db: Db, ledgerId: string, batchId: string, ids: 
 }
 
 export type BatchRow = {
-  id: string
+  id: number
   source: string
   filename: string
   parsed_rows: number
@@ -421,7 +419,7 @@ export type BatchRow = {
   created_by_name: string
 }
 
-export async function listBatches(db: Db, ledgerId: string, limit = 20): Promise<BatchRow[]> {
+export async function listBatches(db: Db, ledgerId: number, limit = 20): Promise<BatchRow[]> {
   const rows = await db.all<Record<string, unknown>>(
     `SELECT b.id, b.source, b.filename, b.parsed_rows, b.imported_rows, b.skipped_rows, b.duplicate_rows,
             b.ai_used, b.status, b.created_at, b.undone_at, COALESCE(u.nickname, u.username, '') AS created_by_name
@@ -433,7 +431,7 @@ export async function listBatches(db: Db, ledgerId: string, limit = 20): Promise
     [ledgerId, limit],
   )
   return rows.map((r) => ({
-    id: String(r.id),
+    id: Number(r.id),
     source: String(r.source),
     filename: String(r.filename ?? ''),
     parsed_rows: Number(r.parsed_rows ?? 0),
@@ -449,15 +447,15 @@ export async function listBatches(db: Db, ledgerId: string, limit = 20): Promise
 }
 
 /** 撤销一次导入：删掉该批次流水并回滚余额。 */
-export async function undoBatch(db: Db, ledgerId: string, batchId: string): Promise<{ removed: number }> {
-  const batch = await db.first<{ id: string; status: string }>(
+export async function undoBatch(db: Db, ledgerId: number, batchId: number): Promise<{ removed: number }> {
+  const batch = await db.first<{ id: number; status: string }>(
     `SELECT id, status FROM import_batches WHERE id = ? AND ledger_id = ?`,
     [batchId, ledgerId],
   )
   if (!batch) throw badRequest('导入批次不存在')
   if (batch.status !== 'done') throw badRequest('该批次已撤销')
 
-  const ids = await db.all<{ id: string }>(
+  const ids = await db.all<{ id: number }>(
     `SELECT id FROM transactions WHERE ledger_id = ? AND import_batch_id = ?`,
     [ledgerId, batchId],
   )
@@ -472,7 +470,7 @@ export async function undoBatch(db: Db, ledgerId: string, batchId: string): Prom
     stmts.push({ sql: `DELETE FROM transactions WHERE ledger_id = ? AND id IN (${chunk.map(() => '?').join(',')})`, params: [ledgerId, ...chunk] })
     await db.batch(stmts)
   }
-  const touched = await db.all<{ contact_id: string }>(
+  const touched = await db.all<{ contact_id: number }>(
     `SELECT DISTINCT contact_id FROM gifts WHERE ledger_id = ? AND import_batch_id = ?`,
     [ledgerId, batchId],
   )
@@ -554,9 +552,9 @@ function withSuggestions(p: ParsedRow, accounts: AccountLite[], categories: Cate
     direction: p.direction,
     note: p.note,
     counterparty: p.counterparty,
-    category_id: '',
+    category_id: null,
     category_name: '',
-    account_id: '',
+    account_id: null,
     account_name: '',
     status: p.status,
     reason: p.reason,
@@ -598,7 +596,7 @@ function withSuggestions(p: ParsedRow, accounts: AccountLite[], categories: Cate
   return base
 }
 
-function matchByName(list: { id: string; name: string }[], needle: string): Suggestion | null {
+function matchByName(list: { id: number; name: string }[], needle: string): Suggestion | null {
   const key = needle.trim().toLowerCase()
   if (!key) return null
   const exact = list.find((c) => c.name.toLowerCase() === key)
@@ -624,16 +622,16 @@ function toOccurredAt(date: string): number | null {
   }
 }
 
-export function signature(accountId: string, amountCents: number, occurredAt: number, note: string): string {
+export function signature(accountId: number, amountCents: number, occurredAt: number, note: string): string {
   return `${accountId}|${amountCents}|${occurredAt}|${note}`
 }
 
-async function loadExistingSignatures(db: Db, ledgerId: string, occurredAts: number[]): Promise<Set<string>> {
+async function loadExistingSignatures(db: Db, ledgerId: number, occurredAts: number[]): Promise<Set<string>> {
   if (!occurredAts.length) return new Set()
   const day = 86400000
   const min = Math.min(...occurredAts) - day
   const max = Math.max(...occurredAts) + day
-  const rows = await db.all<{ account_id: string; amount_cents: number; occurred_at: number; note: string }>(
+  const rows = await db.all<{ account_id: number; amount_cents: number; occurred_at: number; note: string }>(
     `SELECT account_id, amount_cents, occurred_at, note FROM transactions
      WHERE ledger_id = ? AND occurred_at >= ? AND occurred_at <= ?
      LIMIT 50000`,
@@ -660,15 +658,15 @@ export type UtterancePreview = {
 
 export async function previewUtterances(
   db: Db,
-  ledgerId: string,
+  ledgerId: number,
   text: string,
   mode: UtteranceMode = 'speak',
 ): Promise<UtterancePreview> {
-  const accounts = await db.all<{ id: string; name: string }>(
+  const accounts = await db.all<{ id: number; name: string }>(
     `SELECT id, name FROM accounts WHERE ledger_id = ? AND archived = 0 ORDER BY sort_order ASC, created_at ASC`,
     [ledgerId],
   )
-  const categories = await db.all<{ id: string; name: string; kind: string }>(
+  const categories = await db.all<{ id: number; name: string; kind: string }>(
     `SELECT id, name, kind FROM categories WHERE ledger_id = ? AND archived = 0 ORDER BY sort_order ASC, created_at ASC`,
     [ledgerId],
   )
@@ -776,9 +774,9 @@ function blankPreview(row: number, note: string, status: PreviewRow['status'], r
     direction: 'skip',
     note,
     counterparty: '',
-    category_id: '',
+    category_id: null,
     category_name: '',
-    account_id: '',
+    account_id: null,
     account_name: '',
     status,
     reason,
@@ -819,42 +817,47 @@ function readFavor(
 
 async function writeBatchGifts(
   db: Db,
-  ledgerId: string,
-  userId: string,
-  batchId: string,
+  ledgerId: number,
+  userId: number,
+  batchId: number,
   now: number,
   rows: { favor: { contact: string; kind: 'give' | 'receive'; occasion: string } | null; amountCents: number; occurredAt: number; note: string }[],
 ): Promise<number> {
   const favors = rows.filter((row) => row.favor)
   if (!favors.length) return 0
   const names = [...new Set(favors.map((row) => row.favor!.contact))]
-  const existing = await db.all<{ id: string; name: string }>(
+  const existing = await db.all<{ id: number; name: string }>(
     `SELECT id, name FROM contacts WHERE ledger_id = ? AND archived = 0 AND name IN (${names.map(() => '?').join(',')})`,
     [ledgerId, ...names],
   )
   const map = new Map(existing.map((row) => [row.name, row.id]))
-  const created: string[] = []
   const create: Stmt[] = []
+  const creating: string[] = []
   for (const name of names) {
     if (map.has(name)) continue
-    const id = newId()
-    map.set(name, id)
-    created.push(id)
+    creating.push(name)
     create.push({
-      sql: `INSERT INTO contacts (id, ledger_id, name, relation, archived, created_at) VALUES (?, ?, ?, '', 0, ?)`,
-      params: [id, ledgerId, name, now],
+      sql: `INSERT INTO contacts (ledger_id, name, relation, archived, created_at) VALUES (?, ?, '', 0, ?)`,
+      params: [ledgerId, name, now],
     })
   }
   try {
     if (create.length) await db.batch(create)
+    if (creating.length) {
+      const createdRows = await db.all<{ id: number; name: string }>(
+        `SELECT id, name FROM contacts WHERE ledger_id = ? AND archived = 0 AND created_at = ? AND name IN (${creating.map(() => '?').join(',')})`,
+        [ledgerId, now, ...creating],
+      )
+      for (const row of createdRows) map.set(row.name, row.id)
+    }
     const stmts: Stmt[] = []
     for (const row of favors) {
       const contactId = map.get(row.favor!.contact)
       if (!contactId) continue
       stmts.push({
-        sql: `INSERT INTO gifts (id, ledger_id, contact_id, kind, amount_cents, occasion, occurred_at, note, created_by, created_at, updated_at, import_batch_id)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        params: [newId(), ledgerId, contactId, row.favor!.kind, row.amountCents, row.favor!.occasion, row.occurredAt, row.note, userId, now, now, batchId],
+        sql: `INSERT INTO gifts (ledger_id, contact_id, kind, amount_cents, occasion, occurred_at, note, created_by, created_at, updated_at, import_batch_id)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        params: [ledgerId, contactId, row.favor!.kind, row.amountCents, row.favor!.occasion, row.occurredAt, row.note, userId, now, now, batchId],
       })
     }
     for (let offset = 0; offset < stmts.length; offset += COMMIT_CHUNK) {
@@ -862,12 +865,18 @@ async function writeBatchGifts(
     }
     return stmts.length
   } catch (error) {
-    if (created.length) {
-      await db.run(
-        `DELETE FROM contacts WHERE ledger_id = ? AND id IN (${created.map(() => '?').join(',')})
-         AND id NOT IN (SELECT contact_id FROM gifts WHERE ledger_id = ?)`,
-        [ledgerId, ...created, ledgerId],
+    if (creating.length) {
+      const createdRows = await db.all<{ id: number }>(
+        `SELECT id FROM contacts WHERE ledger_id = ? AND archived = 0 AND created_at = ? AND name IN (${creating.map(() => '?').join(',')})`,
+        [ledgerId, now, ...creating],
       )
+      if (createdRows.length) {
+        await db.run(
+          `DELETE FROM contacts WHERE ledger_id = ? AND id IN (${createdRows.map(() => '?').join(',')})
+           AND id NOT IN (SELECT contact_id FROM gifts WHERE ledger_id = ?)`,
+          [ledgerId, ...createdRows.map((row) => row.id), ledgerId],
+        )
+      }
     }
     throw error
   }

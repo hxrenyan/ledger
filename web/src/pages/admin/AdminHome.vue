@@ -7,8 +7,8 @@ import AdminAsr from './AdminAsr.vue'
 import AdminOcr from './AdminOcr.vue'
 
 type Overview = { users: number; ledgers: number; transactions: number; disabled_users: number }
-type UserRow = { id: string; username: string; nickname: string; disabled: boolean; created_at: number; ledger_count: number }
-type LedgerRow = { id: string; name: string; owner_username: string; member_count: number; tx_count: number; created_at: number }
+type UserRow = { id: number; username: string; nickname: string; disabled: boolean; created_at: number; ledger_count: number }
+type LedgerRow = { id: number; name: string; owner_username: string; member_count: number; tx_count: number; created_at: number }
 
 const router = useRouter()
 const tab = ref<'users' | 'ledgers' | 'ai' | 'asr' | 'ocr'>('users')
@@ -16,7 +16,7 @@ const overview = ref<Overview>({ users: 0, ledgers: 0, transactions: 0, disabled
 const users = ref<UserRow[]>([])
 const ledgers = ref<LedgerRow[]>([])
 const err = ref('')
-const busyId = ref('')
+const busyId = ref<number | ''>('')
 
 async function load() {
   err.value = ''

@@ -9,7 +9,7 @@ const router = useRouter()
 const newName = ref('')
 const joinCode = ref('')
 const invite = ref('')
-const members = ref<{ user_id: string; role: string; username: string; nickname: string }[]>([])
+const members = ref<{ user_id: number; role: string; username: string; nickname: string }[]>([])
 const ledgerName = ref('')
 const err = ref('')
 const msg = ref('')
@@ -65,7 +65,7 @@ async function join() {
   }
 }
 
-async function switchLedger(id: string) {
+async function switchLedger(id: number) {
   session.setLedger(id)
   await loadMembers()
 }
@@ -75,7 +75,7 @@ async function rotate() {
   invite.value = data.invite_code
 }
 
-async function kick(userId: string) {
+async function kick(userId: number) {
   if (!confirm('移除该成员？')) return
   await api(`/api/v1/members/${userId}`, { method: 'DELETE' })
   await loadMembers()
@@ -91,7 +91,7 @@ async function exportCsv() {
   try {
     const headers = new Headers()
     if (session.token) headers.set('authorization', `Bearer ${session.token}`)
-    if (session.ledgerId) headers.set('x-ledger-id', session.ledgerId)
+    if (session.ledgerId) headers.set('x-ledger-id', String(session.ledgerId))
     const res = await fetch('/api/v1/export', { headers })
     if (!res.ok) {
       let message = '导出失败'

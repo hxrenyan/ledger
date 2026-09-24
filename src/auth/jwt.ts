@@ -6,10 +6,10 @@ function key(secret: string) {
 
 export type TokenPayload = { sub: string; admin: boolean }
 
-export async function signToken(secret: string, userId: string): Promise<string> {
+export async function signToken(secret: string, userId: number): Promise<string> {
   return new SignJWT({})
     .setProtectedHeader({ alg: 'HS256' })
-    .setSubject(userId)
+    .setSubject(String(userId))
     .setIssuedAt()
     .setExpirationTime('30d')
     .sign(key(secret))

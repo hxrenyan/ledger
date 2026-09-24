@@ -5,9 +5,9 @@
  * 策略：名称直接命中 → 关键词表命中 → 同方向第一个分类 / 第一个账户兜底。
  */
 
-export type CategoryLite = { id: string; name: string; kind: 'expense' | 'income' }
-export type AccountLite = { id: string; name: string }
-export type Suggestion = { id: string; name: string }
+export type CategoryLite = { id: number; name: string; kind: 'expense' | 'income' }
+export type AccountLite = { id: number; name: string }
+export type Suggestion = { id: number; name: string }
 
 const EXPENSE_KEYWORDS: { category: string; words: string[] }[] = [
   { category: '餐饮', words: ['餐', '饭', '外卖', '美团', '饿了么', '肯德基', '麦当劳', '星巴克', '瑞幸', '咖啡', '奶茶', '烧烤', '火锅', '小吃', '食堂', '面馆', '酒楼', '餐厅', '烘焙', '水果', '菜市场', '生鲜'] },
@@ -34,7 +34,7 @@ const ACCOUNT_KEYWORDS: { account: string; words: string[] }[] = [
   { account: '银行卡', words: ['银行', '借记卡', '储蓄卡', '信用卡', '银联', '招行', '工商', '建设', '农业', '交通银行', '邮储', '民生', '兴业', '浦发', '中信', '光大', '平安', '广发', '华夏', '北京银行', '招商'] },
 ]
 
-function findByName(list: { id: string; name: string }[], needle: string): Suggestion | null {
+function findByName(list: { id: number; name: string }[], needle: string): Suggestion | null {
   const key = needle.trim().toLowerCase()
   if (!key) return null
   const exact = list.find((c) => c.name.toLowerCase() === key)

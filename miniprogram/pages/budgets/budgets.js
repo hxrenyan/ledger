@@ -136,7 +136,7 @@ Page({
   },
 
   setCategory(e) {
-    const id = e.currentTarget.dataset.id
+    const id = require('../../utils/id').toId(e.currentTarget.dataset.id)
     const item = this.data.rows.find((r) => r.id === id)
     if (!item) return
     const current = item.amountText === '未设置' ? '' : item.amountText

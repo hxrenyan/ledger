@@ -233,50 +233,51 @@ describe('小程序登录与绑定已有账号', () => {
     await db.run(`UPDATE accounts SET current_cents = -2300 WHERE id = ?`, [aliceCash.id])
     await db.run(`UPDATE accounts SET current_cents = -5000 WHERE id = ?`, [wxCash.id])
     await db.run(
-      `INSERT INTO transactions (id, ledger_id, account_id, category_id, kind, amount_cents, occurred_at, note, created_by, created_at, updated_at)
-       VALUES ('tx-web', ?, ?, ?, 'expense', 2300, 10, '网页午饭', ?, 10, 10)`,
+      `INSERT INTO transactions (ledger_id, account_id, category_id, kind, amount_cents, occurred_at, note, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, 'expense', 2300, 10, '网页午饭', ?, 10, 10)`,
       [aliceLedger, aliceCash.id, aliceFood.id, alice.user.id],
     )
-    await db.run(
-      `INSERT INTO transactions (id, ledger_id, account_id, category_id, kind, amount_cents, occurred_at, note, created_by, created_at, updated_at)
-       VALUES ('tx-wx', ?, ?, ?, 'expense', 5000, 20, '微信晚饭', ?, 20, 20)`,
+    const wxTx = await db.first<{ id: number }>(
+      `INSERT INTO transactions (ledger_id, account_id, category_id, kind, amount_cents, occurred_at, note, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, 'expense', 5000, 20, '微信晚饭', ?, 20, 20) RETURNING id`,
       [wxLedger, wxCash.id, wxFood.id, shadow.user.id],
     )
-    await db.run(
-      `INSERT INTO accounts (id, ledger_id, name, type, sort_order, archived, current_cents, created_at)
-       VALUES ('fund', ?, '公积金', 'other', 9, 0, 8000, 1)`,
+    const fund = await db.first<{ id: number }>(
+      `INSERT INTO accounts (ledger_id, name, type, sort_order, archived, current_cents, created_at)
+       VALUES (?, '公积金', 'other', 9, 0, 8000, 1) RETURNING id`,
       [wxLedger],
     )
-    await db.run(
-      `INSERT INTO contacts (id, ledger_id, name, relation, archived, created_at) VALUES ('c-a', ?, '张三', '同事', 0, 1)`,
+    const aliceContact = await db.first<{ id: number }>(
+      `INSERT INTO contacts (ledger_id, name, relation, archived, created_at) VALUES (?, '张三', '同事', 0, 1) RETURNING id`,
       [aliceLedger],
     )
-    await db.run(
-      `INSERT INTO contacts (id, ledger_id, name, relation, archived, created_at) VALUES ('c-w', ?, '张三', '', 0, 2)`,
+    const wxContact = await db.first<{ id: number }>(
+      `INSERT INTO contacts (ledger_id, name, relation, archived, created_at) VALUES (?, '张三', '', 0, 2) RETURNING id`,
       [wxLedger],
     )
-    await db.run(
-      `INSERT INTO gifts (id, ledger_id, contact_id, kind, amount_cents, occasion, occurred_at, note, created_by, created_at, updated_at)
-       VALUES ('g-w', ?, 'c-w', 'give', 20000, '婚礼', 30, '微信随礼', ?, 30, 30)`,
-      [wxLedger, shadow.user.id],
+    const gift = await db.first<{ id: number }>(
+      `INSERT INTO gifts (ledger_id, contact_id, kind, amount_cents, occasion, occurred_at, note, created_by, created_at, updated_at)
+       VALUES (?, ?, 'give', 20000, '婚礼', 30, '微信随礼', ?, 30, 30) RETURNING id`,
+      [wxLedger, wxContact?.id, shadow.user.id],
     )
     await db.run(
-      `INSERT INTO budgets (id, ledger_id, category_id, month, amount_cents, created_at) VALUES ('b-a', ?, ?, '2026-03', 10000, 1)`,
+      `INSERT INTO budgets (ledger_id, category_id, month, amount_cents, created_at) VALUES (?, ?, '2026-03', 10000, 1)`,
       [aliceLedger, aliceFood.id],
     )
     await db.run(
-      `INSERT INTO budgets (id, ledger_id, category_id, month, amount_cents, created_at) VALUES ('b-w', ?, ?, '2026-03', 2500, 2)`,
+      `INSERT INTO budgets (ledger_id, category_id, month, amount_cents, created_at) VALUES (?, ?, '2026-03', 2500, 2)`,
       [wxLedger, wxFood.id],
     )
-    await db.run(
-      `INSERT INTO recurrences (id, ledger_id, kind, amount_cents, account_id, category_id, note, day_of_month, next_at, enabled, created_at)
-       VALUES ('r-w', ?, 'expense', 100, ?, ?, '房租', 1, 40, 1, 40)`,
+    const recurrence = await db.first<{ id: number }>(
+      `INSERT INTO recurrences (ledger_id, kind, amount_cents, account_id, category_id, note, day_of_month, next_at, enabled, created_at)
+       VALUES (?, 'expense', 100, ?, ?, '房租', 1, 40, 1, 40) RETURNING id`,
       [wxLedger, wxCash.id, wxFood.id],
     )
     await db.run(
-      `INSERT INTO attachments (transaction_id, ledger_id, mime, bytes, created_at) VALUES ('tx-wx', ?, 'image/png', ?, 1)`,
-      [wxLedger, Buffer.from('png')],
+      `INSERT INTO attachments (transaction_id, ledger_id, mime, bytes, created_at) VALUES (?, ?, 'image/png', ?, 1)`,
+      [wxTx?.id, wxLedger, Buffer.from('png')],
     )
+    if (!wxTx || !fund || !aliceContact || !wxContact || !gift || !recurrence) throw new Error('测试数据写入失败')
 
     const bound = await json(app, '/api/v1/me/wechat/bind', post('/api/v1/me/wechat/bind', { username: 'alice', password: 'password1' }, shadow.token))
     expect(bound.status).toBe(200)
@@ -293,14 +294,14 @@ describe('小程序登录与绑定已有账号', () => {
       { note: '微信晚饭', account_id: aliceCash.id, category_id: aliceFood.id, created_by: alice.user.id },
     ])
     expect(await db.first(`SELECT current_cents FROM accounts WHERE id = ?`, [aliceCash.id])).toEqual({ current_cents: -7300 })
-    expect(await db.first(`SELECT ledger_id, current_cents FROM accounts WHERE id = 'fund'`)).toEqual({
+    expect(await db.first(`SELECT ledger_id, current_cents FROM accounts WHERE id = ?`, [fund.id])).toEqual({
       ledger_id: aliceLedger,
       current_cents: 8000,
     })
     expect(await db.first(`SELECT COUNT(*) AS n FROM contacts WHERE ledger_id = ? AND name = '张三'`, [aliceLedger])).toEqual({ n: 1 })
-    expect(await db.first(`SELECT ledger_id, contact_id, created_by FROM gifts WHERE id = 'g-w'`)).toEqual({
+    expect(await db.first(`SELECT ledger_id, contact_id, created_by FROM gifts WHERE id = ?`, [gift.id])).toEqual({
       ledger_id: aliceLedger,
-      contact_id: 'c-a',
+      contact_id: aliceContact.id,
       created_by: alice.user.id,
     })
     expect(await db.first(`SELECT ledger_id, category_id, amount_cents FROM budgets WHERE month = '2026-03'`)).toEqual({
@@ -308,12 +309,12 @@ describe('小程序登录与绑定已有账号', () => {
       category_id: aliceFood.id,
       amount_cents: 12500,
     })
-    expect(await db.first(`SELECT ledger_id, account_id, category_id FROM recurrences WHERE id = 'r-w'`)).toEqual({
+    expect(await db.first(`SELECT ledger_id, account_id, category_id FROM recurrences WHERE id = ?`, [recurrence.id])).toEqual({
       ledger_id: aliceLedger,
       account_id: aliceCash.id,
       category_id: aliceFood.id,
     })
-    expect(await db.first(`SELECT ledger_id FROM attachments WHERE transaction_id = 'tx-wx'`)).toEqual({ ledger_id: aliceLedger })
+    expect(await db.first(`SELECT ledger_id FROM attachments WHERE transaction_id = ?`, [wxTx.id])).toEqual({ ledger_id: aliceLedger })
     expect(await db.first(`SELECT id FROM users WHERE id = ?`, [shadow.user.id])).toBeNull()
     expect(await db.first(`SELECT id FROM ledgers WHERE id = ?`, [wxLedger])).toBeNull()
 
@@ -330,31 +331,36 @@ describe('小程序登录与绑定已有账号', () => {
     const alice = reg.body as SessionBody
     const wx = await json(app, '/api/v1/auth/wechat', post('/api/v1/auth/wechat', { code: 'ok' }))
     const shadow = wx.body as SessionBody
-    await db.run(
-      `INSERT INTO ledgers (id, name, owner_id, invite_code, created_at) VALUES ('fam', '家庭', ?, 'INVITE01', 1)`,
+    const other = await db.first<{ id: number }>(
+      `INSERT INTO users (username, nickname, created_at) VALUES ('other', '其他人', 1) RETURNING id`,
+    )
+    const fam = await db.first<{ id: number }>(
+      `INSERT INTO ledgers (name, owner_id, invite_code, created_at) VALUES ('家庭', ?, 'INVITE01', 1) RETURNING id`,
       [shadow.user.id],
     )
+    if (!other || !fam) throw new Error('家庭账本写入失败')
     await db.run(
-      `INSERT INTO members (ledger_id, user_id, role, created_at) VALUES ('fam', ?, 'owner', 1), ('fam', 'other-user', 'member', 1)`,
-      [shadow.user.id],
+      `INSERT INTO members (ledger_id, user_id, role, created_at) VALUES (?, ?, 'owner', 1), (?, ?, 'member', 1)`,
+      [fam.id, shadow.user.id, fam.id, other.id],
     )
-    await db.run(
-      `INSERT INTO transactions (id, ledger_id, account_id, kind, amount_cents, occurred_at, note, created_by, created_at, updated_at)
-       VALUES ('tx-fam', 'fam', 'acc-fam', 'expense', 100, 1, '家庭餐', ?, 1, 1)`,
-      [shadow.user.id],
+    const famTx = await db.first<{ id: number }>(
+      `INSERT INTO transactions (ledger_id, account_id, kind, amount_cents, occurred_at, note, created_by, created_at, updated_at)
+       VALUES (?, 1, 'expense', 100, 1, '家庭餐', ?, 1, 1) RETURNING id`,
+      [fam.id, shadow.user.id],
     )
+    if (!famTx) throw new Error('家庭流水写入失败')
 
     const bound = await json(app, '/api/v1/me/wechat/bind', post('/api/v1/me/wechat/bind', { username: 'alice', password: 'password1' }, shadow.token))
     expect(bound.status).toBe(200)
-    expect(await db.first(`SELECT owner_id FROM ledgers WHERE id = 'fam'`)).toEqual({ owner_id: alice.user.id })
-    expect(await db.first(`SELECT role FROM members WHERE ledger_id = 'fam' AND user_id = ?`, [alice.user.id])).toEqual({ role: 'owner' })
-    expect(await db.first(`SELECT user_id FROM members WHERE ledger_id = 'fam' AND user_id = ?`, [shadow.user.id])).toBeNull()
-    expect(await db.first(`SELECT ledger_id, note, created_by FROM transactions WHERE id = 'tx-fam'`)).toEqual({
-      ledger_id: 'fam',
+    expect(await db.first(`SELECT owner_id FROM ledgers WHERE id = ?`, [fam.id])).toEqual({ owner_id: alice.user.id })
+    expect(await db.first(`SELECT role FROM members WHERE ledger_id = ? AND user_id = ?`, [fam.id, alice.user.id])).toEqual({ role: 'owner' })
+    expect(await db.first(`SELECT user_id FROM members WHERE ledger_id = ? AND user_id = ?`, [fam.id, shadow.user.id])).toBeNull()
+    expect(await db.first(`SELECT ledger_id, note, created_by FROM transactions WHERE id = ?`, [famTx.id])).toEqual({
+      ledger_id: fam.id,
       note: '家庭餐',
       created_by: alice.user.id,
     })
-    expect((bound.body as SessionBody).ledgers.map((l) => l.id).sort()).toEqual([alice.ledgers[0].id, 'fam'].sort())
+    expect((bound.body as SessionBody).ledgers.map((l) => l.id).sort()).toEqual([alice.ledgers[0].id, fam.id].sort())
   })
 
   it('停用的目标账号不能绑，没有微信身份也不能绑', async () => {

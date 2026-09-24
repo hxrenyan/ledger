@@ -117,7 +117,7 @@ Page({
   },
 
   onAccount(e) {
-    const id = e.currentTarget.dataset.id
+    const id = require('../../utils/id').toId(e.currentTarget.dataset.id)
     const item = this.data.items.concat(this.data.archived).find((a) => a.id === id)
     if (!item) return
     const options = ['改名字', '改余额', item.archived ? '取消归档' : '归档']
