@@ -27,6 +27,8 @@ const time = require('../../utils/time')
 const ui = require('../../utils/ui')
 
 const MAX_SECONDS = 60
+/** OCR 返回文字后还要再走一次文本模型整理，不能沿用普通接口 20 秒默认值。 */
+const PARSE_TIMEOUT_MS = 120000
 /** 核对页里那行原文只作参考，太长就把票据正文挤没了。 */
 const BRIEF_CHARS = 200
 
@@ -307,7 +309,7 @@ Component({
             return null
           }
           this.setData({ text: brief(text), rawText: '' })
-          return request.post('/api/v1/imports/utterances', { text: text })
+          return request.post('/api/v1/imports/utterances', { text: text }, { timeout: PARSE_TIMEOUT_MS })
         })
         .then((preview) => this.applyPreview(preview, '没解析出记录，换种说法再试'))
         .catch((err) => this.onFail(err, '语音识别失败'))
@@ -351,7 +353,7 @@ Component({
             return null
           }
           this.setData({ text: brief(text), rawText: text })
-          return request.post('/api/v1/imports/receipt', { text: text })
+          return request.post('/api/v1/imports/receipt', { text: text }, { timeout: PARSE_TIMEOUT_MS })
         })
         .then((preview) => this.applyPreview(preview, '这张没整理出流水，可以换一张'))
         .catch((err) => this.onFail(err, '拍照识别失败'))
@@ -401,7 +403,7 @@ Component({
       if (!text || this.data.state !== 'idle') return
       this.setData({ state: 'busy', tip: '正在整理…' })
       request
-        .post('/api/v1/imports/receipt', { text: text })
+        .post('/api/v1/imports/receipt', { text: text }, { timeout: PARSE_TIMEOUT_MS })
         .then((preview) => this.applyPreview(preview, '这段文字没整理出流水，可以继续修改后重试'))
         .catch((err) => this.onFail(err, '重新整理失败'))
     },
