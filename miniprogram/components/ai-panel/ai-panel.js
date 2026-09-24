@@ -392,6 +392,20 @@ Component({
       })
     },
 
+    onRawText(e) {
+      this.setData({ rawText: e.detail.value })
+    },
+
+    reparseRawText() {
+      const text = String(this.data.rawText || '').trim()
+      if (!text || this.data.state !== 'idle') return
+      this.setData({ state: 'busy', tip: '正在整理…' })
+      request
+        .post('/api/v1/imports/receipt', { text: text })
+        .then((preview) => this.applyPreview(preview, '这段文字没整理出流水，可以继续修改后重试'))
+        .catch((err) => this.onFail(err, '重新整理失败'))
+    },
+
     // ---- 行编辑 ----
 
     /** 把接口行补上 WXML 里要直接显示的文本与下标。 */

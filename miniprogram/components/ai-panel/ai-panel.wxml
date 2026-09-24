@@ -11,10 +11,11 @@
       <view class="ap-notice" wx:if="{{state === 'idle' && parser === 'none'}}">
         <view class="ap-notice-title">认出了文字，但还整理不成流水</view>
         <view class="ap-notice-desc">{{aiError}}</view>
-        <scroll-view class="ap-ocr" scroll-y>
-          <text class="ap-ocr-text" user-select="{{true}}">{{rawText}}</text>
-        </scroll-view>
-        <view class="ap-notice-copy" bindtap="copyRawText">复制这段文字</view>
+        <textarea class="ap-ocr-input" value="{{rawText}}" bindinput="onRawText" maxlength="8000" auto-height placeholder="识别出的文字"></textarea>
+        <view class="ap-notice-actions">
+          <button class="btn ghost" bindtap="copyRawText">复制文字</button>
+          <button class="btn" disabled="{{!rawText}}" bindtap="reparseRawText">重新整理</button>
+        </view>
       </view>
 
       <view class="ap-hint" wx:if="{{!(state === 'idle' && parser === 'none')}}">{{tip || hintText}}</view>
