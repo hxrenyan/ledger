@@ -36,8 +36,11 @@ const REQUEST_TIMEOUT_MS = 90_000
 const CHAIN_BUDGET_MS = 100_000
 /** 剩余时间少于这个数就别再开新的一轮了：开了也来不及返回，只会让人多等。 */
 const MIN_SLICE_MS = 5_000
-/** 输出上限：一整页手写本可能很长，但没必要等它写满 16K。 */
-const MAX_OUTPUT_TOKENS = 8192
+/**
+ * 输出上限：图片 token 也计入 DeepSeek-OCR 的 8192 上下文上限，不能把输出预算设到上限本身。
+ * 4096 为图片和识别结果留出足够的上下文余量，避免 SiliconFlow 返回 max_seq_len 错误。
+ */
+const MAX_OUTPUT_TOKENS = 4096
 
 export type OcrProfile = {
   id: number
