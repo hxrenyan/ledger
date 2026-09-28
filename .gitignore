@@ -14,7 +14,6 @@ data/
 .env
 .env.*
 !.env.example
-!.dev.vars.example
 
 # 系统与 IDE
 .DS_Store

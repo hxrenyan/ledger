@@ -26,7 +26,7 @@ async function json(app: ReturnType<typeof createApp>, path: string, init: Reque
   return { status: res.status, body, res }
 }
 
-function authHeaders(token: string, ledgerId: string): HeadersInit {
+function authHeaders(token: string, ledgerId: string): Record<string, string> {
   return { authorization: `Bearer ${token}`, 'x-ledger-id': ledgerId, 'content-type': 'application/json' }
 }
 

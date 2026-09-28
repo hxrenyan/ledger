@@ -11,7 +11,7 @@ export function registerSpeechRoutes(app: Hono<AppEnv>) {
   })
 
   app.post('/api/v1/speech/transcribe', async (c) => {
-    // 音频只存在这次请求的内存里，转写完即丢。不写 D1，也不进对象存储。
+    // 音频只存在这次请求的内存里，转写完即丢。不写数据库，也不进对象存储。
     const form = await c.req.raw.formData().catch(() => null)
     if (!form) throw badRequest('请上传音频文件')
     const audio = await readAudio(form)

@@ -5,18 +5,26 @@ import { join } from 'node:path'
 import { createApp } from './app.ts'
 import { ensureMigrated } from './db/migrate.ts'
 import { createSqliteDb } from './db/sqlite.ts'
+import { loadEnv } from './env.ts'
+
+loadEnv()
 
 const dbPath = process.env.DB_PATH ?? './data/ledger.db'
-const jwtSecret = process.env.JWT_SECRET ?? 'dev-change-me'
+const jwtSecret = process.env.JWT_SECRET ?? ''
 const adminToken = process.env.ADMIN_TOKEN ?? (process.env.NODE_ENV === 'production' ? '' : 'dev-admin')
 const port = Number(process.env.PORT ?? 3000)
+
+if (process.env.NODE_ENV === 'production' && !jwtSecret) {
+  console.error('生产环境必须设置 JWT_SECRET')
+  process.exit(1)
+}
 
 const db = createSqliteDb(dbPath)
 await ensureMigrated(db)
 
 const app = createApp({
   db,
-  jwtSecret,
+  jwtSecret: jwtSecret || 'dev-change-me',
   adminToken,
   wechatAppId: process.env.WX_APPID,
   wechatAppSecret: process.env.WX_SECRET,

@@ -132,7 +132,7 @@ npm run check:miniprogram
 ```bash
 # 1. 起后端（仓库根目录）
 npm run db:local     # 首次或 reset
-npm run dev          # wrangler dev --env local，默认 http://127.0.0.1:8787
+npm run dev          # Node，默认 http://127.0.0.1:3000
 
 # 2. 开发者工具导入本目录
 #    详情 → 本地设置 → 勾选「不校验合法域名、web-view（业务域名）、TLS 版本以及 HTTPS 证书」
@@ -140,7 +140,7 @@ npm run dev          # wrangler dev --env local，默认 http://127.0.0.1:8787
 # 3. 小程序内切环境：我的 → 开发者 → 环境 → 本地 / 线上
 ```
 
-`config.js` 里 `local` 指 `http://127.0.0.1:8787`，`prod` 指线上。
+`config.js` 里 `local` 指 `http://127.0.0.1:3000`，`prod` 指线上（`PROD_API`，部署后填 Sealos 外网地址）。
 
 **切环境别把自己锁在外面**：环境值存在本地缓存（`ledger.env`）里，而切换入口在「我的」——
 登录之后才进得去。误切成「本地」后登录请求发不出去，就回不到「我的」改回来。所以
@@ -159,7 +159,7 @@ npm run dev          # wrangler dev --env local，默认 http://127.0.0.1:8787
 
 **原因**：`project.config.json` 里的 `urlCheck: false`（= 工具里那个「不校验合法域名」）**只对两处生效**：工具模拟器、从工具发起的真机调试。真机调试本质是远程调试，代码和设置都来自本地工程，所以电脑一关就断。体验版 / 正式版由微信客户端自己发请求，会严格比对「服务器域名」白名单。
 
-**而白名单现在填不进去**：微信要求 request 合法域名必须已完成 ICP 备案，但 `ledger.hxsmj.top` 的 NS 在 Cloudflare、后端也是 Cloudflare Worker —— 没有境内接入商，备案走不通。所以这不是漏配，是结构上过不去。
+**而白名单现在填不进去**：微信要求 request 合法域名必须已完成 ICP 备案。Sealos 分配的 `*.bja.sealos.run` 一般不能当作小程序服务器域名。所以体验版仍走云函数转发，等自有域名备案后再改成直连。
 
 **解法：云函数中转**（`utils/transport.js` + `cloudfunctions/ledgerProxy/`）。
 
@@ -198,17 +198,9 @@ npm run dev          # wrangler dev --env local，默认 http://127.0.0.1:8787
 |------|--------|
 | 微信后台 → 开发管理 → 开发设置 | AppID / AppSecret 的出处 |
 | `project.config.json` 的 `appid` | 就是这个 AppID |
-| Cloudflare 的 `WX_APPID` / `WX_SECRET` | 同上，用 `wrangler secret put` 配，**不要写进仓库** |
+| Sealos 环境变量 `WX_APPID` / `WX_SECRET` | 同上，写在应用环境变量里，**不要写进仓库** |
 
-AppID 与 `WX_APPID` 不一致时微信回 `40013 invalid appid`，服务端映射成 `503 wechat_config_invalid`。
-
-```bash
-cd <仓库根>
-printf '<AppID>'    | npx wrangler secret put WX_APPID  --env=""
-printf '<AppSecret>' | npx wrangler secret put WX_SECRET --env=""
-```
-
-`--env=""` 不能省：配置里定义了多环境，不显式指定会警告（甚至配错环境）。**改 secret 不用重新 deploy**，Cloudflare 会自动发布新版本；但**改代码必须 deploy**。
+AppID 与 `WX_APPID` 不一致时微信回 `40013 invalid appid`，服务端映射成 `503 wechat_config_invalid`。改环境变量后重新发布容器；改代码也要重新构建镜像。
 
 ### 配完怎么验（不用真机）
 
@@ -258,7 +250,7 @@ node miniprogram/tools/check.mjs
 
 ```
 GET /api/v1/app/config            小程序启动时拉一次，结果缓存在 storage
-PUT /api/v1/admin/app-config       运维改归属，deploy 即生效
+PUT /api/v1/admin/app-config       运维改归属，即生效
 ```
 
 默认全部原生。可以切 web-view 的只有 5 个长尾页：`budgets` / `categories` / `recurring` / `import` / `ledger`。`NATIVE_ONLY` 里的页面（登录、明细、记账、人情、资产、我的、语音）服务端**拒绝**切——它们依赖 `wx.login` / 录音 / 拍照 / 选图，切成网页会直接不可用。
@@ -278,14 +270,13 @@ PUT /api/v1/admin/app-config       运维改归属，deploy 即生效
 
 ### 第 3 步的两个坑
 
-**坑一：校验文件会被 SPA 兜底吃掉。** `wrangler.toml` 里 `not_found_handling = "single-page-application"`，请求 `/MP_verify_xxxx.txt` 找不到文件就会返回 `index.html`，微信校验必然失败。已经把 `/MP_verify_*` 加进 `run_worker_first`，并在 `src/index.ts` 里做了兜底出口。
+**坑一：校验文件会被 SPA 兜底吃掉。** 找不到的路径会返回 `index.html`，微信校验必然失败。`src/node.ts` 里 `/MP_verify_*` 排在静态兜底之前。
 
 两种放法，任选其一：
 
 ```bash
-# 推荐：写进变量，不用重新构建前端产物
-npx wrangler secret put MP_VERIFY     # 粘贴校验文件里的纯文本内容
-# 或者：把 txt 原样丢进 public/
+# 推荐：Sealos 环境变量 MP_VERIFY = 校验文件里的纯文本，不用重新构建前端
+# 或者：把 txt 原样丢进 public/ 后重新构建
 ```
 
 **坑二：web-view 里没有 `wx.login`。** 网页拿不到 code，现有「`wx.login` → `/auth/wechat`」这条登录链路在网页里直接断掉。解法见下。
@@ -313,7 +304,7 @@ npx wrangler secret put MP_VERIFY     # 粘贴校验文件里的纯文本内容
 ### 打开 web-view 的操作步骤
 
 ```bash
-API=https://ledger.hxsmj.top
+API=https://<Sealos 外网域名>
 
 # 1. 拿管理员令牌（口令是服务端的 ADMIN_TOKEN）
 TOKEN=$(curl -s -X POST $API/api/v1/admin/login \

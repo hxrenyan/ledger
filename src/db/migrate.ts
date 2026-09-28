@@ -7,7 +7,7 @@ import { upgradeSchema } from './upgrade.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 
-/** 测试 / Node 兜底：套用 sql/schema.sql，并给旧库补列。Worker 请求路径不跑这个。 */
+/** 启动时套用 sql/schema.sql，并给旧库补列。请求处理函数里不要建表。 */
 export async function ensureMigrated(db: Db) {
   const schema = readFileSync(join(root, 'sql/schema.sql'), 'utf8')
   const idx = schema.search(/CREATE (UNIQUE )?INDEX/i)

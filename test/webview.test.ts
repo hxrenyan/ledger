@@ -50,7 +50,7 @@ async function registerUser(app: ReturnType<typeof createApp>, username: string)
   return { session, ledgerId: session.ledgers[0].id }
 }
 
-function authHeaders(token: string, ledgerId?: string): HeadersInit {
+function authHeaders(token: string, ledgerId?: string): Record<string, string> {
   const h: Record<string, string> = { authorization: `Bearer ${token}`, 'content-type': 'application/json' }
   if (ledgerId) h['x-ledger-id'] = ledgerId
   return h

@@ -1,7 +1,7 @@
 import type { Db } from './types.ts'
 import { upgradeSchema } from './upgrade.ts'
 
-/** Worker 里不能读 sql 文件；只做缺列/缺表补丁，避免本地旧库 500。 */
+/** 给缺列、缺表的旧库补结构。新库的全量建表走 sql/schema.sql。 */
 export async function patchSchema(db: Db) {
   await ensureColumn(db, 'accounts', 'current_cents', 'INTEGER NOT NULL DEFAULT 0')
   await ensureColumn(db, 'transactions', 'excluded', 'INTEGER NOT NULL DEFAULT 0')

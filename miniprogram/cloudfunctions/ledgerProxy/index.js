@@ -1,10 +1,9 @@
 /**
- * 云函数：把小程序的请求转发到后端（Cloudflare Worker）。
+ * 云函数：把小程序的请求转发到 Sealos 上的后端。
  *
  * 为什么需要它：体验版 / 正式版会严格校验「服务器域名」白名单，而白名单里的域名
- * 必须已完成 ICP 备案。后端挂在 Cloudflare Worker 上（hxsmj.top 的 NS 也在
- * Cloudflare），没有境内接入商、备案走不通，所以只能让请求先到云函数、由云函数
- * 出网转发 —— 云函数出网不受小程序的域名白名单约束。
+ * 必须已完成 ICP 备案。Sealos 分配的默认公网域名一般不能填进白名单，所以请求先到
+ * 云函数、由云函数出网转发 —— 云函数出网不受小程序的域名白名单约束。
  *
  * 只做纯转发，不碰业务：状态码、响应体、错误原样带回。小程序端
  * utils/request.js 仍然只认 { statusCode, data }，401 / 400 等语义完全不变。
@@ -20,7 +19,7 @@
 const https = require('https')
 const { URL } = require('url')
 
-const ORIGIN = process.env.BACKEND_ORIGIN || 'https://ledger.hxsmj.top'
+const ORIGIN = (process.env.BACKEND_ORIGIN || '').replace(/\/$/, '')
 const PATH_PREFIX = '/api/'
 
 /** 只透传这几个头；host / content-length / connection 必须让 https 模块自己算。 */
@@ -89,6 +88,9 @@ function send(target, method, headers, payload) {
 }
 
 exports.main = async function (event, context) {
+  if (!ORIGIN) {
+    return { statusCode: 500, data: { code: 'upstream', message: '云函数未配置 BACKEND_ORIGIN' } }
+  }
   const path = typeof event.path === 'string' ? event.path : ''
   if (path.indexOf(PATH_PREFIX) !== 0) {
     return badRequest('path 必须以 ' + PATH_PREFIX + ' 开头')

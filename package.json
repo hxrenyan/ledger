@@ -4,17 +4,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "npm run build:web && wrangler dev --env local",
+    "dev": "npm run build:web && tsx src/node.ts",
     "dev:web": "vite --config web/vite.config.ts",
-    "deploy": "npm run build:web && wrangler deploy --env=\"\"",
+    "start": "tsx src/node.ts",
     "build:web": "vite build --config web/vite.config.ts",
-    "db:create": "wrangler d1 create ledger-db",
-    "db:local": "wrangler d1 execute ledger-db --local --env local --file=./sql/schema.sql",
-    "db:remote": "wrangler d1 execute ledger-db --remote --file=./sql/schema.sql",
-    "db:reset-local": "rm -rf .wrangler/state/v3/d1 && wrangler d1 execute ledger-db --local --env local --file=./sql/schema.sql",
-    "db:migrate-all-local": "node scripts/d1-migrate.mjs --local --env local",
-    "db:migrate-all-remote": "node scripts/d1-migrate.mjs --remote",
-    "start:node": "tsx src/node.ts",
+    "db:local": "tsx scripts/init-db.ts",
+    "db:reset-local": "rm -f data/ledger.db data/ledger.db-wal data/ledger.db-shm && tsx scripts/init-db.ts",
+    "db:migrate": "node scripts/migrate.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:web": "vue-tsc --noEmit -p web/tsconfig.json",
     "test": "vitest run",
@@ -29,7 +25,6 @@
     "tsx": "^4.23.15"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20260810.1",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.13.0",
     "@vitejs/plugin-vue": "^6.0.9",
@@ -40,7 +35,6 @@
     "vue": "^3.5.43",
     "vue-router": "^5.3.1",
     "vue-tsc": "^3.3.11",
-    "wrangler": "^4.135.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   }
 }

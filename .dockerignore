@@ -1,0 +1,15 @@
+node_modules
+.git
+.wrangler
+data
+.env
+.env.*
+.dev.vars
+*.log
+miniprogram
+test
+docs
+.workbuddy
+dist
+out
+web/dist

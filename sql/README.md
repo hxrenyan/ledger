@@ -3,12 +3,12 @@
 | 路径 | 用途 |
 |------|------|
 | `schema.sql` | **唯一权威**全量建表（新库 / 本地 reset） |
-| `migrations/` | 增量迁移（已有库用 `db:migrate-all-*`） |
+| `migrations/` | 增量迁移（已有库用 `npm run db:migrate`） |
 
 ## 数据库约定
 
 - 项目不使用数据库外键，只保留 `*_id` 等逻辑关联字段。
-- 关联校验、级联删除和置空由应用层显式处理，多语句写入使用 D1 `batch`。
+- 关联校验、级联删除和置空由应用层显式处理，多语句写入使用 `db.batch`（SQLite 事务）。
 - 索引必须服务于现有查询或排序；禁止重复索引主键、唯一约束，优先复用复合索引最左前缀。
 - 含表重建、触发器等不可拆分语句的迁移，在文件首行添加 `-- @execute-whole-file`，迁移脚本会整文件执行。
 - `-- @when-column 表.列` / `-- @when-table 表` 到 `-- @end-when`：条件还成立才执行这一组，方便迁移重跑。
@@ -18,14 +18,13 @@
 
 ```bash
 # 新库初始化
-npm run db:local          # 或 db:remote
+npm run db:local
 
 # 本地清空并重建（丢数据）
 npm run db:reset-local
 
-# 已有库跑增量
-npm run db:migrate-all-local
-npm run db:migrate-all-remote
+# 已有库跑增量（库文件由 DB_PATH 指定，默认 ./data/ledger.db）
+npm run db:migrate
 ```
 
 ## 表结构（摘要）
@@ -46,7 +45,7 @@ npm run db:migrate-all-remote
 | `recurrences` | 自增整数 | 周期记账（只支持收入 / 支出） |
 | `import_batches` | 自增整数 | 账单导入批次台账（回溯 / 撤销） |
 | `ai_profiles` | 自增整数 | 模型配置。`llm` 解析账单，`asr` 语音识别，`ocr` 图片识别；同 kind 内按 `sort_order` 接力。不保存录音和账单原文 |
-| `app_configs` | `key` | 服务端业务配置。目前存 `webview.enabled` / `webview.host` / `webview.pages`（页面归属表，原生 or web-view）。改完 `deploy` 即生效，不用发版 |
+| `app_configs` | `key` | 服务端业务配置。目前存 `webview.enabled` / `webview.host` / `webview.pages`（页面归属表，原生 or web-view）。改完即生效，不用发版 |
 | `handoff_codes` | `code_hash` | 一次性会话交接码。web-view 里没有 `wx.login`，网页侧靠它换回会话；只存 SHA-256，5 分钟过期，用一次即失效 |
 
 新环境只用 `schema.sql`。线上已有数据只追加 `sql/migrations/`，不要对生产库重跑全量 schema。

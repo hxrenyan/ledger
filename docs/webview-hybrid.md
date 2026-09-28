@@ -17,12 +17,12 @@
 
 | 层 | 放什么 | 改动代价 |
 |----|--------|----------|
-| **Cloudflare Worker（未来：自有服务器）** | 导入解析规则、AI 提示词、统计口径、语音解析、对账逻辑 | `deploy` 即生效，**零审核** |
-| **服务端配置（`app_configs` 表）** | 页面归属表、开关、文案 | `deploy` 即生效，**零审核** |
+| **Node 服务（Sealos）** | 导入解析规则、AI 提示词、统计口径、语音解析、对账逻辑 | 重新发布容器即生效，**零审核** |
+| **服务端配置（`app_configs` 表）** | 页面归属表、开关、文案 | 改完即生效，**零审核** |
 | **原生小程序** | 登录、明细、记账、转账、收据、语音、人情、资产、我的 | 需发版 + 审核，但改得不频繁 |
 | **web-view 网页** | 预算、分类、周期记账、账单导入、账本与成员 | 改 `web/` 重新构建，**零审核** |
 
-判断一个需求该怎么落：**先问「能不能下沉到服务端」**。这个项目真正会频繁改的东西（解析规则、提示词、统计口径）本来就在 Worker 里，改完 deploy 就生效——比套壳更划算。
+判断一个需求该怎么落：**先问「能不能下沉到服务端」**。这个项目真正会频繁改的东西（解析规则、提示词、统计口径）本来就在 Node 服务里，重新发布就生效——比套壳更划算。
 
 ## 三、免审边界
 
@@ -38,20 +38,16 @@
 - 把高频主路径做成网页（会削弱「有实质原生功能」的论证）；
 - 用 web-view 绕开平台规则（如绕过支付、绕过内容审核）。
 
-## 四、迁到自有服务器的清单
+## 四、Sealos 部署要点
 
-后端本来就有一份 Node 入口（`src/node.ts`，`npm run start:node`），Hono 应用与 SQLite 适配层都已就位，迁移主要是搬运和环境变量。按顺序做：
+进程入口是 `src/node.ts`。镜像用仓库根目录的 `Dockerfile`，在 [https://bja.sealos.run](https://bja.sealos.run) 的应用管理里构建。API 与网页由同一个进程托管。
 
-1. **域名与证书**：域名 ICP 备案（主体要与小程序认证主体一致），配 HTTPS 证书。微信不接受 HTTP，也不接受自签证书。
-2. **换库**：D1 → SQLite。`wrangler d1 export ledger-db --remote --output=ledger.sql` 导出后导入 `DB_PATH` 指向的库；新库跑 `sql/schema.sql`。
-3. **建表与迁移**：`ensureMigrated` 会在启动时套用 `sql/schema.sql` 并补旧列，Worker 请求路径不跑这个，所以首次启动的日志要确认一遍。
-4. **环境变量**：`JWT_SECRET`、`ADMIN_TOKEN`、`WX_APPID`、`WX_SECRET`，加 web-view 的 `MP_VERIFY`。
-5. **静态产物**：`npm run build:web` 产物落在 `public/`，Node 入口会同时托管它——也就是说 **API 与网页同域**，`/api/v1/auth/webview-session` 这类相对路径不用改。
-6. **业务域名校验文件**：`src/node.ts` 里已经加了 `/MP_verify_*` 分支（必须排在 SPA 兜底之前，否则会返回 `index.html`）。用 `MP_VERIFY` 环境变量，或把 txt 丢进 `public/`。
-7. **微信后台**：request / uploadFile / downloadFile 合法域名指向新域名，业务域名填网页域名。
-8. **切换切面**：先只切 `request` 域名验证接口，再切业务域名开 web-view。`app_configs` 里的 `webview.host` 改一行就行。
-
-> ⚠️ 迁移会改变 JWT 的签发方。`JWT_SECRET` 换新值等于**所有用户被登出**；沿用旧值则 token 继续有效。这是一次性决定，上线前定好。
+1. **外网地址**：打开外网访问后使用 Sealos 分配的 `https://<随机串>.bja.sealos.run`。控制台自己的地址不是应用地址。
+2. **库文件**：持久卷挂到 `/data`，`DB_PATH=/data/ledger.db`。实例数保持 1。
+3. **建表**：`ensureMigrated` 在启动时套用 `sql/schema.sql` 并补旧列。已有库的增量放 `sql/migrations/`，执行 `npm run db:migrate`。
+4. **环境变量**：`JWT_SECRET`、`ADMIN_TOKEN`、`WX_APPID`、`WX_SECRET`，web-view 再加 `MP_VERIFY`。`JWT_SECRET` 换新值等于所有用户被登出。
+5. **业务域名校验文件**：`src/node.ts` 的 `/MP_verify_*` 必须排在 SPA 兜底之前，否则校验请求会拿到 `index.html`。
+6. **微信后台**：自有域名完成 ICP 备案后，才能把 request / uploadFile / downloadFile / 业务域名指过去。在那之前，体验版继续用云函数 `ledgerProxy` 转发，`BACKEND_ORIGIN` 填 Sealos 外网地址。
 
 ## 五、回退路径
 

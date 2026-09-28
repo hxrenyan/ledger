@@ -3,7 +3,7 @@
  *
  * 全项目不要直接 wx.navigateTo 到功能页，一律走 nav.go(key)：
  * 只有这里知道「这个页面当前该走原生还是走 web-view」——归属表由服务端下发，
- * 运维改完 deploy 即生效，不用发版、不用审核。
+ * 运维改完即生效，不用发版、不用审核。
  */
 
 const appConfig = require('./appConfig')

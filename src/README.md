@@ -2,12 +2,12 @@
 
 ```text
 src/
-  index.ts                 # Worker 入口
+  node.ts                  # 进程入口（Sealos / 本地）
   app.ts                   # Hono 路由组装与鉴权中间件
-  node.ts                  # Sealos / 本地 Node 兜底（非默认启动）
+  env.ts                   # 读取 .env
   money.ts / time.ts / http.ts  # 金额、时间、HTTP 错误
   auth/                    # 口令哈希、JWT、微信 code 换 openid 与绑定已有账号
-  db/                      # D1 / SQLite 适配
+  db/                      # SQLite 适配
   imports/                 # 账单导入：解析、建议、AI 兜底、提交与撤销
   speech/                  # 语音识别
   profiles.ts              # llm / asr 共用的模型配置读写

@@ -32,7 +32,7 @@
 ## web-view 混合架构（2026-09-23 定）
 
 **页面归属表是服务端数据，不是代码。**「某页走原生还是 web-view」存在 `app_configs` 表，
-`GET /api/v1/app/config` 下发，`PUT /api/v1/admin/app-config` 改，deploy 即生效、
+`GET /api/v1/app/config` 下发，`PUT /api/v1/admin/app-config` 改，改完即生效、
 **不发版不审核**。默认全原生，`webview.enabled=0` 就是纯原生。
 
 1. **页面跳转必须走 `miniprogram/utils/nav.js` 的 `nav.go(key, query)`** —— 唯一知道归属表
@@ -95,8 +95,8 @@
 `config.getTransport()` 分流：`direct`（wx.request）/ `cloud`（云函数 `ledgerProxy`）。
 
 **为什么有 cloud**：体验版 / 正式版严格校验「服务器域名」白名单，而白名单要求域名已
-ICP 备案 —— `ledger.hxsmj.top` 的 NS 在 Cloudflare，没有境内接入商，备案走不通。
-所以线上把请求交给云函数出网转发。`config.js` 的 `CLOUD_ENV` 留空时自动降级为直连，
+ICP 备案。后端在 Sealos，默认公网域名 `*.bja.sealos.run` 一般填不进白名单。
+所以线上把请求交给云函数出网转发，`BACKEND_ORIGIN` 填 Sealos 外网地址。`config.js` 的 `CLOUD_ENV` 留空时自动降级为直连，
 开发流程不受影响（开发者工具 + 真机调试本来就走免校验通道）。
 
 三条硬规则：
@@ -119,7 +119,7 @@ ICP 备案 —— `ledger.hxsmj.top` 的 NS 在 Cloudflare，没有境内接入�
 ## 环境切换有个死锁（2026-09-23 修）
 
 环境（本地 / 线上）存在**本地缓存** `ledger.env` 里，切换入口在「我的 → 开发者 → 环境」，
-而那页要登录之后才进得去。误切成「本地」（指向 `127.0.0.1:8787`）后登录请求发不出去 →
+而那页要登录之后才进得去。误切成「本地」（指向 `127.0.0.1:3000`）后登录请求发不出去 →
 回不到「我的」→ 改不回来，整个小程序锁死在登录页（用户报的「切成本地后微信登不上去」
 就是这个，不是登录本身坏了）。
 
@@ -169,23 +169,20 @@ npm run typecheck && npm run typecheck:web && npm test && npm run check:miniprog
 
 顺序与两个判断点：
 
-1. **有新增表就先跑远程迁移**（`node scripts/d1-migrate.mjs --remote`），**再 deploy** ——
+1. **有新增表就先对线上库跑迁移**（把库文件拷下来，或在容器里 `DB_PATH=/data/ledger.db npm run db:migrate`），**再发布新镜像** ——
    反了的话新代码查不到表会 500。复用已有表（如 OCR 复用 `ai_profiles`，其 `kind` 无
-   CHECK 约束）就**不要**跑，凭空多一次写远端的机会。
-2. `npm run deploy`（= `build:web` + `wrangler deploy --env=""`）。
+   CHECK 约束）就**不要**跑，凭空多一次写库的机会。新库由进程启动时的 `ensureMigrated` 套 `sql/schema.sql`。
+2. 在 https://bja.sealos.run 应用管理里用 `Dockerfile` 重新构建发布。实例数保持 1，持久卷 `/data`。
 3. commit + `git push origin main`。提交前扫一眼暂存区有没有硬编码密钥：
    `git diff --cached | grep -nEi 'sk-[a-z0-9]{16,}|api[_-]?key.*=.*[a-z0-9]{16,}'`。
-   **AppSecret / API Key 只进 `wrangler secret` 或后台 ai_profiles，绝不入仓库。**
-4. 验线上：首页 `curl -o /dev/null -w '%{http_code}'` 看 200；
+   **AppSecret / API Key 只进 Sealos 环境变量或后台 ai_profiles，绝不入仓库。**
+4. 验线上：首页 `curl -o /dev/null -w '%{http_code}' https://<外网域名>/` 看 200；
    探新版是否上线看 `401` 与 `404` 的区别 —— 但**未登录时的 401 只证明「路由存在且被
    认证中间件拦下」，证明不了业务可用**（`/api/v1/*` 一律先过认证）。要验完整性必须带 token。
    确认前端资源真的换了，就直接拉线上产物比对文案：
-   `curl -s https://ledger.hxsmj.top/assets/<文件名>.js | grep -o "<新文案>"`。
-5. **查线上数据/配置直接读 D1，别猜**：
-   `npx wrangler d1 execute ledger-db --remote --command "SELECT ..."`。
-   注意**本地 `.dev.vars` 的 `ADMIN_TOKEN` 与线上不是同一个**，拿它调线上 `/api/v1/admin/*`
-   只会 401；读 D1 走的是 Cloudflare 账号凭据，不需要任何 token。
-   「某个功能没生效」先这样查一遍服务端配置，往往当场就能排除一半可能。
+   `curl -s https://<外网域名>/assets/<文件名>.js | grep -o "<新文案>"`。
+5. **查线上数据直接打开 `/data/ledger.db`**（`sqlite3`），别猜。
+   注意**本地 `.env` 的 `ADMIN_TOKEN` 与线上不是同一个**，拿它调线上 `/api/v1/admin/*` 只会 401。
 
 `check:miniprogram` = `check.mjs`（16 条：语法/JSON/WXML 表达式与函数调用/插值变量声明/
 路径/两端契约/账本切换入口/月份条/云函数 SSRF/图片入口收敛）
@@ -201,6 +198,6 @@ npm run typecheck && npm run typecheck:web && npm test && npm run check:miniprog
 
 ## 数据库
 
-表之间不定义外键，只留 `*_id` 逻辑关联；多语句写入走 D1 `batch`。
-表结构权威是 `sql/schema.sql`，增量同步改 `sql/migrations/`；
-`src/db/patch.ts` 是已有库的运行时补丁（Worker 不能读 sql 文件）。
+表之间不定义外键，只留 `*_id` 逻辑关联；多语句写入走 `db.batch`（SQLite 事务）。
+表结构权威是 `sql/schema.sql`，增量同步改 `sql/migrations/`（`npm run db:migrate`）；
+`src/db/patch.ts` 是已有库的运行时补丁。运行时是 Node，部署目标是 Sealos，不再使用 Cloudflare。

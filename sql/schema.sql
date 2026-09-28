@@ -16,11 +16,11 @@
 --   recurrences    周期记账（只支持收入 / 支出）
 --   import_batches 账单导入批次（回溯 / 撤销）
 --   ai_profiles    模型配置（kind=llm 解析 / asr 语音 / ocr 图片识别，按 sort_order 接力）
---   app_configs     服务端业务配置（页面归属等，改完 deploy 即生效）
+--   app_configs     服务端业务配置（页面归属等，改完即生效）
 --   handoff_codes   原生 → web-view 网页 的一次性会话交接码
 --
 -- 约定：表之间只保留逻辑关联字段，不定义数据库外键；
---       关联完整性由应用层校验，多语句写入走 D1 batch。
+--       关联完整性由应用层校验，多语句写入走 db.batch（同一 SQLite 事务）。
 --       业务主键是 INTEGER PRIMARY KEY AUTOINCREMENT（从 1 起，不复用已删除的号）。
 --       外部标识保持 TEXT：openid / unionid、app_configs.key、handoff_codes.code_hash、invite_code。
 --       budgets.category_id = 0 表示不限分类的总预算。
@@ -228,7 +228,7 @@ CREATE TABLE IF NOT EXISTS ai_profiles (
 
 -- ---------------------------------------------------------------------------
 -- app_configs（服务端业务配置，key 级覆盖）
--- 用途：页面归属（原生 / web-view）、开关与文案。改完 deploy 即生效，不用发版。
+-- 用途：页面归属（原生 / web-view）、开关与文案。改完即生效，不用发版。
 -- 只放数据，不放可执行代码——微信禁止动态下发代码。
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS app_configs (

@@ -4,7 +4,7 @@
  * 为什么与 canvas 那半边分成两个文件（执行部分是 web/src/photo.ts）：
  *   1. 决策错了是**静默**的 —— 起点档位选小了会白压几轮，用户只看到「处理照片…」
  *      等半天，没人知道为什么。所以它必须能被单测直接 import；而 `test/` 是用
- *      Workers 的 tsconfig 跑的（根 tsconfig 的 lib 只有 ES2022），那里没有
+ *      根 tsconfig 跑的（lib 只有 ES2022），那里没有
  *      `document` / `HTMLImageElement`，引进来整个 typecheck 就会红。
  *   2. 这份梯度与 `miniprogram/utils/image.js` 是**同一套**，两边必须一起改，
  *      `test/web-photo.test.ts` 有一条跨端一致性断言钉着。

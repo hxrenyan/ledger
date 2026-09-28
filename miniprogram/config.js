@@ -1,20 +1,25 @@
 /**
  * 运行环境与能力开关。
  *
- * 后端只有一套代码（Cloudflare Worker），本地和线上是同一份接口，
- * 差别只在域名，所以这里做成可切换：我的 → 开发者 → 环境。
+ * 后端是 Sealos 上的 Node 服务，本地和线上是同一份接口，差别只在域名。
+ * 切换入口：我的 → 开发者 → 环境。
  *
  * transport 决定请求怎么送出去（见 utils/transport.js）：
  *   direct —— wx.request 直连 api 域名。只在「开发者工具 + 真机调试」下能跑通，
  *             因为这两条通道使用本地工程的 urlCheck:false（不校验合法域名）。
- *   体验版 / 正式版会严格校验「服务器域名」白名单，而白名单要求域名已完成
- *   ICP 备案 —— ledger.hxsmj.top 挂在 Cloudflare，没有境内接入商、备案走不通，
- *   所以走 cloud：把请求交给云函数 ledgerProxy，由它出网转发。
+ *   cloud  —— 体验版 / 正式版会校验「服务器域名」白名单，域名还必须完成 ICP 备案。
+ *             Sealos 分配的 *.bja.sealos.run 一般填不进白名单，所以线上走云函数
+ *             ledgerProxy 出网转发。转发目标是云函数环境变量 BACKEND_ORIGIN。
+ *
+ * PROD_API：应用管理里打开外网访问后拿到的地址，形如 https://xxxx.bja.sealos.run。
+ * 不要填 https://bja.sealos.run（那是控制台）。不要带路径，不要结尾斜杠。
  */
 
+const PROD_API = ''
+
 const ENVS = {
-  local: { key: 'local', label: '本地', api: 'http://127.0.0.1:8787', transport: 'direct' },
-  prod: { key: 'prod', label: '线上', api: 'https://ledger.hxsmj.top', transport: 'cloud' },
+  local: { key: 'local', label: '本地', api: 'http://127.0.0.1:3000', transport: 'direct' },
+  prod: { key: 'prod', label: '线上', api: PROD_API, transport: 'cloud' },
 }
 
 /**
@@ -70,7 +75,7 @@ function envList() {
  * web-view 混合架构的本地兜底。
  *
  * 真正生效的页面归属表来自服务端（GET /api/v1/app/config，见 utils/appConfig.js）：
- * 运维把某页切成 web-view 后 deploy 即生效，不用发版。这里的值只在
+ * 运维把某页切成 web-view 后即生效，不用发版。这里的值只在
  * 「首次启动还没拉到配置」或「接口挂了」时使用——所以默认全部原生，
  * 宁可多走原生，也不要让用户撞上一个打不开的网页。
  *
