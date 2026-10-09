@@ -18,7 +18,7 @@ import { registerImportRoutes } from './routes/imports.ts'
 import { registerSpeechRoutes } from './routes/speech.ts'
 import { registerOcrRoutes } from './routes/ocr.ts'
 import { registerWebviewRoutes } from './routes/webview.ts'
-import { resolveWechatExchange, type WechatCodeExchange } from './auth/wechat.ts'
+import type { WechatCodeExchange } from './auth/wechat.ts'
 
 export type AppEnv = {
   Variables: {
@@ -29,7 +29,10 @@ export type AppEnv = {
     ledgerId: number
     memberRole: string
     isAdmin: boolean
+    /** 测试注入。生产请求是 null，登录时再读后台配置或环境变量。 */
     exchangeWechatCode: WechatCodeExchange | null
+    wechatAppId: string
+    wechatAppSecret: string
   }
 }
 
@@ -70,7 +73,9 @@ export function createApp(cfg: AppConfig) {
     c.set('jwtSecret', cfg.jwtSecret)
     c.set('adminToken', adminToken)
     c.set('isAdmin', false)
-    c.set('exchangeWechatCode', resolveWechatExchange(cfg))
+    c.set('exchangeWechatCode', cfg.exchangeWechatCode ?? null)
+    c.set('wechatAppId', cfg.wechatAppId?.trim() ?? '')
+    c.set('wechatAppSecret', cfg.wechatAppSecret?.trim() ?? '')
     await next()
   })
 

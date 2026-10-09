@@ -13,7 +13,7 @@ export type WechatCodeExchange = (code: string) => Promise<WechatIdentity>
 
 export type SessionUser = { id: number; username: string; nickname: string }
 
-type WechatConfig = {
+export type WechatConfig = {
   wechatAppId?: string
   wechatAppSecret?: string
   exchangeWechatCode?: WechatCodeExchange

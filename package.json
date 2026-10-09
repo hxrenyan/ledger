@@ -8,6 +8,7 @@
     "dev:web": "vite --config web/vite.config.ts",
     "start": "tsx src/node.ts",
     "build:web": "vite build --config web/vite.config.ts",
+    "build:server": "tsc -p tsconfig.build.json",
     "db:local": "tsx scripts/init-db.ts",
     "db:reset-local": "rm -f data/ledger.db data/ledger.db-wal data/ledger.db-shm && tsx scripts/init-db.ts",
     "db:migrate": "node scripts/migrate.mjs",
@@ -21,10 +22,10 @@
     "@hono/node-server": "^2.1.1",
     "better-sqlite3": "^13.0.3",
     "hono": "^4.13.8",
-    "jose": "^6.2.12",
-    "tsx": "^4.23.15"
+    "jose": "^6.2.12"
   },
   "devDependencies": {
+    "tsx": "^4.23.15",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.13.0",
     "@vitejs/plugin-vue": "^6.0.9",

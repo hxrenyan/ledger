@@ -154,13 +154,12 @@ H5 热更新可另开：`npm run dev:web`（代理 `/api` 到 3000）。
 
 ## 部署到 Sealos
 
-控制台：[https://bja.sealos.run](https://bja.sealos.run)。应用管理里用仓库根目录的 `Dockerfile` 构建。
+控制台：[https://bja.sealos.run](https://bja.sealos.run)。应用地址是 [https://ledger-7aie87ej.bja.sealos.run](https://ledger-7aie87ej.bja.sealos.run)。发布和改完后重新发布的步骤见 [docs/deploy.md](docs/deploy.md)。
 
-1. 容器端口填 `3000`，打开外网访问。Sealos 会分配一个 `https://<随机串>.bja.sealos.run`，这才是应用地址；`https://bja.sealos.run` 本身是控制台。
-2. 挂一块持久卷到 `/data`。库文件是 `/data/ledger.db`。**实例数保持 1**，SQLite 不能多副本同时写。
-3. 环境变量：`JWT_SECRET`、`ADMIN_TOKEN`，小程序登录再加 `WX_APPID`、`WX_SECRET`。用到 web-view 时加 `MP_VERIFY`（校验文件正文）。生产环境没有 `JWT_SECRET` 会直接退出。
-4. 健康检查路径：`GET /api/health`。
-5. 新库在进程启动时按 `sql/schema.sql` 建表。已有库的增量 SQL 放进 `sql/migrations/`，对这个库文件执行 `npm run db:migrate`。
+1. 容器端口 `3000`，持久卷挂到 `/data`。库文件是 `/data/ledger.db`。**实例数保持 1**，SQLite 不能多副本同时写。
+2. 环境变量：`JWT_SECRET`、`ADMIN_TOKEN`，小程序登录再加 `WX_APPID`、`WX_SECRET`。用到 web-view 时加 `MP_VERIFY`（校验文件正文）。生产环境没有 `JWT_SECRET` 会直接退出。
+3. 健康检查路径：`GET /api/health`。
+4. 新库在进程启动时按 `sql/schema.sql` 建表。已有库的增量 SQL 放进 `sql/migrations/`，对这个库文件执行 `npm run db:migrate`。
 
 启动前定好 `JWT_SECRET`：换新值等于所有用户被登出，沿用旧值则现有 token 继续有效。
 

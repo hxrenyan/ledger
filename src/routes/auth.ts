@@ -3,6 +3,7 @@ import type { AppEnv } from '../app.ts'
 import { hashPassword, assertNickname, assertPassword, assertUsername, verifyPassword } from '../auth/password.ts'
 import { signToken } from '../auth/jwt.ts'
 import { assertHandoffCode, redeemHandoff } from '../auth/handoff.ts'
+import { resolveLoginExchange } from '../auth/wechatConfig.ts'
 import { bindWechatToExistingAccount, loginWithWechat } from '../auth/wechat.ts'
 import { HttpError, badRequest, conflict, unauthorized } from '../http.ts'
 import { bootstrapLedgerStmts } from '../seed.ts'
@@ -97,7 +98,11 @@ export function registerAuthRoutes(app: Hono<AppEnv>) {
   })
 
   app.post('/api/v1/auth/wechat', async (c) => {
-    const exchange = c.get('exchangeWechatCode')
+    const exchange = await resolveLoginExchange(c.get('db'), {
+      exchangeWechatCode: c.get('exchangeWechatCode') ?? undefined,
+      wechatAppId: c.get('wechatAppId'),
+      wechatAppSecret: c.get('wechatAppSecret'),
+    })
     if (!exchange) throw new HttpError(503, 'wechat_unconfigured', '未配置微信小程序登录')
     const body = await c.req.json().catch(() => ({}))
     const code = typeof body.code === 'string' ? body.code.trim() : ''

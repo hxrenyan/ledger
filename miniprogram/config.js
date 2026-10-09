@@ -11,11 +11,11 @@
  *             Sealos 分配的 *.bja.sealos.run 一般填不进白名单，所以线上走云函数
  *             ledgerProxy 出网转发。转发目标是云函数环境变量 BACKEND_ORIGIN。
  *
- * PROD_API：应用管理里打开外网访问后拿到的地址，形如 https://xxxx.bja.sealos.run。
- * 不要填 https://bja.sealos.run（那是控制台）。不要带路径，不要结尾斜杠。
+ * PROD_API：小程序 request 合法域名。不要带路径，不要结尾斜杠。
+ * 不要填 https://bja.sealos.run（那是控制台）。
  */
 
-const PROD_API = ''
+const PROD_API = 'https://ledger-7aie87ej.sealosbja.site'
 
 const ENVS = {
   local: { key: 'local', label: '本地', api: 'http://127.0.0.1:3000', transport: 'direct' },

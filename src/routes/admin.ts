@@ -1,6 +1,7 @@
 import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { signAdminToken } from '../auth/jwt.ts'
+import { readWechatAdminConfig, saveWechatAdminConfig } from '../auth/wechatConfig.ts'
 import { badRequest, notFound, unauthorized } from '../http.ts'
 import { parseId, routeId } from '../id.ts'
 import { readAiConfigs, replaceAiConfigs, resolveEndpoint, testAi, toPublicAi, type AiConfig } from '../imports/ai.ts'
@@ -208,6 +209,16 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
     const res = await recognizeOne(profile, image)
     if (!res.ok) return c.json({ ok: false, message: res.error })
     return c.json({ ok: true, latency_ms: Date.now() - started, chars: res.text.length, text: res.text })
+  })
+
+  // 小程序登录凭证。AppSecret 只回显掩码；留空表示不改已保存的值。
+  app.get('/api/v1/admin/wechat', async (c) => {
+    return c.json(await readWechatAdminConfig(c.get('db')))
+  })
+
+  app.put('/api/v1/admin/wechat', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+    return c.json(await saveWechatAdminConfig(c.get('db'), body))
   })
 }
 

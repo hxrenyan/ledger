@@ -408,4 +408,55 @@ describe('小程序登录与绑定已有账号', () => {
       globalThis.fetch = original
     }
   })
+
+  it('管理后台保存的 AppID / AppSecret 用于登录，接口不回显原文', async () => {
+    const { app } = await setup()
+    const denied = await json(app, '/api/v1/admin/wechat', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: '{}' })
+    expect(denied.status).toBe(401)
+
+    const login = await json(app, '/api/v1/admin/login', post('/api/v1/admin/login', { password: 'admin-secret' }))
+    const adminToken = (login.body as { token: string }).token
+    const auth = { authorization: `Bearer ${adminToken}`, 'content-type': 'application/json' }
+    const appId = 'wxeac4cc1f6a8f3297'
+    const secret = 'a1b2c3d4e5f6789012345678abcdef01'
+
+    const bad = await json(app, '/api/v1/admin/wechat', {
+      method: 'PUT',
+      headers: auth,
+      body: JSON.stringify({ app_id: 'wx-app', app_secret: secret }),
+    })
+    expect(bad.status).toBe(400)
+
+    const saved = await json(app, '/api/v1/admin/wechat', {
+      method: 'PUT',
+      headers: auth,
+      body: JSON.stringify({ app_id: appId, app_secret: secret }),
+    })
+    expect(saved.status).toBe(200)
+    expect(saved.body).toEqual({ app_id: appId, secret_hint: 'a1b2****ef01', configured: true })
+    expect(JSON.stringify(saved.body)).not.toContain(secret)
+
+    const kept = await json(app, '/api/v1/admin/wechat', {
+      method: 'PUT',
+      headers: auth,
+      body: JSON.stringify({ app_id: appId, app_secret: '' }),
+    })
+    expect(kept.status).toBe(200)
+    expect((kept.body as { secret_hint: string }).secret_hint).toBe('a1b2****ef01')
+
+    const original = globalThis.fetch
+    let called = ''
+    globalThis.fetch = async (input) => {
+      called = String(input)
+      return new Response(JSON.stringify({ openid: 'from-admin' }))
+    }
+    try {
+      const res = await json(app, '/api/v1/auth/wechat', post('/api/v1/auth/wechat', { code: 'live' }))
+      expect(res.status).toBe(201)
+      expect(called).toContain(`appid=${appId}`)
+      expect(called).toContain(`secret=${secret}`)
+    } finally {
+      globalThis.fetch = original
+    }
+  })
 })
