@@ -127,12 +127,20 @@ export function createApp(cfg: AppConfig) {
     if (c.get('isAdmin') || c.req.path.startsWith('/api/v1/auth/') || c.req.path === '/api/v1/admin/login') {
       return next()
     }
-    const user = await c.get('db').first<{ disabled: number }>(
+    const db = c.get('db')
+    const userId = c.get('userId')
+    const user = await db.first<{ disabled: number }>(
       `SELECT disabled FROM users WHERE id = ?`,
-      [c.get('userId')],
+      [userId],
     )
     if (!user) throw unauthorized()
     if (user.disabled) throw unauthorized('账号已停用')
+    // 五分钟内不重复写。管理列表要的是「最近用过」，不是每次请求的精确时间。
+    const now = Date.now()
+    await db.run(
+      `UPDATE users SET last_seen_at = ? WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < ?)`,
+      [now, userId, now - 5 * 60 * 1000],
+    )
     await next()
   })
 
@@ -164,6 +172,11 @@ export function createApp(cfg: AppConfig) {
     if (!row) throw forbidden()
     c.set('ledgerId', ledgerId)
     c.set('memberRole', row.role)
+    const seenAt = Date.now()
+    await c.get('db').run(
+      `UPDATE ledgers SET last_seen_at = ? WHERE id = ? AND (last_seen_at IS NULL OR last_seen_at < ?)`,
+      [seenAt, ledgerId, seenAt - 5 * 60 * 1000],
+    )
     await next()
   })
 

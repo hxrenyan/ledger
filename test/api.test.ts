@@ -515,6 +515,22 @@ describe('v2 ledgers / transfer / budget / admin', () => {
     expect(overview.status).toBe(200)
     expect((overview.body as { users: number }).users).toBeGreaterThanOrEqual(1)
 
+    const listed = await json(app, '/api/v1/admin/users', {
+      headers: { authorization: `Bearer ${adminToken}` },
+    })
+    const row = (listed.body as { items: { username: string; created_at: number; last_seen_at: number | null }[] }).items.find(
+      (item) => item.username === 'picuser',
+    )
+    expect(row?.created_at).toBeGreaterThan(0)
+    expect(row?.last_seen_at).toBeGreaterThan(0)
+
+    const ledgerList = await json(app, '/api/v1/admin/ledgers', {
+      headers: { authorization: `Bearer ${adminToken}` },
+    })
+    const ledger = (ledgerList.body as { items: { created_at: number; last_seen_at: number | null }[] }).items[0]
+    expect(ledger?.created_at).toBeGreaterThan(0)
+    expect(ledger?.last_seen_at).toBeGreaterThan(0)
+
     const stop = await json(app, `/api/v1/admin/users/${user.id}`, {
       method: 'PATCH',
       headers: { authorization: `Bearer ${adminToken}`, 'content-type': 'application/json' },

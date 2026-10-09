@@ -56,15 +56,5 @@
     </view>
   </view>
 
-  <view class="card">
-    <view class="h2">开发者</view>
-    <view class="link-row" bindtap="pickEnv">
-      <view>后端环境</view>
-      <view class="arrow">{{envLabel}} ›</view>
-    </view>
-    <view class="tip">当前：{{baseUrl}}</view>
-    <view class="tip">切换环境会清空本地会话，需要重新登录。正式发布前记得切回「线上」。</view>
-  </view>
-
   <button class="btn ghost" bindtap="logout">退出登录</button>
 </view>

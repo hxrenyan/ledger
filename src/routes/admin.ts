@@ -42,9 +42,10 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
       nickname: string
       disabled: number
       created_at: number
+      last_seen_at: number | null
       ledger_count: number
     }>(
-      `SELECT u.id, u.username, u.nickname, u.disabled, u.created_at,
+      `SELECT u.id, u.username, u.nickname, u.disabled, u.created_at, u.last_seen_at,
               (SELECT COUNT(*) FROM members m WHERE m.user_id = u.id) AS ledger_count
        FROM users u
        ORDER BY u.created_at DESC`,
@@ -56,6 +57,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
         nickname: r.nickname,
         disabled: !!r.disabled,
         created_at: r.created_at,
+        last_seen_at: r.last_seen_at,
         ledger_count: Number(r.ledger_count),
       })),
     })
@@ -79,8 +81,9 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
       member_count: number
       tx_count: number
       created_at: number
+      last_seen_at: number | null
     }>(
-      `SELECT l.id, l.name, l.created_at, u.username AS owner_username,
+      `SELECT l.id, l.name, l.created_at, l.last_seen_at, u.username AS owner_username,
               (SELECT COUNT(*) FROM members m WHERE m.ledger_id = l.id) AS member_count,
               (SELECT COUNT(*) FROM transactions t WHERE t.ledger_id = l.id) AS tx_count
        FROM ledgers l

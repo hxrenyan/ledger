@@ -29,6 +29,7 @@
 -- ---------------------------------------------------------------------------
 -- users
 -- password_hash 为空：微信登录新建的账号，还没有密码。绑定已有账号后，数据并入对方，这个用户删除。
+-- last_seen_at：最近一次带着登录态访问接口的时间（UTC 毫秒）。没有记录时为 NULL。
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +37,8 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT,
   nickname TEXT NOT NULL DEFAULT '',
   disabled INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  last_seen_at INTEGER
 );
 
 -- ---------------------------------------------------------------------------
@@ -55,13 +57,15 @@ CREATE TABLE IF NOT EXISTS user_identities (
 
 -- ---------------------------------------------------------------------------
 -- ledgers
+-- last_seen_at：最近一次有成员带着这个账本访问接口的时间（UTC 毫秒）。没有记录时为 NULL。
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS ledgers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   owner_id INTEGER NOT NULL,
   invite_code TEXT,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  last_seen_at INTEGER
 );
 
 -- ---------------------------------------------------------------------------

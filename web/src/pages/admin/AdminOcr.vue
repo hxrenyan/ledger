@@ -86,6 +86,14 @@ async function save() {
   }
 }
 
+/** 点按钮再打开文件框。input 设了 display:none 时，包在 label 里点文字经常弹不出选择框。 */
+function openFile(event: Event) {
+  const button = event.currentTarget
+  if (!(button instanceof HTMLButtonElement)) return
+  const input = button.nextElementSibling
+  if (input instanceof HTMLInputElement) input.click()
+}
+
 async function test(item: OcrItem, event: Event) {
   const input = event.target as HTMLInputElement
   const file = input.files?.[0]
@@ -165,10 +173,8 @@ onMounted(() => {
         <input v-model="item.api_key" type="password" autocomplete="off" :placeholder="item.key_hint ? '留空则不修改' : 'sk-...'" />
       </div>
       <p v-if="item.endpoint" class="muted">实际请求：{{ item.endpoint }}</p>
-      <label class="btn ghost compact">
-        用一张图测试这一套
-        <input type="file" accept="image/*" hidden @change="test(item, $event)" />
-      </label>
+      <button class="btn ghost compact" type="button" :disabled="busy" @click="openFile">用一张图测试这一套</button>
+      <input class="file-hidden" type="file" accept="image/*" @change="test(item, $event)" />
     </div>
     <p v-if="err" class="err">{{ err }}</p>
     <pre v-if="msg" class="muted" style="white-space:pre-wrap">{{ msg }}</pre>

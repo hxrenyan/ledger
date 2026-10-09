@@ -3,8 +3,7 @@
  *
  * 这一页承担三件事：
  *   1. 入口导航（账本、预算、分类、周期、导入）——全部走 nav.go，便于以后切 web-view；
- *   2. 账号：微信绑定已有账号（POST /me/wechat/bind，会返回**新 token**，必须替换）、退出登录；
- *   3. 开发者：本地 / 线上环境切换，切换后清掉归属表缓存并重进首页。
+ *   2. 账号：微信绑定已有账号（POST /me/wechat/bind，会返回**新 token**，必须替换）、退出登录。
  */
 
 const request = require('../../utils/request')
@@ -23,8 +22,6 @@ Page({
     hasPassword: false,
     ledgerName: '',
     ledgerCount: 0,
-    envLabel: '',
-    baseUrl: '',
     webviewHost: '',
     webviewKey: '',
   },
@@ -49,8 +46,6 @@ Page({
       hasPassword: !!user.has_password,
       ledgerName: ledger ? ledger.name : '未选择',
       ledgerCount: session.getLedgers().length,
-      envLabel: config.currentEnv().label,
-      baseUrl: config.getBaseUrl(),
       webviewHost: cfg.enabled ? cfg.host : '',
       webviewKey: webviewKey,
     })
@@ -123,21 +118,6 @@ Page({
         ui.hideLoading()
         ui.toast('导出失败，检查网络')
       },
-    })
-  },
-
-  pickEnv() {
-    const list = config.envList()
-    ui.actions(list.map((e) => e.label + '（' + e.api + '）')).then((idx) => {
-      if (idx < 0) return
-      const env = list[idx]
-      if (env.key === config.currentEnvKey()) return
-      config.setEnv(env.key)
-      // 换了后端，会话和归属表都得重来，否则会拿旧 token 打新服务。
-      session.clear()
-      appConfig.clearCache()
-      ui.toast('已切到' + env.label + '，请重新登录')
-      setTimeout(() => wx.reLaunch({ url: '/pages/login/login' }), 900)
     })
   },
 
