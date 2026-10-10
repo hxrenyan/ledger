@@ -6,8 +6,8 @@
  * wx.compressImage，H5 只能自己 canvas 重绘。
  * 决策部分（压几档、从哪档开始）在 ./photoSteps.ts，单独放是为了可单测。
  *
- * 为什么非要压：后端 /api/v1/ocr/scan 的上限是 6MB（src/routes/ocr.ts 的
- * MAX_IMAGE_BYTES），而手机直出的照片常常 3–8MB。不压就是「手机上拍一张必失败」。
+ * 为什么非要压：后端 /api/v1/ocr/scan 的上限是 2MB（src/routes/ocr.ts 的
+ * MAX_IMAGE_BYTES），而手机直出的照片常常更大。不压就是「手机上拍一张必失败」。
  *
  * 图片不留存：识别完就丢，blob 交给 GC，不落库、不进任何存储。
  */

@@ -1,5 +1,5 @@
 <view class="page with-fab">
-  <view class="summary">
+  <view class="summary" wx:if="{{!guest}}">
     <view class="s">
       <view class="k">送出</view>
       <view class="v expense">{{givenText}}</view>

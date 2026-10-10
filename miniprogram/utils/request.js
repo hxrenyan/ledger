@@ -109,7 +109,7 @@ function request(options) {
       // 响应回来时可能已经登录过（或换过账号）了。这种迟到的 401 若照样
       // 清会话跳登录，现象就是「刚登录进去又被踢回登录页」，极难定位。
       // 因此只有 token 与当前存储的一致，才认定这条会话真的失效。
-      if (path.indexOf('/api/v1/auth/') !== 0 && token === session.getToken()) {
+      if (token && path.indexOf('/api/v1/auth/') !== 0 && token === session.getToken()) {
         session.clear()
         wx.reLaunch({ url: '/pages/login/login' })
       }
@@ -163,7 +163,7 @@ function upload(options) {
       ),
       timeout: opts.timeout || 120000,
       success: function (res) {
-        if (res.statusCode === 401) {
+        if (res.statusCode === 401 && token) {
           session.clear()
           wx.reLaunch({ url: '/pages/login/login' })
           reject({ code: 'unauthorized', message: '登录已过期', status: 401 })
@@ -355,6 +355,11 @@ function uploadBinary(options) {
   const ledgerId = session.getLedgerId()
 
   const sent = readFileBytes(opts.filePath).then(function (bytes) {
+    if (bytes.length > MAX_UPLOAD_BYTES) {
+      const audio = mime.indexOf('audio/') === 0 || ext === 'mp3' || ext === 'aac' || ext === 'm4a' || ext === 'wav' || ext === 'pcm'
+      const what = audio ? '录音' : '图片'
+      return Promise.reject({ code: 'too_large', message: what + '超过 2MB', status: 0 })
+    }
     const packed = buildMultipart(field, 'upload.' + ext, mime, bytes, extra)
     return new Promise(function (resolve, reject) {
       wx.request({
@@ -409,12 +414,13 @@ const IMAGE_EXT = {
  *
  * 云通道要把图片 base64 塞进 callFunction 的 event，而 event 上限约 1MB，
  * base64 又会把字节数放大 1/3 —— 所以这里取 600KB 反推，留出余量。
- * 直连没有这层限制，只受后端 6MB 上限约束，给到 3MB 足够手机直出照片。
+ * 直连与后端认图上限一致，都是 2MB。
  *
  * 客户端主动压到这个值以下，比让后端/云函数报错好定位得多。
  */
-const DIRECT_IMAGE_BYTES = 3 * 1024 * 1024
+const DIRECT_IMAGE_BYTES = 2 * 1024 * 1024
 const CLOUD_IMAGE_BYTES = 600 * 1024
+const MAX_UPLOAD_BYTES = 2 * 1024 * 1024
 
 /**
  * 认图的超时。

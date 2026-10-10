@@ -19,6 +19,13 @@ const money = require('../../utils/money')
 const time = require('../../utils/time')
 const ui = require('../../utils/ui')
 
+function shortDate(date) {
+  if (!date) return '日期'
+  const parts = String(date).split('-')
+  if (parts.length < 3) return '日期'
+  return Number(parts[1]) + '/' + Number(parts[2])
+}
+
 const RECEIPT_MAX = 512 * 1024
 /** 收据接口的白名单，压完按文件头判出来的类型要在这儿才收（见 utils/image.mimeOf）。 */
 const RECEIPT_MIME = { 'image/jpeg': true, 'image/png': true, 'image/webp': true }
@@ -29,6 +36,11 @@ Page({
     kind: 'expense',
     amountText: '',
     date: '',
+    dateText: '',
+    clock: '',
+    categoryName: '',
+    categoryNames: [],
+    categoryIndex: 0,
     note: '',
     excluded: false,
     accountId: '',
@@ -46,8 +58,6 @@ Page({
     accounts: [],
     accountNames: [],
     cats: [],
-    catChips: [],
-    dateQuick: [],
     hasReceipt: false,
     receiptUrl: '',
   },
@@ -61,22 +71,13 @@ Page({
       id: toId(q.id) || '',
       kind: kind,
       date: date,
-      dateQuick: this.buildQuick(date),
+      dateText: shortDate(date),
+      clock: time.shanghaiClock(),
     })
     wx.setNavigationBarTitle({ title: q.id ? '改一笔' : '记一笔' })
     this.loadRefs().then(() => {
       if (q.id) this.loadTx(q.id)
     })
-  },
-
-  buildQuick(date) {
-    const today = time.todayISO()
-    const marks = [
-      { value: today, label: '今天' },
-      { value: time.addDays(today, -1), label: '昨天' },
-      { value: time.addDays(today, -2), label: '前天' },
-    ]
-    return marks.map((m) => ({ value: m.value, label: m.label, on: m.value === date }))
   },
 
   loadRefs() {
@@ -124,9 +125,13 @@ Page({
   pickDefaultCategory() {
     const list = this.catsFor(this.data.kind)
     const keep = list.some((c) => c.id === this.data.categoryId)
+    const categoryId = keep ? this.data.categoryId : (list[0] ? list[0].id : '')
+    const index = list.findIndex((c) => c.id === categoryId)
     this.setData({
-      catChips: list,
-      categoryId: keep ? this.data.categoryId : (list[0] ? list[0].id : ''),
+      categoryNames: list.map((c) => c.name),
+      categoryId: categoryId,
+      categoryIndex: index < 0 ? 0 : index,
+      categoryName: index < 0 ? '无分类' : list[index].name,
     })
   },
 
@@ -142,7 +147,8 @@ Page({
           kind: tx.kind,
           amountText: money.formatYuan(tx.amount_cents),
           date: date,
-          dateQuick: this.buildQuick(date),
+          dateText: shortDate(date),
+          clock: time.shanghaiClock(tx.occurred_at),
           note: tx.note || '',
           excluded: !!tx.excluded,
           accountId: tx.account_id,
@@ -151,6 +157,7 @@ Page({
           hasReceipt: !!tx.has_receipt,
         })
         this.syncAccountNames()
+        this.pickDefaultCategory()
       })
       .catch((err) => ui.fail(err, '流水加载失败'))
   },
@@ -158,15 +165,8 @@ Page({
   // ---- 表单 ----
 
   setKind(e) {
-    const kind = e.currentTarget.dataset.kind
-    const list = this.catsFor(kind)
-    this.setData({
-      kind: kind,
-      catChips: list,
-      categoryId: list.some((c) => c.id === this.data.categoryId)
-        ? this.data.categoryId
-        : (list[0] ? list[0].id : ''),
-    })
+    this.setData({ kind: e.currentTarget.dataset.kind })
+    this.pickDefaultCategory()
   },
 
   onAmount(e) {
@@ -177,18 +177,20 @@ Page({
     this.setData({ note: e.detail.value })
   },
 
-  tapQuick(e) {
-    const date = e.currentTarget.dataset.date
-    this.setData({ date: date, dateQuick: this.buildQuick(date) })
-  },
-
   onDate(e) {
     const date = e.detail.value
-    this.setData({ date: date, dateQuick: this.buildQuick(date) })
+    this.setData({ date: date, dateText: shortDate(date) })
+  },
+
+  onClock(e) {
+    this.setData({ clock: e.detail.value })
   },
 
   pickCategory(e) {
-    this.setData({ categoryId: toId(e.currentTarget.dataset.id) || '' })
+    const index = Number(e.detail.value)
+    const cat = this.catsFor(this.data.kind)[index]
+    if (!cat) return
+    this.setData({ categoryId: cat.id, categoryIndex: index, categoryName: cat.name })
   },
 
   pickAccount(e) {
@@ -299,6 +301,7 @@ Page({
       kind: this.data.kind,
       amount_cents: cents,
       date: this.data.date,
+      time: this.data.clock,
       note: this.data.note,
       excluded: this.data.excluded,
       account_id: this.data.accountId,

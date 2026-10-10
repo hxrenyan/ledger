@@ -22,21 +22,34 @@ Page({
     hasPassword: false,
     ledgerName: '',
     ledgerCount: 0,
-    webviewHost: '',
-    webviewKey: '',
+    guest: false,
   },
 
   onShow() {
-    if (!session.ensure()) return
+    if (!session.getToken()) {
+      this.setData({
+        guest: true,
+        nickname: '未登录',
+        initial: '登',
+        username: '',
+        wechatBound: false,
+        hasPassword: false,
+        ledgerName: '登录后查看',
+        ledgerCount: 0,
+      })
+      return
+    }
+    this.setData({ guest: false })
     this.render()
+  },
+
+  goLogin() {
+    session.goLogin()
   },
 
   render() {
     const user = session.getUser() || {}
     const ledger = session.currentLedger()
-    const cfg = appConfig.get()
-    const pages = cfg.pages || {}
-    const webviewKey = Object.keys(pages).find((k) => pages[k].mode === 'webview') || ''
     const nickname = user.nickname || user.username || '未登录'
     this.setData({
       nickname: nickname,
@@ -46,8 +59,6 @@ Page({
       hasPassword: !!user.has_password,
       ledgerName: ledger ? ledger.name : '未选择',
       ledgerCount: session.getLedgers().length,
-      webviewHost: cfg.enabled ? cfg.host : '',
-      webviewKey: webviewKey,
     })
   },
 
@@ -63,15 +74,11 @@ Page({
   },
 
   go(e) {
-    nav.go(e.currentTarget.dataset.key)
-  },
-
-  openWebview() {
-    if (!this.data.webviewKey) {
-      ui.toast('网页版还没启用')
+    if (!session.getToken()) {
+      session.goLogin()
       return
     }
-    nav.go(this.data.webviewKey)
+    nav.go(e.currentTarget.dataset.key)
   },
 
   /** 微信账号 + 已有密码账号合并：成功后服务端会换一个新 token 回来。 */
@@ -96,6 +103,10 @@ Page({
   },
 
   exportCsv() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
     const token = session.getToken()
     ui.loading('准备中')
     wx.downloadFile({
@@ -136,11 +147,9 @@ Page({
 
   about() {
     wx.showModal({
-      title: '关于',
+      title: '记账',
       content:
-        '记账小程序\n后端：' +
-        config.getBaseUrl() +
-        '\n所有改动都走同一套 API，网页版与小程序共用账本。',
+        '个人和家庭记账。记录收入、支出和转账，查看月度明细与预算，管理账户和分类。可以建多个账本，邀请家人一起记，也能记人情往来、做周期记账、导入和导出账单。',
       showCancel: false,
     })
   },

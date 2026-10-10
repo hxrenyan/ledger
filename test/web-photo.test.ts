@@ -42,7 +42,7 @@ const mpImage = loadCjs(
 
 const KB = 1024
 /** src/routes/ocr.ts 的 MAX_IMAGE_BYTES：服务端硬上限。 */
-const SERVER_LIMIT = 6 * 1024 * KB
+const SERVER_LIMIT = 2 * 1024 * KB
 
 describe('H5 拍照压图：压缩梯度', () => {
   it('顺序是「先降质量、再降分辨率」', () => {
@@ -83,7 +83,7 @@ describe('H5 拍照压图：起点档位', () => {
     const small = startStep(1 * 1024 * KB, PHOTO_LIMIT)
     const big = startStep(20 * 1024 * KB, PHOTO_LIMIT)
     expect(big).toBeGreaterThanOrEqual(small)
-    // 手机直出常见 3–8MB，压到 3MB 预算属于「降质量就够」，不该动分辨率。
+    // 手机直出常见几 MB，压到 2MB 预算属于「降质量就够」，不该动分辨率。
     const common = startStep(4 * 1024 * KB, PHOTO_LIMIT)
     expect(common).toBeLessThan(STEPS.length - 1)
   })
@@ -112,8 +112,9 @@ describe('H5 拍照压图：起点档位', () => {
 })
 
 describe('H5 拍照压图：预算', () => {
-  it('目标体积留在服务端上限以内（别贴边）', () => {
-    expect(PHOTO_LIMIT).toBeLessThan(SERVER_LIMIT)
+  it('目标体积不超过服务端 2MB 上限', () => {
+    expect(PHOTO_LIMIT).toBe(2 * 1024 * KB)
+    expect(PHOTO_LIMIT).toBeLessThanOrEqual(SERVER_LIMIT)
     expect(PHOTO_LIMIT).toBeGreaterThan(512 * KB)
   })
 })

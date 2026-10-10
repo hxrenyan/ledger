@@ -33,6 +33,7 @@ Page({
     archived: [],
     showArchived: false,
     loading: true,
+    guest: false,
   },
 
   onLoad() {
@@ -40,11 +41,19 @@ Page({
   },
 
   onShow() {
-    if (!session.ensure()) return
+    if (!session.getToken()) {
+      this.setData({ guest: true, loading: false, items: [], archived: [], netText: '0.00' })
+      return
+    }
+    if (this.data.guest) this.setData({ guest: false })
     this.load()
   },
 
   onPullDownRefresh() {
+    if (!session.getToken()) {
+      wx.stopPullDownRefresh()
+      return
+    }
     this.load().then(() => wx.stopPullDownRefresh())
   },
 
@@ -84,6 +93,10 @@ Page({
 
   /** 新增账户：名字 → 类型 → 期初余额，三步都用原生弹窗，不用自己搭浮层。 */
   addAccount() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
     ui.prompt({ title: '新增账户', placeholder: '账户名，比如：招行储蓄卡' }).then((name) => {
       if (name == null || !name) return
       ui.actions(TYPE_NAMES).then((typeIdx) => {
@@ -164,6 +177,10 @@ Page({
   },
 
   openBudgets() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
     require('../../utils/nav').go('budgets')
   },
 })

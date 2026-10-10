@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import { cors } from 'hono/cors'
 import type { Db } from './db/types.ts'
 import { verifyToken } from './auth/jwt.ts'
@@ -64,6 +65,8 @@ const LEDGER_OPTIONAL = new Set([
   '/api/v1/ocr/status',
 ])
 
+const BODY_MAX_BYTES = 10 * 1024 * 1024
+
 export function createApp(cfg: AppConfig) {
   const app = new Hono<AppEnv>()
   const adminToken = cfg.adminToken ?? ''
@@ -80,6 +83,15 @@ export function createApp(cfg: AppConfig) {
   })
 
   app.use('/api/*', cors())
+  // 各接口的单文件上限是在整个请求体读进内存后才判断的，这里先挡住超大请求。
+  // 最大的合法请求是 8MB 音频和 6MB 照片的 base64（约 8MB），留一点余量。
+  app.use(
+    '/api/*',
+    bodyLimit({
+      maxSize: BODY_MAX_BYTES,
+      onError: (c) => c.json({ code: 'payload_too_large', message: '上传内容太大' }, 413),
+    }),
+  )
 
   app.onError((err, c) => {
     if (err instanceof HttpError) {

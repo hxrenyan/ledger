@@ -10,11 +10,21 @@ export function shanghaiMonth(ms = Date.now()): string {
   return shanghaiDate(ms).slice(0, 7)
 }
 
-/** YYYY-MM-DD → 当天上海正午，避免落在日界附近。 */
+/** YYYY-MM-DD → 当天上海正午，避免落在日界附近。没传钟点时仍用这个。 */
 export function dateToOccurredAt(dateStr: string): number {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) throw new Error('日期格式应为 YYYY-MM-DD')
   const [y, m, d] = dateStr.split('-').map(Number)
   return Date.UTC(y, m - 1, d, 4, 0, 0, 0)
+}
+
+/** 上海日历上的某一天某一分钟。time 为 HH:mm。 */
+export function dateTimeToOccurredAt(dateStr: string, timeStr: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) throw new Error('日期格式应为 YYYY-MM-DD')
+  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(timeStr)) throw new Error('时间格式应为 HH:mm')
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const [hh, mm] = timeStr.split(':').map(Number)
+  const midnight = Date.UTC(y, m - 1, d) - SH_OFFSET
+  return midnight + (hh * 60 + mm) * 60 * 1000
 }
 
 export function occurredAtToDate(ms: number): string {

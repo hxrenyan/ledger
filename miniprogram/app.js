@@ -29,10 +29,8 @@ App({
   onLaunch() {
     // 必须排在所有请求之前：登录页也要发请求。
     initCloud()
-    if (!session.getToken()) {
-      wx.reLaunch({ url: '/pages/login/login' })
-      return
-    }
+    // 未登录也进首页。审核要求先浏览功能，再由用户自己选择登录。
+    if (!session.getToken()) return
     // 拉一次「页面归属表」（决定功能页走原生还是 web-view）。
     // 不 await、不弹错：拉不到就用本地兜底（全原生），不阻塞启动。
     appConfig.refresh()

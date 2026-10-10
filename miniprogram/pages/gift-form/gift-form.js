@@ -1,7 +1,7 @@
 /**
  * 记人情 / 改人情。
  *
- * 事由用常见项做 chips（婚礼、满月、乔迁…），也可以自己写；
+ * 对方、日期、事由放在一行下拉里。事由选「自己写」时再出现输入框。
  * 事由上限 16 字，由后端截断，这里先拦一下提示更清楚。
  *
  * 传 contact_id 进来就是「给某人记一笔」（从某人明细页过来）。
@@ -15,6 +15,32 @@ const time = require('../../utils/time')
 const ui = require('../../utils/ui')
 
 const OCCASIONS = ['婚礼', '满月', '乔迁', '生日', '探病', '升学', '白事', '节日']
+const OCCASION_NAMES = OCCASIONS.concat(['自己写'])
+
+function occasionView(occasion, custom) {
+  const known = OCCASIONS.indexOf(occasion)
+  if (known >= 0) {
+    return { occasion: occasion, customOccasion: '', occasionIndex: known, occasionName: occasion, writing: false }
+  }
+  const text = String(custom || '')
+  if (text.trim()) {
+    return {
+      occasion: '',
+      customOccasion: text,
+      occasionIndex: OCCASIONS.length,
+      occasionName: text.trim(),
+      writing: true,
+    }
+  }
+  return { occasion: '', customOccasion: '', occasionIndex: 0, occasionName: '选事由', writing: false }
+}
+
+function shortDate(date) {
+  if (!date) return '日期'
+  const parts = String(date).split('-')
+  if (parts.length < 3) return '日期'
+  return Number(parts[1]) + '/' + Number(parts[2])
+}
 
 Page({
   data: {
@@ -22,9 +48,13 @@ Page({
     kind: 'give', // give 送出 | receive 收入
     amountText: '',
     date: '',
-    dateQuick: [],
+    dateText: '',
     occasion: '',
     customOccasion: '',
+    occasionIndex: 0,
+    occasionName: '选事由',
+    occasionNames: OCCASION_NAMES,
+    writing: false,
     note: '',
     contactId: '',
     contactName: '',
@@ -32,7 +62,6 @@ Page({
     contactIndex: 0,
     contacts: [],
     contactNames: [],
-    occasions: OCCASIONS,
     keepGoing: false,
     saving: false,
     err: '',
@@ -46,22 +75,13 @@ Page({
       id: toId(q.id) || '',
       contactId: toId(q.contact_id) || '',
       date: date,
-      dateQuick: this.buildQuick(date),
+      dateText: shortDate(date),
     })
     wx.setNavigationBarTitle({ title: q.id ? '改人情' : '记人情' })
     this.loadContacts().then(() => {
       if (q.id) this.loadGift(q.id)
       else this.pickDefaultContact()
     })
-  },
-
-  buildQuick(date) {
-    const today = time.todayISO()
-    return [
-      { value: today, label: '今天' },
-      { value: time.addDays(today, -1), label: '昨天' },
-      { value: time.addDays(today, -2), label: '前天' },
-    ].map((m) => ({ value: m.value, label: m.label, on: m.value === date }))
   },
 
   loadContacts() {
@@ -104,17 +124,15 @@ Page({
       .then((g) => {
         const date = time.occurredAtToDate(g.occurred_at)
         const known = OCCASIONS.indexOf(g.occasion) >= 0
-        this.setData({
+        this.setData(Object.assign({
           kind: g.kind,
           amountText: money.formatYuan(g.amount_cents),
           date: date,
-          dateQuick: this.buildQuick(date),
-          occasion: known ? g.occasion : '',
-          customOccasion: known ? '' : g.occasion || '',
+          dateText: shortDate(date),
           note: g.note || '',
           contactId: g.contact_id,
           contactName: g.contact_name || '',
-        })
+        }, occasionView(known ? g.occasion : '', known ? '' : g.occasion || '')))
       })
       .catch((err) => ui.fail(err, '记录加载失败'))
   },
@@ -134,22 +152,35 @@ Page({
   },
 
   onCustomOccasion(e) {
-    this.setData({ customOccasion: e.detail.value, occasion: '' })
+    const value = e.detail.value
+    const text = String(value || '').trim()
+    this.setData({
+      customOccasion: value,
+      occasion: '',
+      occasionIndex: OCCASIONS.length,
+      occasionName: text || '自己写',
+      writing: true,
+    })
   },
 
   pickOccasion(e) {
-    const value = e.currentTarget.dataset.value
-    this.setData({ occasion: this.data.occasion === value ? '' : value, customOccasion: '' })
-  },
-
-  tapQuick(e) {
-    const date = e.currentTarget.dataset.date
-    this.setData({ date: date, dateQuick: this.buildQuick(date) })
+    const index = Number(e.detail.value)
+    if (index >= OCCASIONS.length) {
+      const text = String(this.data.customOccasion || '').trim()
+      this.setData({
+        occasion: '',
+        occasionIndex: OCCASIONS.length,
+        occasionName: text || '自己写',
+        writing: true,
+      })
+      return
+    }
+    this.setData(occasionView(OCCASIONS[index], ''))
   },
 
   onDate(e) {
     const date = e.detail.value
-    this.setData({ date: date, dateQuick: this.buildQuick(date) })
+    this.setData({ date: date, dateText: shortDate(date) })
   },
 
   pickContact(e) {
@@ -220,7 +251,16 @@ Page({
           return
         }
         if (this.data.keepGoing) {
-          this.setData({ amountText: '', note: '', customOccasion: '' })
+          const picked = this.data.occasion ? occasionView(this.data.occasion, '') : occasionView('', '')
+          this.setData({
+            amountText: '',
+            note: '',
+            occasion: picked.occasion,
+            customOccasion: picked.customOccasion,
+            occasionIndex: picked.occasionIndex,
+            occasionName: picked.occasionName,
+            writing: picked.writing,
+          })
           wx.showToast({ title: '已记下，继续', icon: 'success', duration: 900 })
           return
         }

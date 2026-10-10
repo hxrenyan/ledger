@@ -19,3 +19,79 @@
 .ph {
   color: #b8b8bd;
 }
+
+.pick-row {
+  display: flex;
+  align-items: stretch;
+  gap: 12rpx;
+}
+
+.pick {
+  flex: 1;
+  min-width: 0;
+}
+
+.pick-box {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 14rpx 16rpx;
+  border-radius: 20rpx;
+  background: #f4f5f8;
+}
+
+.pick-k {
+  display: block;
+  margin-bottom: 8rpx;
+  color: #8e8e93;
+  font-size: 22rpx;
+  line-height: 1.2;
+}
+
+.pick-v {
+  display: flex;
+  align-items: center;
+  gap: 8rpx;
+  min-width: 0;
+}
+
+.pick-v .val {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 26rpx;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.pick-v .val.clock {
+  flex: none;
+  color: #3b5bdb;
+}
+
+.pick-v .caret {
+  flex: none;
+  color: #8e8e93;
+  font-size: 22rpx;
+}
+
+.pair {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+}
+
+.pair-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8rpx;
+  font-size: 26rpx;
+}
+
+.pair-item switch {
+  transform: scale(0.82);
+  transform-origin: right center;
+}

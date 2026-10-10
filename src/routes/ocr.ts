@@ -9,8 +9,8 @@ import {
   type ImagePayload,
 } from '../ocr/vision.ts'
 
-/** 和收据上传同一个量级：手机直出的照片最多两三兆，再大说明客户端没压缩。 */
-const MAX_IMAGE_BYTES = 6 * 1024 * 1024
+/** 认图上限。客户端会先压到这个值以内，这里再挡一次没压过的原图。 */
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024
 /** 先按字符串长度挡一道，避免为一个超长字段做无谓的解码。 */
 const MAX_BASE64_CHARS = Math.ceil((MAX_IMAGE_BYTES / 3) * 4) + 1024
 
@@ -55,7 +55,7 @@ async function readImageForm(req: Request): Promise<ImagePayload> {
  */
 export async function imageFromFile(file: File): Promise<ImagePayload> {
   if (!file.size) throw badRequest('图片是空的')
-  if (file.size > MAX_IMAGE_BYTES) throw badRequest('照片太大，请压缩后再试')
+  if (file.size > MAX_IMAGE_BYTES) throw badRequest('照片超过 2MB')
   const declared = (file.type || '').trim().toLowerCase()
   if (declared && !isAllowedImageMime(declared)) throw badRequest('只接受 JPG / PNG / WebP / BMP / HEIC 图片')
   const bytes = new Uint8Array(await file.arrayBuffer())
@@ -70,7 +70,7 @@ async function readImageJson(req: Request): Promise<ImagePayload> {
   const body = (await req.json().catch(() => null)) as { image_base64?: unknown; mime?: unknown } | null
   const raw = body && typeof body.image_base64 === 'string' ? body.image_base64.trim() : ''
   if (!raw) throw badRequest('请上传图片')
-  if (raw.length > MAX_BASE64_CHARS) throw badRequest('照片太大，请压缩后再试')
+  if (raw.length > MAX_BASE64_CHARS) throw badRequest('照片超过 2MB')
   // 允许省略 data URL 前缀；有前缀就剥掉，别把它当图片内容解码。
   const pure = raw.replace(/^data:[^;,]*;base64,/i, '')
   let bytes: Uint8Array
@@ -80,7 +80,7 @@ async function readImageJson(req: Request): Promise<ImagePayload> {
     throw badRequest('图片内容不是合法的 base64')
   }
   if (!bytes.length) throw badRequest('图片是空的')
-  if (bytes.length > MAX_IMAGE_BYTES) throw badRequest('照片太大，请压缩后再试')
+  if (bytes.length > MAX_IMAGE_BYTES) throw badRequest('照片超过 2MB')
   let mime = typeof body?.mime === 'string' ? body.mime.trim().toLowerCase() : ''
   if (!mime) mime = sniffMime(bytes) || 'image/jpeg'
   if (!isAllowedImageMime(mime)) throw badRequest('只接受 JPG / PNG / WebP / BMP / HEIC 图片')

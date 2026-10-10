@@ -15,3 +15,4 @@
 - 启动时由 `ensureMigrated` 套用 `sql/schema.sql`。增量变更写 `sql/migrations/`，用 `npm run db:migrate` 执行。不要在请求处理函数里建表。
 - 表结构以 `sql/schema.sql` 为唯一权威，禁止再维护第二份建表 SQL。
 - 线上跑在 Sealos（https://bja.sealos.run ）的单副本容器里，数据库是挂在 `/data` 的 SQLite 文件。
+- 不要自己改线上服务配置。内存、CPU、副本、环境变量、Ingress 等以 Sealos 上现有配置为准；规格变化只写进 `docs/deploy.md`，除非用户当次明确要求，否则不执行 `kubectl patch`、滚动重启或控制台改配。

@@ -23,7 +23,7 @@ Sealos 自带 Harbor 推送会返回 500，所以不走 Harbor。集群里曾经
 Sealos 应用管理的最低档：
 
 - 副本保持 1。SQLite 不能多副本同时写
-- CPU 上限 `100m`，内存上限 `128Mi`
+- CPU 上限 `100m`，内存上限 `128Mi`。`Dockerfile` 里的 `NODE_OPTIONS` 把 V8 堆限制在 64MB，改内存规格时一起调
 - 磁盘 `1Gi`，挂在 `/data`
 
 登录密钥在 Secret `ledger-env`（`JWT_SECRET`、`ADMIN_TOKEN`）。换 `JWT_SECRET` 会让已有登录全部失效。

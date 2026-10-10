@@ -46,6 +46,9 @@ COPY --from=build /app/package.json /app/package.json
 ENV NODE_ENV=production
 ENV DB_PATH=/data/ledger.db
 ENV PORT=3000
+# 容器内存上限 128Mi。限制 V8 堆，让它早回收而不是一路长大；
+# 余下约 60Mi 留给 Node 自身代码、SQLite 和上传缓冲。需要调整时在 Sealos 环境变量里覆盖。
+ENV NODE_OPTIONS="--max-old-space-size=64 --max-semi-space-size=2"
 
 EXPOSE 3000
 CMD ["node", "dist/node.js"]

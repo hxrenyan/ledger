@@ -74,6 +74,7 @@ Page({
 
     // 交互
     showAdd: false,
+    guest: false,
     showVoice: false,
     /** 「智能记账」浮层里两个入口各自的可用性（后台配了对应模型才有） */
     canSpeak: true,
@@ -87,6 +88,8 @@ Page({
     const month = time.shanghaiMonth()
     this.accounts = []
     this.categories = []
+    this.accountMap = {}
+    this.categoryMap = {}
     this.ledgerId = session.getLedgerId()
     this.setData({
       month: month,
@@ -95,14 +98,30 @@ Page({
       todayISO: time.todayISO(),
     })
     this.buildCells(month)
-    this.loadRefs()
+    if (!session.getToken()) {
+      this.setData({ guest: true, loading: false, empty: true })
+      return
+    }
     this.loadAiStatus()
     this.runRecurrences()
-    this.loadMonth()
+    // 账户名、分类名没到就去画流水，this.accountMap 还是空的，有记录就会抛错并弹出「加载失败」。
+    this.loadRefs().then(() => this.loadMonth())
   },
 
   onShow() {
-    if (!session.ensure()) return
+    if (!session.getToken()) {
+      this.setData({ guest: true, loading: false, empty: true, showAdd: false, showVoice: false })
+      return
+    }
+    if (this.data.guest) {
+      this.setData({ guest: false, loading: true })
+      this.ledgerId = session.getLedgerId()
+      this.loadAiStatus()
+      this.runRecurrences()
+      this.loadRefs().then(() => this.loadMonth())
+      this.loadedOnce = true
+      return
+    }
     // 两个识别接口只要有一次没拉成，浮层里的「拍一张 / 按住说话」就是隐身的
     // （见 loadAiStatus）。每次回到本页补一次，成功过一次就不再重复问。
     if (!this.aiStatusOk) this.loadAiStatus()
@@ -131,6 +150,10 @@ Page({
   },
 
   onPullDownRefresh() {
+    if (!session.getToken()) {
+      wx.stopPullDownRefresh()
+      return
+    }
     this.loadMonth().then(() => wx.stopPullDownRefresh())
   },
 
@@ -258,6 +281,8 @@ Page({
 
   decorate(t) {
     const kindText = t.kind === 'income' ? '收入' : t.kind === 'expense' ? '支出' : '转账'
+    const accountMap = this.accountMap || {}
+    const categoryMap = this.categoryMap || {}
     return {
       id: t.id,
       kind: t.kind,
@@ -266,9 +291,9 @@ Page({
       clock: timeText(t.occurred_at),
       amountText: money.signedText(t.kind, t.amount_cents),
       note: t.note || '',
-      category: t.category_id ? this.categoryMap[t.category_id] || '未命名分类' : '',
-      account: this.accountMap[t.account_id] || '',
-      toAccount: t.to_account_id ? this.accountMap[t.to_account_id] || '' : '',
+      category: t.category_id ? categoryMap[t.category_id] || '未命名分类' : '',
+      account: accountMap[t.account_id] || '',
+      toAccount: t.to_account_id ? accountMap[t.to_account_id] || '' : '',
       hasReceipt: !!t.has_receipt,
       excluded: !!t.excluded,
     }
@@ -365,6 +390,10 @@ Page({
    * 越界由组件自己挡（它的 max 默认就是本月）。
    */
   onMonthChange(e) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
     const month = e.detail.month
     if (!month || month === this.data.month) return
     this.changeMonth(month)
@@ -384,6 +413,10 @@ Page({
 
   switchView(e) {
     const view = e.currentTarget.dataset.v
+    if (!session.getToken()) {
+      if (view !== 'list') session.goLogin()
+      return
+    }
     this.setData({ view: view })
     // 首次进日历就把「今天」选上并列出当天明细：否则进来只看到一堆数字，
     // 还得自己找哪天是今天。已经有选中项时不覆盖（用户的选择优先）。
@@ -393,6 +426,10 @@ Page({
   // ---- 搜索与筛选 ----
 
   toggleSearch() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
     const show = !this.data.showSearch
     this.setData({ showSearch: show })
     if (!show && this.data.q) {
@@ -512,6 +549,10 @@ Page({
   // ---- 加号浮层 ----
 
   openAdd() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
     this.setData({ showAdd: true })
   },
 

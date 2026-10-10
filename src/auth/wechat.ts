@@ -71,18 +71,47 @@ export async function exchangeWechatCode(
   return { openid, unionid: wechatId(data.unionid) }
 }
 
-export async function loginWithWechat(db: Db, identity: WechatIdentity): Promise<{ user: SessionUser; created: boolean }> {
+/**
+ * 登录页「昵称填写」组件交上来的称呼。
+ *
+ * wx.login 只能换 openid，拿不到微信昵称。空着、或仍是默认的「微信用户」时返回 null，
+ * 新建账号用默认名；已经改过的称呼不会被后来的空登录盖掉。
+ */
+export function wechatDisplayName(raw: unknown): string | null {
+  if (raw == null || raw === '') return null
+  if (typeof raw !== 'string') throw badRequest('昵称无效')
+  const v = raw.trim()
+  if (!v || v === NICKNAME) return null
+  if (v.length > 32) throw badRequest('昵称须为 1–32 字')
+  return v
+}
+
+export async function loginWithWechat(
+  db: Db,
+  identity: WechatIdentity,
+  displayName: string | null = null,
+): Promise<{ user: SessionUser; created: boolean }> {
   const found = await findWechatUser(db, identity.openid)
   if (found) {
     await fillUnionid(db, identity)
+    if (displayName && found.nickname === NICKNAME) {
+      await db.run(`UPDATE users SET nickname = ? WHERE id = ? AND nickname = ?`, [displayName, found.id, NICKNAME])
+      found.nickname = displayName
+    }
     return { user: found, created: false }
   }
   try {
-    return { user: await createWechatUser(db, identity), created: true }
+    return { user: await createWechatUser(db, identity, displayName), created: true }
   } catch (e) {
     if (!isUnique(e)) throw e
     const again = await findWechatUser(db, identity.openid)
-    if (again) return { user: again, created: false }
+    if (again) {
+      if (displayName && again.nickname === NICKNAME) {
+        await db.run(`UPDATE users SET nickname = ? WHERE id = ? AND nickname = ?`, [displayName, again.id, NICKNAME])
+        again.nickname = displayName
+      }
+      return { user: again, created: false }
+    }
     throw e
   }
 }
@@ -178,7 +207,7 @@ async function fillUnionid(db: Db, identity: WechatIdentity) {
   )
 }
 
-async function createWechatUser(db: Db, identity: WechatIdentity): Promise<SessionUser> {
+async function createWechatUser(db: Db, identity: WechatIdentity, displayName: string | null): Promise<SessionUser> {
   for (let i = 0; i < 3; i++) {
     const username = wechatUsername()
     const exists = await db.first(`SELECT id FROM users WHERE username = ?`, [username])
@@ -186,7 +215,7 @@ async function createWechatUser(db: Db, identity: WechatIdentity): Promise<Sessi
     const now = Date.now()
     const { stmts } = bootstrapLedgerStmts({
       username,
-      nickname: NICKNAME,
+      nickname: displayName || NICKNAME,
       passwordHash: null,
       now,
     })

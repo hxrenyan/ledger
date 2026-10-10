@@ -34,6 +34,7 @@ Page({
     // 联系人
     contacts: [],
     contactEmpty: false,
+    guest: false,
   },
 
   onLoad() {
@@ -43,11 +44,27 @@ Page({
   },
 
   onShow() {
-    if (!session.ensure()) return
+    if (!session.getToken()) {
+      this.setData({
+        guest: true,
+        loading: false,
+        empty: true,
+        emptyText: '这个月还没有人情记录，点右下角 + 记一笔',
+        contactEmpty: true,
+        contacts: [],
+        groups: [],
+      })
+      return
+    }
+    if (this.data.guest) this.setData({ guest: false })
     this.load()
   },
 
   onPullDownRefresh() {
+    if (!session.getToken()) {
+      wx.stopPullDownRefresh()
+      return
+    }
     this.load().then(() => wx.stopPullDownRefresh())
   },
 
@@ -153,6 +170,10 @@ Page({
 
   /** 月份条（components/month-nav）换了月份。上限是本月，看不到未来。 */
   onMonthChange(e) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
     const month = e.detail.month
     if (!month || month === this.data.month) return
     this.setData({ month: month })
@@ -160,12 +181,21 @@ Page({
   },
 
   onSearch(e) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
     this.setData({ q: e.detail.value })
     this.applyFilter()
   },
 
   switchTab(e) {
-    this.setData({ tab: e.currentTarget.dataset.t })
+    const tab = e.currentTarget.dataset.t
+    if (!session.getToken()) {
+      if (tab !== 'gifts') session.goLogin()
+      return
+    }
+    this.setData({ tab: tab })
   },
 
   openPerson(e) {
@@ -188,6 +218,10 @@ Page({
   },
 
   addContact() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
     ui.prompt({ title: '新增联系人', placeholder: '姓名' }).then((name) => {
       if (name == null || !name) return
       ui.prompt({ title: '关系（可空）', placeholder: '比如：同事 / 亲戚' }).then((relation) => {
@@ -199,6 +233,10 @@ Page({
   },
 
   addGift() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
     nav.go('gift-form', {})
   },
 

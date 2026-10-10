@@ -1,9 +1,9 @@
 <view class="page with-fab">
-  <!-- 月切换：点中间的年月可以直接跳（上限是本月，看不到未来） -->
-  <month-nav month="{{month}}" bind:change="onMonthChange" />
+  <!-- 未登录不展示月份和收支汇总，点功能后再登录 -->
+  <month-nav wx:if="{{!guest}}" month="{{month}}" bind:change="onMonthChange" />
 
   <!-- 汇总 -->
-  <view class="summary">
+  <view class="summary" wx:if="{{!guest}}">
     <view class="s">
       <view class="k">收入</view>
       <view class="v income">{{incomeText}}</view>
@@ -14,7 +14,7 @@
     </view>
   </view>
 
-  <view class="card" wx:if="{{budgetText}}">
+  <view class="card" wx:if="{{!guest && budgetText}}">
     <view class="row" style="border-bottom: 0; padding-top: 0; padding-bottom: 16rpx">
       <view class="grow title">本月预算</view>
       <view class="muted">{{budgetText}}</view>

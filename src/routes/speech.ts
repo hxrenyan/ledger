@@ -3,7 +3,7 @@ import type { AppEnv } from '../app.ts'
 import { badRequest, HttpError } from '../http.ts'
 import { asrAvailable, readAsrProfiles, transcribeChain, type AudioPayload } from '../speech/asr.ts'
 
-const MAX_AUDIO_BYTES = 8 * 1024 * 1024
+const MAX_AUDIO_BYTES = 2 * 1024 * 1024
 
 export function registerSpeechRoutes(app: Hono<AppEnv>) {
   app.get('/api/v1/speech/status', async (c) => {
@@ -26,7 +26,7 @@ export async function readAudio(form: FormData): Promise<AudioPayload> {
   const file = form.get('file')
   if (!(file instanceof File)) throw badRequest('请上传音频文件')
   if (!file.size) throw badRequest('音频是空的')
-  if (file.size > MAX_AUDIO_BYTES) throw badRequest('音频超过 8MB')
+  if (file.size > MAX_AUDIO_BYTES) throw badRequest('音频超过 2MB')
   const mime = file.type || 'application/octet-stream'
   if (mime && !/^audio\/|^video\/webm$|^application\/octet-stream$/.test(mime)) {
     throw badRequest('只接受音频')

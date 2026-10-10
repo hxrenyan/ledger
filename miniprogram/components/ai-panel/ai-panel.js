@@ -117,8 +117,9 @@ Component({
 
   lifetimes: {
     attached() {
-      this.recorder = wx.getRecorderManager()
-      bindRecorder(this.recorder)
+      // 不要在页面打开时就拿录音器。正式版会按隐私接口检查麦克风，
+      // 一进明细就调用的话，每次打开都会弹错。等用户真的按住说话再拿。
+      this.recorder = null
       this.timer = null
       this.stopGuard = null
     },
@@ -129,7 +130,7 @@ Component({
       this.clearTimer()
       this.clearStopGuard()
       this.clearSlowTip()
-      if (this.data.state === 'recording') {
+      if (this.recorder && this.data.state === 'recording') {
         try {
           this.recorder.stop()
         } catch (e) {
@@ -257,12 +258,19 @@ Component({
 
     // ---- 语音 ----
 
+    ensureRecorder() {
+      if (this.recorder) return this.recorder
+      this.recorder = wx.getRecorderManager()
+      bindRecorder(this.recorder)
+      return this.recorder
+    },
+
     startRecord() {
       if (this.data.state === 'recording') return
       // 认领这次录音：结束回调由模块级 bindRecorder 转发到这儿（见文件顶部说明）。
       activePanel = this
       this.setData({ state: 'recording', mode: 'voice', seconds: 0, tip: '松开发送' })
-      this.recorder.start({ duration: MAX_SECONDS * 1000, format: 'mp3', sampleRate: 16000, encodeBitRate: 48000 })
+      this.ensureRecorder().start({ duration: MAX_SECONDS * 1000, format: 'mp3', sampleRate: 16000, encodeBitRate: 48000 })
       this.clearTimer()
       this.timer = setInterval(() => {
         const s = this.data.seconds + 1

@@ -4,7 +4,7 @@ import { hashPassword, assertNickname, assertPassword, assertUsername, verifyPas
 import { signToken } from '../auth/jwt.ts'
 import { assertHandoffCode, redeemHandoff } from '../auth/handoff.ts'
 import { resolveLoginExchange } from '../auth/wechatConfig.ts'
-import { bindWechatToExistingAccount, loginWithWechat } from '../auth/wechat.ts'
+import { bindWechatToExistingAccount, loginWithWechat, wechatDisplayName } from '../auth/wechat.ts'
 import { HttpError, badRequest, conflict, unauthorized } from '../http.ts'
 import { bootstrapLedgerStmts } from '../seed.ts'
 
@@ -107,7 +107,7 @@ export function registerAuthRoutes(app: Hono<AppEnv>) {
     const body = await c.req.json().catch(() => ({}))
     const code = typeof body.code === 'string' ? body.code.trim() : ''
     if (!code || code.length > 128) throw badRequest('缺少微信登录码')
-    const { user, created } = await loginWithWechat(c.get('db'), await exchange(code))
+    const { user, created } = await loginWithWechat(c.get('db'), await exchange(code), wechatDisplayName(body.nickname))
     const token = await signToken(c.get('jwtSecret'), user.id)
     return c.json(await sessionPayload(c.get('db'), user, token), created ? 201 : 200)
   })

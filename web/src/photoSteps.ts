@@ -28,8 +28,8 @@ export const STEPS: Step[] = [
 
 const BASE_QUALITY = STEPS[0].quality
 
-/** 后端收 6MB（src/routes/ocr.ts 的 MAX_IMAGE_BYTES），这里压到 3MB 以内：留一半余量。 */
-export const PHOTO_LIMIT = 3 * 1024 * 1024
+/** 与后端认图上限一致（src/routes/ocr.ts 的 MAX_IMAGE_BYTES）。 */
+export const PHOTO_LIMIT = 2 * 1024 * 1024
 
 /**
  * 粗略估算压缩后的字节数。**只用来决定从哪一档开始试**，不作为结论：

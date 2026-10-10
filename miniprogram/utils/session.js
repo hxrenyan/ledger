@@ -70,11 +70,22 @@ function clear() {
   })
 }
 
-/** 有 token 才放行；没有就回登录页。返回是否已登录。 */
+/**
+ * 用户自己点了需要账号的操作，再打开登录页。
+ * 用 navigateTo，方便返回继续浏览；不要在启动时调用。
+ */
+function goLogin() {
+  const pages = getCurrentPages()
+  const top = pages[pages.length - 1]
+  if (top && top.route === 'pages/login/login') return false
+  wx.navigateTo({ url: '/pages/login/login' })
+  return false
+}
+
+/** 子页面需要账号时调用。没登录就去登录页，并返回 false。 */
 function ensure() {
   if (getToken()) return true
-  wx.reLaunch({ url: '/pages/login/login' })
-  return false
+  return goLogin()
 }
 
 module.exports = {
@@ -87,4 +98,5 @@ module.exports = {
   apply,
   clear,
   ensure,
+  goLogin,
 }

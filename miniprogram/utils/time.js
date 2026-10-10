@@ -31,6 +31,12 @@ function occurredAtToDate(ms) {
   return shanghaiDate(ms)
 }
 
+/** 上海时区的 HH:mm。不传则取当前时间。 */
+function shanghaiClock(ms) {
+  const d = new Date((ms == null ? Date.now() : ms) + SH_OFFSET)
+  return pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes())
+}
+
 function todayISO() {
   return shanghaiDate()
 }
@@ -164,6 +170,7 @@ module.exports = {
   shanghaiDate: shanghaiDate,
   shanghaiMonth: shanghaiMonth,
   occurredAtToDate: occurredAtToDate,
+  shanghaiClock: shanghaiClock,
   todayISO: todayISO,
   addDays: addDays,
   addMonth: addMonth,

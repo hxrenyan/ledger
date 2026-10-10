@@ -1,4 +1,4 @@
-<view class="page">
+<view class="page entry">
   <view class="kind">
     <view class="k {{kind === 'give' ? 'on expense' : ''}}" data-kind="give" bindtap="setKind">送出</view>
     <view class="k {{kind === 'receive' ? 'on income' : ''}}" data-kind="receive" bindtap="setKind">收到</view>
@@ -14,57 +14,58 @@
         bindinput="onAmount"
         placeholder="0.00"
         placeholder-class="ph"
+        focus="{{!id}}"
       />
     </view>
-    <view class="tip">可以是 800、1000 这种整数，也支持算式。</view>
+    <view class="tip">支持算式，例如 800、1000+200</view>
   </view>
 
   <view class="card">
-    <view class="field" style="margin-bottom: 0">
-      <view class="label">对方</view>
-      <picker mode="selector" range="{{contactNames}}" value="{{contactIndex}}" bindchange="pickContact">
-        <view class="picker-box">
-          <text class="val {{contactName ? '' : 'ph'}}">{{contactName || '选择联系人'}}</text>
-          <text class="caret">▾</text>
-        </view>
-      </picker>
-    </view>
-    <view class="text-btn" style="margin-top: 20rpx; display: inline-block" bindtap="addContact">＋ 新增联系人</view>
-  </view>
-
-  <view class="card">
-    <view class="h2">日期</view>
-    <view class="chips">
-      <view class="chip {{item.on ? 'on' : ''}}" wx:for="{{dateQuick}}" wx:key="value" data-date="{{item.value}}" bindtap="tapQuick">
-        {{item.label}}
+    <view class="pick-row">
+      <view class="pick">
+        <picker mode="selector" range="{{contactNames}}" value="{{contactIndex}}" bindchange="pickContact" disabled="{{!contactNames.length}}">
+          <view class="pick-box">
+            <text class="pick-k">对方</text>
+            <view class="pick-v">
+              <text class="val {{contactName ? '' : 'ph'}}">{{contactName || '选择'}}</text>
+              <text class="caret">▾</text>
+            </view>
+          </view>
+        </picker>
       </view>
-      <picker mode="date" value="{{date}}" bindchange="onDate">
-        <view class="chip">{{date}}</view>
-      </picker>
-    </view>
-  </view>
-
-  <view class="card">
-    <view class="h2">事由</view>
-    <view class="chips">
-      <view
-        class="chip {{item === occasion ? 'on' : ''}}"
-        wx:for="{{occasions}}"
-        wx:key="*this"
-        data-value="{{item}}"
-        bindtap="pickOccasion"
-      >
-        {{item}}
+      <view class="pick">
+        <picker mode="date" value="{{date}}" bindchange="onDate">
+          <view class="pick-box">
+            <text class="pick-k">日期</text>
+            <view class="pick-v">
+              <text class="val">{{dateText}}</text>
+              <text class="caret">▾</text>
+            </view>
+          </view>
+        </picker>
+      </view>
+      <view class="pick">
+        <picker mode="selector" range="{{occasionNames}}" value="{{occasionIndex}}" bindchange="pickOccasion">
+          <view class="pick-box">
+            <text class="pick-k">事由</text>
+            <view class="pick-v">
+              <text class="val {{occasion || customOccasion ? '' : 'ph'}}">{{occasionName}}</text>
+              <text class="caret">▾</text>
+            </view>
+          </view>
+        </picker>
       </view>
     </view>
     <input
-      class="input"
-      style="margin-top: 20rpx"
+      class="input occasion-input"
+      wx:if="{{writing}}"
       value="{{customOccasion}}"
       bindinput="onCustomOccasion"
-      placeholder="或者自己写（最多 16 字）"
+      placeholder="自己写事由，最多 16 字"
       placeholder-class="ph"
     />
+    <view class="empty" wx:if="{{!contactNames.length}}">还没有联系人</view>
+    <view class="text-btn add-contact" bindtap="addContact">＋ 新增联系人</view>
   </view>
 
   <view class="card">
@@ -72,15 +73,19 @@
       <view class="label">备注</view>
       <input class="input" value="{{note}}" bindinput="onNote" placeholder="比如：随了 800，回了 1000" placeholder-class="ph" />
     </view>
+    <view class="pair" wx:if="{{!id}}">
+      <view class="pair-item">
+        <text>继续下一笔</text>
+        <switch checked="{{keepGoing}}" color="#3b5bdb" bindchange="onKeepGoing" />
+      </view>
+    </view>
   </view>
+</view>
 
-  <view class="switch-row" wx:if="{{!id}}">
-    <view>保存后继续记下一笔</view>
-    <switch checked="{{keepGoing}}" color="#3b5bdb" bindchange="onKeepGoing" />
-  </view>
-
+<view class="save-bar">
   <view class="err" wx:if="{{err}}">{{err}}</view>
-
-  <button class="btn" bindtap="save" disabled="{{saving}}">{{saving ? '保存中…' : '保存'}}</button>
-  <button class="btn danger" wx:if="{{id}}" bindtap="remove">删除这条</button>
+  <view class="actions">
+    <button class="btn danger" wx:if="{{id}}" bindtap="remove">删除</button>
+    <button class="btn" bindtap="save" disabled="{{saving}}">{{saving ? '保存中…' : '保存'}}</button>
+  </view>
 </view>

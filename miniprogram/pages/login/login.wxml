@@ -7,10 +7,25 @@
 
   <view class="card">
     <block wx:if="{{mode === 'wechat'}}">
-      <button class="btn wechat" bindtap="onWechat" disabled="{{busy}}">
-        {{busy ? '登录中…' : '微信一键登录'}}
-      </button>
-      <view class="tip">首次登录会自动建账本；已有微信账号直接进入。</view>
+      <form bindsubmit="onWechat">
+        <view class="field">
+          <view class="label">称呼</view>
+          <input
+            class="input"
+            type="nickname"
+            name="nickname"
+            value="{{nickname}}"
+            bindblur="onNickname"
+            placeholder="点一下，填入微信昵称"
+            placeholder-class="ph"
+          />
+        </view>
+        <button class="btn wechat" form-type="submit" disabled="{{busy}}">
+          {{busy ? '登录中…' : '微信一键登录'}}
+        </button>
+      </form>
+      <view class="tip">点称呼时微信会带出你的昵称，用来区分家人。不获取手机号和头像。</view>
+      <view class="alt" bindtap="browse">先看看，稍后再登录</view>
       <view class="err" wx:if="{{err}}">{{err}}</view>
       <view class="alt" bindtap="toPassword">用用户名密码登录</view>
     </block>

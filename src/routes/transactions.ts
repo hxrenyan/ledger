@@ -4,7 +4,7 @@ import { badRequest, notFound } from '../http.ts'
 import { parseOptionalId, routeId } from '../id.ts'
 import { assertAmountCents, centsToYuan } from '../money.ts'
 import { balanceStmts, type TxMoney } from '../balance.ts'
-import { dateToOccurredAt, occurredAtToDate, shanghaiDayRange, shanghaiMonth, shanghaiMonthRange } from '../time.ts'
+import { dateTimeToOccurredAt, dateToOccurredAt, occurredAtToDate, shanghaiDayRange, shanghaiMonth, shanghaiMonthRange } from '../time.ts'
 
 const RECEIPT_MAX = 512 * 1024
 const RECEIPT_MIME = new Set(['image/jpeg', 'image/png', 'image/webp'])
@@ -237,6 +237,17 @@ function asBytes(v: unknown): Uint8Array {
   throw badRequest('收据数据损坏')
 }
 
+/** 有 date + time 用用户选的钟点；只有 date 仍记当天中午，兼容旧客户端和导入。 */
+function occurredAtFrom(body: Record<string, unknown>): number {
+  if (typeof body.date === 'string') {
+    const time = typeof body.time === 'string' ? body.time.trim() : ''
+    if (time) return dateTimeToOccurredAt(body.date, time)
+    return dateToOccurredAt(body.date)
+  }
+  if (typeof body.occurred_at === 'number') return body.occurred_at
+  return Date.now()
+}
+
 function shape(row: TxRow) {
   return {
     id: row.id,
@@ -266,12 +277,7 @@ async function upsertTx(c: Context<AppEnv>, id: number | null, body: Record<stri
   const toAccountId = parseOptionalId(body.to_account_id, '转入账户')
   const categoryId = parseOptionalId(body.category_id, '分类')
   if (!accountId) throw badRequest('请选择账户')
-  const occurredAt =
-    typeof body.date === 'string'
-      ? dateToOccurredAt(body.date)
-      : typeof body.occurred_at === 'number'
-        ? body.occurred_at
-        : Date.now()
+  const occurredAt = occurredAtFrom(body)
   const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : ''
   const excluded = body.excluded ? 1 : 0
 

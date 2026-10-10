@@ -145,6 +145,25 @@ describe('小程序登录与绑定已有账号', () => {
     expect(byUser.map((r) => r.detail).join(' ')).toContain('idx_user_identities_user')
   })
 
+  it('用登录时填写的微信昵称建号，已是默认名的老用户下次登录会补上', async () => {
+    const { app } = await setup(identities('oid-nick'))
+    const named = await json(app, '/api/v1/auth/wechat', post('/api/v1/auth/wechat', { code: 'ok', nickname: ' 小明 ' }))
+    expect(named.status).toBe(201)
+    expect((named.body as SessionBody).user.nickname).toBe('小明')
+
+    const { app: legacy } = await setup(identities('oid-legacy'))
+    const first = await json(legacy, '/api/v1/auth/wechat', post('/api/v1/auth/wechat', { code: 'ok' }))
+    expect((first.body as SessionBody).user.nickname).toBe('微信用户')
+    const filled = await json(legacy, '/api/v1/auth/wechat', post('/api/v1/auth/wechat', { code: 'ok', nickname: '小红' }))
+    expect(filled.status).toBe(200)
+    expect((filled.body as SessionBody).user.nickname).toBe('小红')
+    const kept = await json(legacy, '/api/v1/auth/wechat', post('/api/v1/auth/wechat', { code: 'ok', nickname: '别人' }))
+    expect((kept.body as SessionBody).user.nickname).toBe('小红')
+
+    const tooLong = await json(app, '/api/v1/auth/wechat', post('/api/v1/auth/wechat', { code: 'ok', nickname: '名'.repeat(33) }))
+    expect(tooLong.status).toBe(400)
+  })
+
   it('绑定已有账号后改发该账号的 token，并删掉空的临时账本', async () => {
     const { app, db } = await setup(identities('oid-bind'))
     const reg = await json(app, '/api/v1/auth/register', post('/api/v1/auth/register', { username: 'alice', password: 'password1', nickname: '爱丽丝' }))

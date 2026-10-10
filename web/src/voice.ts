@@ -124,6 +124,11 @@ export function useVoice(scope: VoiceScope) {
       window.clearTimeout(recordTimer)
       if (disposed) return
       const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' })
+      if (blob.size > 2 * 1024 * 1024) {
+        err.value = '录音超过 2MB'
+        phase.value = 'idle'
+        return
+      }
       const fd = new FormData()
       fd.append('file', blob, 'speech.webm')
       phase.value = 'hear'
