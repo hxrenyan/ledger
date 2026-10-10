@@ -156,6 +156,23 @@ export function registerAuthRoutes(app: Hono<AppEnv>) {
     return c.json(await sessionPayload(c.get('db'), user, token))
   })
 
+  app.post('/api/v1/me/nickname', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    if (typeof body.nickname !== 'string') throw badRequest('昵称无效')
+    const nickname = body.nickname.trim()
+    if (!nickname || nickname.length > 32) throw badRequest('昵称须为 1–32 字')
+
+    const db = c.get('db')
+    await db.run(`UPDATE users SET nickname = ? WHERE id = ?`, [nickname, c.get('userId')])
+    const user = await db.first<UserRow>(
+      `SELECT id, username, nickname, password_hash FROM users WHERE id = ?`,
+      [c.get('userId')],
+    )
+    if (!user) throw unauthorized()
+    const token = (c.req.header('Authorization') ?? '').slice(7)
+    return c.json(await sessionPayload(db, user, token))
+  })
+
   app.get('/api/v1/me', async (c) => {
     const db = c.get('db')
     const user = await db.first<UserRow>(

@@ -1,12 +1,7 @@
 /**
  * 登录。
- *
- * 主路径是微信一键登录（wx.login 拿 code → POST /auth/wechat，服务端换 openid 建号或登录）。
- * 昵称不走授权弹窗：输入框 type="nickname"，用户点一下即可填入微信昵称，随登录一起提交。
+ * 微信一键登录（wx.login 获取 code → POST /auth/wechat）。
  * 账号密码是兜底：老用户、以及线上还没配 WX_APPID/WX_SECRET 时用。
- *
- * 绑定已有账号不在这里做——那需要先登录到微信账号之后才能发起，
- * 放在「我的」页（POST /me/wechat/bind）。
  */
 
 const request = require('../../utils/request')
@@ -87,28 +82,15 @@ Page({
     wx.reLaunch({ url: '/pages/home/home' })
   },
 
-  onNickname(e) {
-    this.setData({ nickname: String((e.detail && e.detail.value) || '').trim() })
-  },
-
-  onWechat(e) {
+  onWechat() {
     if (this.data.busy) return
-    const fromForm = e && e.detail && e.detail.value ? e.detail.value.nickname : ''
-    const nickname = String(fromForm || this.data.nickname || '').trim()
-    if (!nickname) {
-      this.setData({ err: '请先点一下称呼，选用微信昵称' })
-      return
-    }
-    this.setData({ busy: true, err: '', wechatTip: '', nickname: nickname })
+    this.setData({ busy: true, err: '', wechatTip: '' })
     wxLogin()
-      .then(function (code) {
-        return request.post('/api/v1/auth/wechat', { code: code, nickname: nickname }, { withLedger: false })
-      })
+      .then((code) => request.post('/api/v1/auth/wechat', { code: code }, { withLedger: false }))
       .then((body) => this.afterLogin(body))
       .catch((err) => {
         this.setData({ busy: false })
         const msg = (err && err.message) || ''
-        // 服务端没配微信登录（503）时别把用户卡在死路上，直接给账号密码入口。
         if (err && err.status === 503) {
           this.setData({ mode: 'password', wechatTip: msg || '线上还未开启微信登录，请先用用户名密码登录' })
           return

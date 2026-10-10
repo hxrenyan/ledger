@@ -164,6 +164,22 @@ describe('小程序登录与绑定已有账号', () => {
     expect(tooLong.status).toBe(400)
   })
 
+  it('登录后可以修改昵称并返回更新后的会话，拒绝空昵称', async () => {
+    const { app } = await setup(identities('oid-rename'))
+    const login = await json(app, '/api/v1/auth/wechat', post('/api/v1/auth/wechat', { code: 'ok' }))
+    const token = (login.body as SessionBody).token
+
+    const updated = await json(app, '/api/v1/me/nickname', post('/api/v1/me/nickname', { nickname: '  新称呼  ' }, token))
+    expect(updated.status).toBe(200)
+    expect((updated.body as SessionBody).user.nickname).toBe('新称呼')
+    expect((updated.body as SessionBody).token).toBe(token)
+
+    const empty = await json(app, '/api/v1/me/nickname', post('/api/v1/me/nickname', { nickname: '  ' }, token))
+    expect(empty.status).toBe(400)
+    const tooLong = await json(app, '/api/v1/me/nickname', post('/api/v1/me/nickname', { nickname: '名'.repeat(33) }, token))
+    expect(tooLong.status).toBe(400)
+  })
+
   it('绑定已有账号后改发该账号的 token，并删掉空的临时账本', async () => {
     const { app, db } = await setup(identities('oid-bind'))
     const reg = await json(app, '/api/v1/auth/register', post('/api/v1/auth/register', { username: 'alice', password: 'password1', nickname: '爱丽丝' }))

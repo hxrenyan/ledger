@@ -102,7 +102,7 @@ kubectl -n ns-7aie87ej rollout status statefulset/ledger
 ### 4. 检查
 
 ```bash
-curl -sS https://ledger-7aie87ej.bja.sealos.run/api/health
+curl -sS https://ledger-7aie87ej.sealosbja.site/api/health
 ```
 
 健康检查应返回 `{"ok":true,"service":"ledger"}`。首页应是 200。确认新 Pod 已经用腾讯云镜像起来之后，再在控制台删除旧的 `ledger-registry`。

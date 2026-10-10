@@ -22,6 +22,13 @@
   min-width: 0;
 }
 
+.nickname-edit {
+  flex: none;
+  padding: 14rpx 4rpx 14rpx 16rpx;
+  color: #3b5bdb;
+  font-size: 25rpx;
+}
+
 .nick {
   font-size: 36rpx;
   font-weight: 600;

@@ -1,33 +1,23 @@
 <view class="login">
   <view class="brand">
     <view class="logo">账</view>
-    <view class="app-name">记账</view>
-    <view class="slogan">支出、收入、人情、资产，一处记清</view>
+    <view class="brand-copy">
+      <view class="app-name">记账</view>
+      <view class="slogan">把日常收支，记得清清楚楚</view>
+    </view>
   </view>
 
-  <view class="card">
+  <view class="login-content">
+    <view class="welcome">欢迎回来</view>
+    <view class="subtitle">登录后继续你的账本</view>
     <block wx:if="{{mode === 'wechat'}}">
-      <form bindsubmit="onWechat">
-        <view class="field">
-          <view class="label">称呼</view>
-          <input
-            class="input"
-            type="nickname"
-            name="nickname"
-            value="{{nickname}}"
-            bindblur="onNickname"
-            placeholder="点一下，填入微信昵称"
-            placeholder-class="ph"
-          />
-        </view>
-        <button class="btn wechat" form-type="submit" disabled="{{busy}}">
-          {{busy ? '登录中…' : '微信一键登录'}}
-        </button>
-      </form>
-      <view class="tip">点称呼时微信会带出你的昵称，用来区分家人。不获取手机号和头像。</view>
-      <view class="alt" bindtap="browse">先看看，稍后再登录</view>
       <view class="err" wx:if="{{err}}">{{err}}</view>
-      <view class="alt" bindtap="toPassword">用用户名密码登录</view>
+      <button class="btn wechat" bindtap="onWechat" disabled="{{busy}}">
+        {{busy ? '登录中…' : '微信一键登录'}}
+      </button>
+      <view class="divider"><text>或</text></view>
+      <button class="btn secondary" bindtap="toPassword">使用用户名和密码</button>
+      <view class="browse" bindtap="browse">先看看，稍后再登录</view>
     </block>
 
     <block wx:else>

@@ -8,6 +8,7 @@
         <text wx:if="{{wechatBound}}"> · 已绑微信</text>
       </view>
     </view>
+    <view class="nickname-edit" bindtap="editNickname">修改</view>
   </view>
 
   <view class="card">

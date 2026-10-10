@@ -53,6 +53,7 @@ export type AppConfig = {
  */
 const LEDGER_OPTIONAL = new Set([
   '/api/v1/me',
+  '/api/v1/me/nickname',
   '/api/v1/me/wechat/bind',
   '/api/v1/ledgers',
   '/api/v1/ledgers/join',

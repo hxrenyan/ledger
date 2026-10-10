@@ -62,6 +62,20 @@ Page({
     })
   },
 
+  /** 修改昵称后用服务端返回的会话刷新本地用户信息。 */
+  editNickname() {
+    ui.prompt({ title: '修改昵称', value: this.data.nickname, placeholder: '1–32 个字' }).then((nickname) => {
+      if (nickname == null || nickname === this.data.nickname) return
+      ui.withLoading('保存中', () => request.post('/api/v1/me/nickname', { nickname: nickname }))
+        .then((body) => {
+          session.apply(body)
+          this.render()
+          ui.toast('昵称已更新')
+        })
+        .catch((err) => ui.fail(err, '修改失败'))
+    })
+  },
+
   /** 用 /me 刷新一次，拿到最新的绑定状态与账本列表。 */
   refreshMe() {
     return request
