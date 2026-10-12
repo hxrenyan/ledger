@@ -2,12 +2,29 @@ import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { badRequest, HttpError } from '../http.ts'
 import { asrAvailable, readAsrProfiles, transcribeChain, type AudioPayload } from '../speech/asr.ts'
+import {
+  assertWechatRecognition,
+  chargeSpeech,
+  getBalance,
+  insufficient,
+  isWechatUser,
+  lackMessage,
+  pointsForSeconds,
+  recognitionRestricted,
+  reserveCall,
+  speechSeconds,
+} from '../points/wallet.ts'
 
 const MAX_AUDIO_BYTES = 2 * 1024 * 1024
 
 export function registerSpeechRoutes(app: Hono<AppEnv>) {
   app.get('/api/v1/speech/status', async (c) => {
-    return c.json({ available: await asrAvailable(c.get('db')) })
+    const db = c.get('db')
+    const limited = await recognitionRestricted(db)
+    return c.json({
+      available: await asrAvailable(db),
+      allowed: !limited || (await isWechatUser(db, c.get('userId'))),
+    })
   })
 
   app.post('/api/v1/speech/transcribe', async (c) => {
@@ -15,10 +32,22 @@ export function registerSpeechRoutes(app: Hono<AppEnv>) {
     const form = await c.req.raw.formData().catch(() => null)
     if (!form) throw badRequest('请上传音频文件')
     const audio = await readAudio(form)
-    const profiles = await readAsrProfiles(c.get('db'))
+    const db = c.get('db')
+    const userId = c.get('userId')
+    const seconds = speechSeconds(audio.bytes.byteLength, form.get('duration_ms'))
+    if (await recognitionRestricted(db)) {
+      await assertWechatRecognition(db, userId)
+      const cost = pointsForSeconds(seconds)
+      const balance = await getBalance(db, userId)
+      if (balance < cost) throw insufficient(await lackMessage(db, userId, cost, balance))
+      // 余额够才计数。转写失败也占次数，但不扣积分。
+      await reserveCall(db, userId, 'speech')
+    }
+    const profiles = await readAsrProfiles(db)
     const res = await transcribeChain(profiles, audio)
     if (!res.ok) throw new HttpError(502, 'asr_failed', res.error)
-    return c.json({ text: res.text, profile: res.profile })
+    const points = await chargeSpeech(db, userId, seconds)
+    return c.json({ text: res.text, profile: res.profile, points })
   })
 }
 

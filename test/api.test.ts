@@ -360,12 +360,45 @@ describe('transactions & stats', () => {
     const wx = await json(app, '/api/v1/auth/wechat', { method: 'POST' })
     expect(wx.status).toBe(503)
 
-    const csvRes = await app.request('/api/v1/export', { headers })
-    expect(csvRes.status).toBe(200)
-    const csv = await csvRes.text()
-    expect(csv).toContain('日期')
-    expect(csv).toContain('午饭')
-    expect(csvRes.headers.get('content-type') || '').toContain('csv')
+    const contact = await json(app, '/api/v1/contacts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: '张三' }),
+    })
+    expect(contact.status).toBe(201)
+    const contactId = (contact.body as { id: number }).id
+    const gift = await json(app, '/api/v1/gifts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        kind: 'give',
+        contact_id: contactId,
+        amount_cents: 20000,
+        date: '2026-03-02',
+        occasion: '结婚',
+        note: '随礼',
+      }),
+    })
+    expect(gift.status).toBe(201)
+
+    const jsonRes = await app.request('/api/v1/export', { headers })
+    expect(jsonRes.status).toBe(200)
+    expect(jsonRes.headers.get('content-type') || '').toContain('json')
+    const exported = (await jsonRes.json()) as {
+      账本: string
+      账单: { 备注?: string; 金额: string; 类型: string; 分类: string; 日期: string }[]
+      人情: { 日期: string; 方向: string; 金额: string; 对方: string; 事由?: string; 备注?: string }[]
+    }
+    expect(exported.账本).toContain('账本')
+    expect(exported.人情).toEqual([
+      expect.objectContaining({ 日期: '2026-03-02', 方向: '送出', 金额: '200.00', 对方: '张三', 事由: '结婚', 备注: '随礼' }),
+    ])
+    expect(exported.账单).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ 日期: '2026-03-10', 类型: '支出', 金额: '23.00', 分类: '餐饮', 备注: '午饭' }),
+        expect.objectContaining({ 日期: '2026-03-01', 类型: '收入', 金额: '1000.00', 分类: '工资' }),
+      ]),
+    )
   })
 })
 

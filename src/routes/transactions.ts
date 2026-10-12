@@ -143,91 +143,111 @@ export function registerTransactionRoutes(app: Hono<AppEnv>) {
     return c.json({ ok: true })
   })
 
-  const exportCsv = async (c: Context<AppEnv>) => {
+  const exportJson = async (c: Context<AppEnv>) => {
     const db = c.get('db')
     const ledgerId = c.get('ledgerId')
-    const rows = await db.all<{
-      kind: string
-      amount_cents: number
-      occurred_at: number
-      note: string
-      excluded: number
-      account_name: string
-      to_account_name: string | null
-      category_name: string | null
-    }>(
-      `SELECT t.kind, t.amount_cents, t.occurred_at, t.note, IFNULL(t.excluded, 0) AS excluded,
-              a.name AS account_name, b.name AS to_account_name, c.name AS category_name
-       FROM transactions t
-       JOIN accounts a ON a.id = t.account_id
-       LEFT JOIN accounts b ON b.id = t.to_account_id
-       LEFT JOIN categories c ON c.id = t.category_id
-       WHERE t.ledger_id = ?
-       ORDER BY t.occurred_at ASC, t.created_at ASC`,
-      [ledgerId],
-    )
-    const gifts = await db.all<{
-      kind: string
-      amount_cents: number
-      occurred_at: number
-      note: string
-      occasion: string
-      contact_name: string
-    }>(
-      `SELECT g.kind, g.amount_cents, g.occurred_at, g.note, g.occasion, p.name AS contact_name
-       FROM gifts g JOIN contacts p ON p.id = g.contact_id
-       WHERE g.ledger_id = ?
-       ORDER BY g.occurred_at ASC, g.created_at ASC`,
-      [ledgerId],
-    )
-    const lines = ['日期,类型,金额,分类,账户,转入账户,不计入,备注']
-    for (const r of rows) {
-      const kind = r.kind === 'income' ? '收入' : r.kind === 'expense' ? '支出' : '转账'
-      lines.push(
-        [
-          csvCell(occurredAtToDate(r.occurred_at)),
-          csvCell(kind),
-          csvCell(centsToYuan(r.amount_cents)),
-          csvCell(r.category_name),
-          csvCell(r.account_name),
-          csvCell(r.to_account_name),
-          csvCell(r.excluded ? '是' : ''),
-          csvCell(r.note),
-        ].join(','),
-      )
+    const ledger = await db.first<{ name: string }>(`SELECT name FROM ledgers WHERE id = ?`, [ledgerId])
+    const body = {
+      账本: ledger?.name ?? '',
+      账单: await loadBillExport(db, ledgerId),
+      人情: await loadFavorExport(db, ledgerId),
     }
-    if (gifts.length) {
-      lines.push('')
-      lines.push('人情往来')
-      lines.push('日期,方向,金额,对方,事由,备注')
-      for (const g of gifts) {
-        lines.push(
-          [
-            csvCell(occurredAtToDate(g.occurred_at)),
-            csvCell(g.kind === 'give' ? '送出' : '收入'),
-            csvCell(centsToYuan(g.amount_cents)),
-            csvCell(g.contact_name),
-            csvCell(g.occasion),
-            csvCell(g.note),
-          ].join(','),
-        )
-      }
-    }
-    const bom = '\uFEFF'
-    return new Response(bom + lines.join('\r\n') + '\r\n', {
+    return new Response(JSON.stringify(body, null, 2), {
       headers: {
-        'content-type': 'text/csv; charset=utf-8',
-        'content-disposition': "attachment; filename=ledger.csv; filename*=UTF-8''%E8%AE%B0%E8%B4%A6.csv",
+        'content-type': 'application/json; charset=utf-8',
+        'content-disposition': "attachment; filename=ledger.json; filename*=UTF-8''%E8%AE%B0%E8%B4%A6.json",
       },
     })
   }
-  app.get('/api/v1/export.csv', exportCsv)
-  app.get('/api/v1/export', exportCsv)
+  app.get('/api/v1/export.json', exportJson)
+  app.get('/api/v1/export', exportJson)
 }
 
-function csvCell(v: unknown): string {
-  const s = v == null ? '' : String(v)
-  return `"${s.replace(/"/g, '""')}"`
+type BillExport = {
+  日期: string
+  类型: string
+  金额: string
+  分类: string
+  账户: string
+  转入账户?: string
+  不计入?: string
+  备注?: string
+}
+
+/** 当前账本的全部记账流水，按发生时间从早到晚。金额是元。 */
+async function loadBillExport(db: AppEnv['Variables']['db'], ledgerId: number): Promise<BillExport[]> {
+  const rows = await db.all<{
+    kind: string
+    amount_cents: number
+    occurred_at: number
+    note: string
+    excluded: number
+    account_name: string | null
+    to_account_name: string | null
+    category_name: string | null
+  }>(
+    `SELECT t.kind, t.amount_cents, t.occurred_at, t.note, IFNULL(t.excluded, 0) AS excluded,
+            a.name AS account_name, b.name AS to_account_name, c.name AS category_name
+     FROM transactions t
+     LEFT JOIN accounts a ON a.id = t.account_id
+     LEFT JOIN accounts b ON b.id = t.to_account_id
+     LEFT JOIN categories c ON c.id = t.category_id
+     WHERE t.ledger_id = ?
+     ORDER BY t.occurred_at ASC, t.created_at ASC`,
+    [ledgerId],
+  )
+  return rows.map((row) => {
+    const item: BillExport = {
+      日期: occurredAtToDate(row.occurred_at),
+      类型: row.kind === 'income' ? '收入' : row.kind === 'expense' ? '支出' : '转账',
+      金额: centsToYuan(row.amount_cents),
+      分类: row.category_name ?? '',
+      账户: row.account_name ?? '',
+    }
+    if (row.to_account_name) item.转入账户 = row.to_account_name
+    if (row.excluded) item.不计入 = '是'
+    if (row.note) item.备注 = row.note
+    return item
+  })
+}
+
+type FavorExport = {
+  日期: string
+  方向: string
+  金额: string
+  对方: string
+  事由?: string
+  备注?: string
+}
+
+/** 当前账本的全部人情往来，按发生时间从早到晚。金额是元。 */
+async function loadFavorExport(db: AppEnv['Variables']['db'], ledgerId: number): Promise<FavorExport[]> {
+  const gifts = await db.all<{
+    kind: string
+    amount_cents: number
+    occurred_at: number
+    note: string
+    occasion: string
+    contact_name: string | null
+  }>(
+    `SELECT g.kind, g.amount_cents, g.occurred_at, g.note, g.occasion, p.name AS contact_name
+     FROM gifts g
+     LEFT JOIN contacts p ON p.id = g.contact_id
+     WHERE g.ledger_id = ?
+     ORDER BY g.occurred_at ASC, g.created_at ASC`,
+    [ledgerId],
+  )
+  return gifts.map((gift) => {
+    const item: FavorExport = {
+      日期: occurredAtToDate(gift.occurred_at),
+      方向: gift.kind === 'give' ? '送出' : '收入',
+      金额: centsToYuan(gift.amount_cents),
+      对方: gift.contact_name ?? '',
+    }
+    if (gift.occasion) item.事由 = gift.occasion
+    if (gift.note) item.备注 = gift.note
+    return item
+  })
 }
 
 function asBytes(v: unknown): Uint8Array {

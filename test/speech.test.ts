@@ -8,8 +8,30 @@ import { transcribeChain, type AsrProfile } from '../src/speech/asr.ts'
 async function setup() {
   const db = createSqliteDb(':memory:')
   await ensureMigrated(db)
-  const app = createApp({ db, jwtSecret: 'test-secret-test-secret', adminToken: 'admin-secret' })
+  const app = createApp({
+    db,
+    jwtSecret: 'test-secret-test-secret',
+    adminToken: 'admin-secret',
+    exchangeWechatCode: async (code) => ({ openid: `speech-${code}`, unionid: null }),
+  })
   return { app, db }
+}
+
+/** 语音和文本整理只对微信用户开放，这两条用例走微信登录。 */
+async function wechatSession(app: ReturnType<typeof createApp>, code: string) {
+  const login = await json(app, '/api/v1/auth/wechat', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code }),
+  })
+  const body = login.body as { token: string; ledgers: { id: string }[] }
+  return {
+    headers: {
+      authorization: `Bearer ${body.token}`,
+      'x-ledger-id': body.ledgers[0].id,
+      'content-type': 'application/json',
+    },
+  }
 }
 
 async function json(app: ReturnType<typeof createApp>, path: string, init: RequestInit = {}) {
@@ -122,14 +144,7 @@ describe('语音识别多套接力', () => {
 describe('自然语言入账', () => {
   it('随礼同时记流水和人情，原文与录音都不入库', async () => {
     const { app, db } = await setup()
-    const reg = await json(app, '/api/v1/auth/register', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'speaker', password: 'password1' }),
-    })
-    const token = (reg.body as { token: string; ledgers: { id: string }[] }).token
-    const ledgerId = (reg.body as { ledgers: { id: string }[] }).ledgers[0].id
-    const headers = { authorization: `Bearer ${token}`, 'x-ledger-id': ledgerId, 'content-type': 'application/json' }
+    const { headers } = await wechatSession(app, 'speaker')
     const preview = await json(app, '/api/v1/imports/utterances', {
       method: 'POST',
       headers,
@@ -157,14 +172,7 @@ describe('自然语言入账', () => {
   it('配置了 AI 时用模型结果，模型失败则退回规则', async () => {
     const original = globalThis.fetch
     const { app, db } = await setup()
-    const reg = await json(app, '/api/v1/auth/register', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ username: 'speakerai', password: 'password1' }),
-    })
-    const token = (reg.body as { token: string; ledgers: { id: string }[] }).token
-    const ledgerId = (reg.body as { ledgers: { id: string }[] }).ledgers[0].id
-    const headers = { authorization: `Bearer ${token}`, 'x-ledger-id': ledgerId, 'content-type': 'application/json' }
+    const { headers } = await wechatSession(app, 'speakerai')
     await db.run(
       `INSERT INTO ai_profiles (kind, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
        VALUES ('llm', '测', 1, '', 'https://example.com/v1', 'sk-test', 'demo', 0, 1)`,

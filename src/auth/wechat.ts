@@ -2,6 +2,7 @@ import type { Db } from '../db/types.ts'
 import { HttpError, badRequest, conflict, unauthorized } from '../http.ts'
 import { mergeUserStmts } from './mergeUser.ts'
 import { verifyPassword } from './password.ts'
+import { signupGrantStmts } from '../points/wallet.ts'
 import { bootstrapLedgerStmts } from '../seed.ts'
 
 const WECHAT = 'wechat'
@@ -224,6 +225,8 @@ async function createWechatUser(db: Db, identity: WechatIdentity, displayName: s
             SELECT ?, ?, id, ?, ? FROM users WHERE username = ?`,
       params: [WECHAT, identity.openid, identity.unionid, now, username],
     })
+    // 和建号同一批写入。中途失败会整批回滚，重试不会漏送，也不会再送一次。
+    stmts.push(...signupGrantStmts(username, now))
     try {
       await db.batch(stmts)
       const created = await db.first<SessionUser>(

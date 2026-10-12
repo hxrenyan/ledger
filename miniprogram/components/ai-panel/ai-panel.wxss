@@ -41,6 +41,8 @@
   line-height: 1.7;
   text-align: center;
   padding: 12rpx 0;
+  /* 提示从两行收成一行时，别把下面的圆按钮顶上去。 */
+  min-height: 82rpx;
 }
 
 .ap-talk {
@@ -61,7 +63,6 @@
 .ap-talk.on {
   background: #3b5bdb;
   color: #fff;
-  transform: scale(1.04);
 }
 
 /* 拍照入口做得比录音轻：它是备选路径，不该跟大圆按钮抢注意力 */
@@ -76,6 +77,10 @@
   border: 2rpx solid #d9ddf0;
   color: #3b5bdb;
   font-size: 27rpx;
+}
+
+.ap-photo.hold {
+  visibility: hidden;
 }
 
 .ap-photo:active {

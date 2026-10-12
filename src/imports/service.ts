@@ -10,7 +10,15 @@
 
 import { balanceStmts, type TxMoney } from '../balance.ts'
 import type { Db, Stmt } from '../db/types.ts'
-import { badRequest } from '../http.ts'
+import { badRequest, HttpError } from '../http.ts'
+import {
+  chargeByRows,
+  estimateTextPoints,
+  getBalance,
+  isWechatUser,
+  lackMessage,
+  recognitionRestricted,
+} from '../points/wallet.ts'
 import { assertAmountCents } from '../money.ts'
 import { parseId } from '../id.ts'
 import { dateToOccurredAt, shanghaiDate } from '../time.ts'
@@ -77,7 +85,12 @@ export type PreviewResult = {
   categories: CategoryLite[]
 }
 
-export async function buildPreview(db: Db, ledgerId: number, input: PreviewInput, opts: { useAi?: boolean } = {}): Promise<PreviewResult> {
+export async function buildPreview(
+  db: Db,
+  ledgerId: number,
+  input: PreviewInput,
+  opts: { useAi?: boolean; userId?: number } = {},
+): Promise<PreviewResult> {
   const table = readTable(input)
   const accounts = await db.all<{ id: number; name: string }>(
     `SELECT id, name FROM accounts WHERE ledger_id = ? AND archived = 0 ORDER BY sort_order ASC, created_at ASC`,
@@ -110,9 +123,10 @@ export async function buildPreview(db: Db, ledgerId: number, input: PreviewInput
   let aiTruncated = false
 
   if (needAi) {
+    const limited = opts.userId != null && (await recognitionRestricted(db))
     if (!aiAvailable) {
       if (!shape) aiError = '未识别出表格结构，且管理后台未启用 AI'
-    } else {
+    } else if (!limited) {
       const res = await aiParseTable(aiConfigs, table.rows, {
         startRowNo: 1,
         categories: catList.map((c) => c.name),
@@ -124,6 +138,34 @@ export async function buildPreview(db: Db, ledgerId: number, input: PreviewInput
         parsed = mergeAiRows(parsed, res.data.rows)
       } else {
         aiError = res.error
+      }
+    } else if (opts.userId == null || !(await isWechatUser(db, opts.userId))) {
+      // 规则结果保留。只有完全靠模型才能读的文件才说明原因。
+      if (!shape) aiError = '文本整理仅支持微信登录'
+    } else {
+      const estimate = estimateTextPoints(table.rows.map((row) => row.join(' ')).join('\n'))
+      const balance = await getBalance(db, opts.userId)
+      if (estimate >= 1 && balance < estimate) {
+        aiError = await lackMessage(db, opts.userId, estimate, balance)
+      } else if (estimate >= 1) {
+        try {
+          const charged = await chargeByRows(db, opts.userId, 'text', 'text', estimate, async () => {
+            const res = await aiParseTable(aiConfigs, table.rows, {
+              startRowNo: 1,
+              categories: catList.map((c) => c.name),
+              accounts: accounts.map((a) => a.name),
+            })
+            if (!res.ok) throw new Error(res.error)
+            const rows = res.data.rows.filter((row) => row.direction !== 'skip' && row.date).length
+            return { rows, value: res.data }
+          })
+          aiUsed = true
+          aiTruncated = charged.value.truncated
+          parsed = mergeAiRows(parsed, charged.value.rows)
+        } catch (error) {
+          if (error instanceof HttpError && error.status !== 402) throw error
+          aiError = error instanceof Error ? error.message : '整理失败'
+        }
       }
     }
   }

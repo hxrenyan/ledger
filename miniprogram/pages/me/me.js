@@ -2,16 +2,107 @@
  * 我的。
  *
  * 这一页承担三件事：
- *   1. 入口导航（账本、预算、分类、周期、导入）——全部走 nav.go，便于以后切 web-view；
+ *   1. 入口导航（账本、预算、分类、周期、导入）；
  *   2. 账号：微信绑定已有账号（POST /me/wechat/bind，会返回**新 token**，必须替换）、退出登录。
  */
 
 const request = require('../../utils/request')
 const session = require('../../utils/session')
-const appConfig = require('../../utils/appConfig')
-const config = require('../../config')
 const nav = require('../../utils/nav')
 const ui = require('../../utils/ui')
+
+/**
+ * 把导出接口的正文收成账单 JSON。
+ * 线上旧接口是 CSV；地址写错时服务会返回网站页面，那种内容不能进剪贴板。
+ */
+function billsText(body) {
+  if (body && typeof body === 'object') return JSON.stringify(body, null, 2)
+  const text = String(body == null ? '' : body).replace(/^\uFEFF/, '').trim()
+  if (!text || text.charAt(0) === '<') {
+    const err = new Error('导出失败')
+    throw err
+  }
+  if (text.charAt(0) === '{' || text.charAt(0) === '[') {
+    return JSON.stringify(JSON.parse(text), null, 2)
+  }
+  return JSON.stringify(csvToBills(text), null, 2)
+}
+
+function parseCsvLine(line) {
+  const out = []
+  let cur = ''
+  let quoted = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line.charAt(i)
+    if (quoted) {
+      if (ch === '"') {
+        if (line.charAt(i + 1) === '"') {
+          cur += '"'
+          i += 1
+        } else {
+          quoted = false
+        }
+      } else {
+        cur += ch
+      }
+    } else if (ch === '"') {
+      quoted = true
+    } else if (ch === ',') {
+      out.push(cur)
+      cur = ''
+    } else {
+      cur += ch
+    }
+  }
+  out.push(cur)
+  return out
+}
+
+function csvToBills(text) {
+  const lines = text.split(/\r?\n/).map(function (line) { return line.trim() }).filter(Boolean)
+  const split = lines.indexOf('人情往来')
+  const billLines = split === -1 ? lines : lines.slice(0, split)
+  const favorLines = split === -1 ? [] : lines.slice(split + 1)
+  return { 账单: billRows(billLines), 人情: favorRows(favorLines) }
+}
+
+function billRows(lines) {
+  const bills = []
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i])
+    if (cols.length < 5) continue
+    const item = {
+      日期: cols[0],
+      类型: cols[1],
+      金额: cols[2],
+      分类: cols[3],
+      账户: cols[4],
+    }
+    if (cols[5]) item.转入账户 = cols[5]
+    if (cols[6]) item.不计入 = cols[6]
+    if (cols[7]) item.备注 = cols[7]
+    bills.push(item)
+  }
+  return bills
+}
+
+function favorRows(lines) {
+  const favors = []
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i])
+    if (cols.length < 4) continue
+    const item = {
+      日期: cols[0],
+      方向: cols[1],
+      金额: cols[2],
+      对方: cols[3],
+    }
+    if (cols[4]) item.事由 = cols[4]
+    if (cols[5]) item.备注 = cols[5]
+    favors.push(item)
+  }
+  return favors
+}
 
 Page({
   data: {
@@ -23,6 +114,7 @@ Page({
     ledgerName: '',
     ledgerCount: 0,
     guest: false,
+    pointBalance: '',
   },
 
   onShow() {
@@ -36,6 +128,7 @@ Page({
         hasPassword: false,
         ledgerName: '登录后查看',
         ledgerCount: 0,
+        pointBalance: '',
       })
       return
     }
@@ -59,7 +152,33 @@ Page({
       hasPassword: !!user.has_password,
       ledgerName: ledger ? ledger.name : '未选择',
       ledgerCount: session.getLedgers().length,
+      pointBalance: '',
     })
+    if (!user.wechat_bound) return
+    request
+      .get('/api/v1/points', null, { withLedger: false })
+      .then((raw) => {
+        const body = typeof raw === 'string' ? JSON.parse(raw) : raw
+        if (!body || body.balance == null) return
+        this.setData({ pointBalance: String(body.balance) })
+      })
+      .catch(() => {})
+  },
+
+  openFeedback() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    wx.navigateTo({ url: '/pages/feedback/feedback' })
+  },
+
+  openPoints() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    wx.navigateTo({ url: '/pages/points/points' })
   },
 
   /** 修改昵称后用服务端返回的会话刷新本地用户信息。 */
@@ -107,7 +226,6 @@ Page({
           .then((body) => {
             // 必须换上新 token：合并后本地的旧 token 指向的是被并掉的那个用户。
             session.apply(body)
-            appConfig.refresh()
             ui.ok('已合并')
             this.refreshMe()
           })
@@ -116,41 +234,94 @@ Page({
     })
   },
 
-  exportCsv() {
+  exportBook() {
     if (!session.getToken()) {
       session.goLogin()
       return
     }
-    const token = session.getToken()
-    ui.loading('准备中')
-    wx.downloadFile({
-      url: config.getBaseUrl() + '/api/v1/export.csv',
-      header: token ? { authorization: 'Bearer ' + token } : {},
-      success: (res) => {
-        ui.hideLoading()
-        if (res.statusCode !== 200) {
-          ui.toast('导出失败')
-          return
-        }
-        wx.openDocument({
-          filePath: res.tempFilePath,
-          fileType: 'csv',
-          showMenu: true,
-          fail: () => ui.toast('这个格式打不开，可换手机打开'),
-        })
-      },
-      fail: () => {
-        ui.hideLoading()
-        ui.toast('导出失败，检查网络')
-      },
+    if (!session.getLedgerId()) {
+      ui.toast('请先选择账本')
+      return
+    }
+    ui.actions(['复制', '下载 JSON 文件']).then((index) => {
+      if (index === 0) this.copyExport()
+      else if (index === 1) this.downloadExport()
     })
+  },
+
+  copyExport() {
+    this.loadExport().then((text) => {
+      if (!text) return
+      wx.setClipboardData({
+        data: text,
+        fail: () => ui.toast('复制失败'),
+      })
+    })
+  },
+
+  /**
+   * 写成 json 文件再转发。微信里不能直接存到相册或文件夹，
+   * 转发按钮才算用户点击，shareFileMessage 才能把文件发出去。
+   */
+  downloadExport() {
+    this.loadExport().then((text) => {
+      if (!text) return
+      const dest = wx.env.USER_DATA_PATH + '/ledger.json'
+      wx.getFileSystemManager().writeFile({
+        filePath: dest,
+        data: text,
+        encoding: 'utf8',
+        success: () => {
+          wx.showModal({
+            title: '下载 JSON',
+            content: '点转发，把记账.json 发到文件传输助手后再保存。',
+            confirmText: '转发',
+            success: (res) => {
+              if (!res.confirm) return
+              if (typeof wx.shareFileMessage !== 'function') {
+                ui.toast('当前微信版本不能转发文件')
+                return
+              }
+              wx.shareFileMessage({
+                filePath: dest,
+                fileName: '记账.json',
+                fail: () => ui.toast('转发失败，请重试'),
+              })
+            },
+          })
+        },
+        fail: () => ui.toast('保存文件失败'),
+      })
+    })
+  },
+
+  loadExport() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return Promise.resolve('')
+    }
+    if (!session.getLedgerId()) {
+      ui.toast('请先选择账本')
+      return Promise.resolve('')
+    }
+    ui.loading('准备中')
+    return request
+      .get('/api/v1/export', null, { dataType: 'text' })
+      .then((body) => {
+        ui.hideLoading()
+        return billsText(body)
+      })
+      .catch((err) => {
+        ui.hideLoading()
+        ui.fail(err, '导出失败')
+        return ''
+      })
   },
 
   logout() {
     ui.confirm('退出后需要重新登录。').then((yes) => {
       if (!yes) return
       session.clear()
-      appConfig.clearCache()
       wx.reLaunch({ url: '/pages/login/login' })
     })
   },

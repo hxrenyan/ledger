@@ -18,6 +18,9 @@
 --   ai_profiles    模型配置（kind=llm 解析 / asr 语音 / ocr 图片识别，按 sort_order 接力）
 --   app_configs     服务端业务配置（页面归属等，改完即生效）
 --   handoff_codes   原生 → web-view 网页 的一次性会话交接码
+--   point_accounts  微信用户积分余额（一人一行，主键即 user_id）
+--   point_entries   积分明细（只追加；余额以本表加减为准，账户表是当前结果）
+--   feedbacks       用户反馈（内容、联系方式、处理状态和回复）
 --
 -- 约定：表之间只保留逻辑关联字段，不定义数据库外键；
 --       关联完整性由应用层校验，多语句写入走 db.batch（同一 SQLite 事务）。
@@ -256,6 +259,62 @@ CREATE TABLE IF NOT EXISTS handoff_codes (
 );
 
 -- ---------------------------------------------------------------------------
+-- point_accounts / point_entries
+-- 只有挂了微信身份的用户才会写入。密码账号不建账户。
+-- 明细按用户倒序查询，索引 (user_id, created_at, id) 的最左前缀就是 user_id。
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS point_accounts (
+  user_id INTEGER PRIMARY KEY,
+  balance INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS point_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  delta INTEGER NOT NULL,
+  balance_after INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  biz_key TEXT,
+  created_at INTEGER NOT NULL
+);
+
+-- 连续进入记在这里。一天一行用户，last_day 是上海日期。
+CREATE TABLE IF NOT EXISTS point_checkins (
+  user_id INTEGER PRIMARY KEY,
+  last_day TEXT NOT NULL,
+  streak INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- 每天每种识别最多调用 30 次。失败也计数，避免 0 条白跑模型。
+CREATE TABLE IF NOT EXISTS point_calls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  day TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- feedbacks
+-- 用户在「我的」里提交。status 只有 open / done。
+-- 用户看自己的：索引 (user_id, created_at, id)。
+-- 后台按状态看：索引 (status, created_at, id)。全部按时间看：索引 (created_at, id)。
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS feedbacks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  content TEXT NOT NULL,
+  contact TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'open',
+  reply TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
 -- 索引（对应列表/统计查询，不重复主键与 UNIQUE）
 -- ---------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_tx_ledger_occurred ON transactions (ledger_id, occurred_at, created_at);
@@ -272,3 +331,9 @@ CREATE INDEX IF NOT EXISTS idx_ai_profiles_order ON ai_profiles (kind, sort_orde
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities (provider, user_id);
 -- 交接码只在签发时按过期时间清理一次，索引服务这个 DELETE。
 CREATE INDEX IF NOT EXISTS idx_handoff_expires ON handoff_codes (expires_at);
+CREATE INDEX IF NOT EXISTS idx_point_entries_user ON point_entries (user_id, created_at, id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_point_entries_biz ON point_entries (biz_key) WHERE biz_key IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_point_calls_user_day ON point_calls (user_id, kind, day);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_user ON feedbacks (user_id, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_status ON feedbacks (status, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_feedbacks_recent ON feedbacks (created_at, id);

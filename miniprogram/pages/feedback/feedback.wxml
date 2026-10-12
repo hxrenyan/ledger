@@ -1,0 +1,29 @@
+<view class="page">
+  <view class="card">
+    <view class="field">
+      <view class="label">内容</view>
+      <textarea
+        class="feedback-box"
+        maxlength="500"
+        value="{{content}}"
+        bindinput="onContent"
+        placeholder="说说哪里不好用，或想加什么"
+      />
+    </view>
+    <view class="field">
+      <view class="label">联系方式（选填）</view>
+      <input class="input" maxlength="40" value="{{contact}}" bindinput="onContact" placeholder="微信号或手机号" />
+    </view>
+    <button class="btn" disabled="{{busy}}" bindtap="submit">{{busy ? '提交中…' : '提交'}}</button>
+  </view>
+  <view class="card muted" wx:if="{{error}}">{{error}}</view>
+  <view class="card" wx:elif="{{items.length}}">
+    <view class="entry" wx:for="{{items}}" wx:key="id">
+      <view>{{item.content}}</view>
+      <view class="muted">{{item.time}} · {{item.status_label}}</view>
+      <view class="muted" wx:if="{{item.reply}}">回复：{{item.reply}}</view>
+    </view>
+  </view>
+  <view class="card muted" wx:elif="{{loaded}}">还没有反馈</view>
+  <view class="card muted" wx:else>加载中…</view>
+</view>

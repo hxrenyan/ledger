@@ -2,7 +2,6 @@ import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { hashPassword, assertNickname, assertPassword, assertUsername, verifyPassword } from '../auth/password.ts'
 import { signToken } from '../auth/jwt.ts'
-import { assertHandoffCode, redeemHandoff } from '../auth/handoff.ts'
 import { resolveLoginExchange } from '../auth/wechatConfig.ts'
 import { bindWechatToExistingAccount, loginWithWechat, wechatDisplayName } from '../auth/wechat.ts'
 import { HttpError, badRequest, conflict, unauthorized } from '../http.ts'
@@ -44,7 +43,7 @@ async function sessionPayload(db: AppEnv['Variables']['db'], user: { id: number;
 }
 
 function flag(v: unknown): boolean {
-  return v === true || v === 1
+  return v === true || v === 1 || v === '1' || v === 1n
 }
 
 export function registerAuthRoutes(app: Hono<AppEnv>) {
@@ -110,40 +109,6 @@ export function registerAuthRoutes(app: Hono<AppEnv>) {
     const { user, created } = await loginWithWechat(c.get('db'), await exchange(code), wechatDisplayName(body.nickname))
     const token = await signToken(c.get('jwtSecret'), user.id)
     return c.json(await sessionPayload(c.get('db'), user, token), created ? 201 : 200)
-  })
-
-  /**
-   * web-view 网页端用一次性交接码换会话。
-   *
-   * 这是「登录接口」，所以不做 Bearer 鉴权（交接码本身就是凭据）：
-   * 5 分钟过期、用一次即失效、只存 SHA-256，见 auth/handoff.ts。
-   * 响应比普通登录多一个 ledger_id，网页端据此直接落到小程序当时的账本。
-   */
-  app.post('/api/v1/auth/webview-session', async (c) => {
-    const body = await c.req.json().catch(() => ({}))
-    const code = assertHandoffCode(body.code)
-    const db = c.get('db')
-    const claim = await redeemHandoff(db, code)
-    if (!claim) throw unauthorized('交接码已失效，请从小程序重新打开')
-
-    const user = await db.first<UserRow>(
-      `SELECT id, username, nickname, password_hash, disabled FROM users WHERE id = ?`,
-      [claim.userId],
-    )
-    if (!user) throw unauthorized('账号不存在')
-    if (user.disabled) throw unauthorized('账号已停用')
-
-    const token = await signToken(c.get('jwtSecret'), user.id)
-    const payload = await sessionPayload(db, user, token)
-    // 把小程序当时的账本顶到第一位，网页端首屏就落在同一个账本上。
-    if (claim.ledgerId) {
-      const idx = payload.ledgers.findIndex((l) => l.id === claim.ledgerId)
-      if (idx > 0) {
-        const [hit] = payload.ledgers.splice(idx, 1)
-        payload.ledgers.unshift(hit)
-      }
-    }
-    return c.json({ ...payload, ledger_id: claim.ledgerId ?? '' })
   })
 
   app.post('/api/v1/me/wechat/bind', async (c) => {

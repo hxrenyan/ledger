@@ -2,7 +2,7 @@
  * 统一请求层：带 token / 账本头、错误归一、401 回登录。
  *
  * 约定：
- * - 账本用 X-Ledger-Id 头传，与 web/src/api.ts 一致；
+ * - 账本用 X-Ledger-Id 头传；
  * - 401 统一清会话并回登录页（登录接口自身除外，否则会递归）；
  * - 失败一律 reject 成 { code, message, status }，页面不用再关心 wx.request 的壳。
  */
@@ -20,8 +20,20 @@ const session = require('./session')
  */
 const UPLOAD_TIMEOUT_MS = 120000
 
+/** 直连拿回来的是原文。看起来像 JSON 就解析，网页和 CSV 保持原样。 */
+function parseBody(data) {
+  if (typeof data !== 'string') return data
+  const text = data.replace(/^\uFEFF/, '').trim()
+  if (!text || (text.charAt(0) !== '{' && text.charAt(0) !== '[')) return data
+  try {
+    return JSON.parse(text)
+  } catch (e) {
+    return data
+  }
+}
+
 function toError(res, fallback) {
-  const body = res && res.data
+  const body = parseBody(res && res.data)
   const message = body && typeof body.message === 'string' && body.message ? body.message : fallback
   return {
     code: (body && body.code) || 'error',
@@ -85,7 +97,7 @@ function request(options) {
   const ledgerId = session.getLedgerId()
 
   const header = Object.assign(
-    { 'content-type': 'application/json' },
+    { 'content-type': 'application/json', 'x-ledger-client': 'miniprogram' },
     token ? { authorization: 'Bearer ' + token } : {},
     withLedger && ledgerId ? { 'x-ledger-id': String(ledgerId) } : {},
     opts.header || {},
@@ -97,6 +109,7 @@ function request(options) {
       method: (opts.method || 'GET').toUpperCase(),
       data: opts.data || undefined,
       header: header,
+      dataType: opts.dataType,
       timeout: timeout,
     }),
     timeout,
@@ -116,7 +129,7 @@ function request(options) {
       throw toError(res, '登录已过期')
     }
     if (res.statusCode >= 200 && res.statusCode < 300) {
-      return res.data
+      return parseBody(res.data)
     }
     throw toError(res, '请求失败')
   })
@@ -158,6 +171,7 @@ function upload(options) {
       name: opts.name || 'file',
       formData: opts.formData || {},
       header: Object.assign(
+        { 'x-ledger-client': 'miniprogram' },
         token ? { authorization: 'Bearer ' + token } : {},
         ledgerId ? { 'x-ledger-id': String(ledgerId) } : {},
       ),
@@ -293,7 +307,7 @@ function uploadReceipt(txId, filePath, mime) {
           url: config.getBaseUrl() + '/api/v1/transactions/' + txId + '/receipt',
           method: 'POST',
           header: Object.assign(
-            { 'content-type': 'multipart/form-data; boundary=' + packed.boundary },
+            { 'content-type': 'multipart/form-data; boundary=' + packed.boundary, 'x-ledger-client': 'miniprogram' },
             token ? { authorization: 'Bearer ' + token } : {},
             ledgerId ? { 'x-ledger-id': String(ledgerId) } : {},
           ),
@@ -366,7 +380,7 @@ function uploadBinary(options) {
         url: config.getBaseUrl() + opts.path,
         method: 'POST',
         header: Object.assign(
-          { 'content-type': 'multipart/form-data; boundary=' + packed.boundary },
+          { 'content-type': 'multipart/form-data; boundary=' + packed.boundary, 'x-ledger-client': 'miniprogram' },
           token ? { authorization: 'Bearer ' + token } : {},
           ledgerId ? { 'x-ledger-id': String(ledgerId) } : {},
         ),

@@ -118,38 +118,7 @@ for (const file of jsFiles) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. web-view 白名单：服务端能切过去的页面，客户端必须有原生兜底路径
-// ---------------------------------------------------------------------------
-const navSrc = readFileSync(join(root, "utils/nav.js"), "utf8");
-const serverSrc = readFileSync(join(repoRoot, "src/routes/webview.ts"), "utf8");
-const serverPages = [...serverSrc.matchAll(/^\s{2}(\w+): \{ mode:/gm)].map((m) => m[1]);
-for (const key of serverPages) {
-  if (!new RegExp(`\\b${key}:\\s*'/pages/`).test(navSrc)) {
-    err(`服务端可切 web-view 的页面 ${key} 在 utils/nav.js 里没有原生兜底路径`);
-  }
-  if (!new RegExp(`\\b${key}: \\{ mode:`).test(readFileSync(join(root, "config.js"), "utf8"))) {
-    warn(`config.js 的 fallbackPages 里没有 ${key}，服务端配置拉不到时会没有兜底`);
-  }
-}
-if (!serverPages.length) warn("没能从 src/routes/webview.ts 解析出可切 web-view 的页面列表");
-
-// ---------------------------------------------------------------------------
-// 6. 交接码参数名两端一致
-// ---------------------------------------------------------------------------
-const handoffParam = readFileSync(join(root, "utils/webview.js"), "utf8").match(
-  /HANDOFF_PARAM\s*=\s*['"](\w+)['"]/,
-);
-if (!handoffParam) {
-  err("utils/webview.js 里没有 HANDOFF_PARAM");
-} else {
-  const bridge = readFileSync(join(repoRoot, "web/src/bridge.ts"), "utf8");
-  if (!bridge.includes(`HANDOFF_PARAM = '${handoffParam[1]}'`)) {
-    err(`交接码参数名两端不一致：小程序用 ${handoffParam[1]}，网页端不是`);
-  }
-}
-
-// ---------------------------------------------------------------------------
-// 7. WXML：标签配平 + 里不能出现的表达式
+// 5. WXML：标签配平 + 里不能出现的表达式
 //
 // 微信的 WXML 编译器只支持很窄的一套表达式。写了 Math / 箭头函数 / 模板串
 // 不会给出「这一行错了」这种提示，而是整页编译失败，很难倒查，所以在本地拦掉。

@@ -1,0 +1,18 @@
+<view class="page">
+  <view class="card balance-card">
+    <view class="muted">当前积分</view>
+    <view class="balance">{{loading ? '…' : balance}}</view>
+    <view class="muted" wx:if="{{streak}}">已连续进入 {{streak}} 天</view>
+  </view>
+  <view class="card" wx:if="{{entries.length}}">
+    <view class="entry" wx:for="{{entries}}" wx:key="id">
+      <view class="entry-main">
+        <view>{{item.title}}</view>
+        <view class="muted">{{item.time}} {{item.note}}</view>
+      </view>
+      <view class="delta">{{item.deltaText}}</view>
+    </view>
+  </view>
+  <view class="card muted" wx:elif="{{error}}">{{error}}</view>
+  <view class="card muted" wx:elif="{{empty}}">还没有积分明细</view>
+</view>

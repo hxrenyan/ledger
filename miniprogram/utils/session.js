@@ -1,6 +1,6 @@
 /**
  * 会话：token / 当前账本 / 用户 / 账本列表。
- * 存储键与 web/src/stores/session.ts 对齐（ledger.*），方便排查。
+ * 会话存在本地 storage，键名是 ledger.*。
  */
 
 const { toId } = require('./id')
@@ -20,6 +20,15 @@ function getLedgerId() {
 
 function getUser() {
   return wx.getStorageSync(USER) || null
+}
+
+/** 当前会话是微信登录（含绑定后的密码账号）。旧会话没有 wechat_bound 时，wx_ 用户名也算。 */
+function isWechat() {
+  const user = getUser()
+  if (!user) return false
+  if (user.wechat_bound) return true
+  const name = user.username || ''
+  return name.indexOf('wx_') === 0
 }
 
 function getLedgers() {
@@ -92,6 +101,7 @@ module.exports = {
   getToken,
   getLedgerId,
   getUser,
+  isWechat,
   getLedgers,
   currentLedger,
   setLedger,

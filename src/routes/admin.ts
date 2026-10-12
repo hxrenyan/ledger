@@ -9,6 +9,9 @@ import { readAudio } from './speech.ts'
 import { readAsrProfiles, replaceAsrProfiles, toPublicAsr, transcribeOne, type AsrProfile } from '../speech/asr.ts'
 import { OCR_PROTOCOL, readOcrProfiles, recognizeOne, replaceOcrProfiles, toPublicOcr, type OcrProfile } from '../ocr/vision.ts'
 import { imageFromFile } from './ocr.ts'
+import { adjustPoints, adjustPointsMany, assertWechatUser, listPointEntries, listWechatPointUsers } from '../points/adjust.ts'
+import { recognitionRestricted, setRecognitionRestricted } from '../points/wallet.ts'
+import { listAdminFeedback, parseFeedbackStatus, updateFeedback } from '../feedback/service.ts'
 
 export function registerAdminRoutes(app: Hono<AppEnv>) {
   app.post('/api/v1/admin/login', async (c) => {
@@ -72,6 +75,60 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
     if (!user) throw notFound('用户不存在')
     await db.run(`UPDATE users SET disabled = ? WHERE id = ?`, [body.disabled ? 1 : 0, id])
     return c.json({ id, disabled: body.disabled })
+  })
+
+  app.get('/api/v1/admin/points', async (c) => {
+    return c.json({ items: await listWechatPointUsers(c.get('db')) })
+  })
+
+  app.post('/api/v1/admin/points', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    if (!Array.isArray(body.user_ids) || typeof body.delta !== 'number' || typeof body.note !== 'string') {
+      throw badRequest('请选择用户，并填写积分变动和备注')
+    }
+    const userIds = body.user_ids.map((id: unknown) => {
+      const parsed = parseId(id)
+      if (parsed == null) throw badRequest('用户编号无效')
+      return parsed
+    })
+    const items = await adjustPointsMany(c.get('db'), userIds, body.delta, body.note)
+    return c.json({ items })
+  })
+
+  app.get('/api/v1/admin/users/:id/points', async (c) => {
+    const id = routeId(c.req.param('id'), '用户')
+    const db = c.get('db')
+    await assertWechatUser(db, id)
+    const account = await db.first<{ balance: number }>(`SELECT balance FROM point_accounts WHERE user_id = ?`, [id])
+    const items = await listPointEntries(db, id)
+    return c.json({ balance: Number(account?.balance ?? 0), items })
+  })
+
+  app.post('/api/v1/admin/users/:id/points', async (c) => {
+    const id = routeId(c.req.param('id'), '用户')
+    const body = await c.req.json().catch(() => ({}))
+    if (typeof body.delta !== 'number' || typeof body.note !== 'string') throw badRequest('请提供积分变动和备注')
+    const entry = await adjustPoints(c.get('db'), id, body.delta, body.note)
+    return c.json({ balance: entry.balance_after, entry })
+  })
+
+  app.get('/api/v1/admin/feedbacks', async (c) => {
+    const status = parseFeedbackStatus(c.req.query('status') || 'open')
+    if (!status) throw badRequest('状态只能是 open、done 或 all')
+    return c.json({ items: await listAdminFeedback(c.get('db'), status) })
+  })
+
+  app.patch('/api/v1/admin/feedbacks/:id', async (c) => {
+    const id = routeId(c.req.param('id'), '反馈')
+    const body = await c.req.json().catch(() => ({}))
+    const status = body.status == null ? undefined : parseFeedbackStatus(body.status)
+    if (body.status != null && (status == null || status === 'all')) throw badRequest('状态只能是 open 或 done')
+    if (body.reply != null && typeof body.reply !== 'string') throw badRequest('回复须为文字')
+    if (typeof body.reply === 'string' && body.reply.trim().length > 500) throw badRequest('回复最多 500 字')
+    const reply = typeof body.reply === 'string' ? body.reply.trim() : undefined
+    const nextStatus = status === 'open' || status === 'done' ? status : undefined
+    const item = await updateFeedback(c.get('db'), id, nextStatus, reply)
+    return c.json(item)
   })
 
   app.get('/api/v1/admin/ledgers', async (c) => {    const rows = await c.get('db').all<{
@@ -222,6 +279,16 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
   app.put('/api/v1/admin/wechat', async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
     return c.json(await saveWechatAdminConfig(c.get('db'), body))
+  })
+
+  app.get('/api/v1/admin/recognition', async (c) => {
+    return c.json({ restricted: await recognitionRestricted(c.get('db')) })
+  })
+
+  app.put('/api/v1/admin/recognition', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { restricted?: unknown }
+    const restricted = body.restricted === true || body.restricted === 1 || body.restricted === '1'
+    return c.json(await setRecognitionRestricted(c.get('db'), restricted))
   })
 }
 

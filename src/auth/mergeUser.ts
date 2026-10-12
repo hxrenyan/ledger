@@ -61,6 +61,11 @@ export async function mergeUserStmts(
       params: [targetUserId, sourceUserId, ...guardParams],
     })
   }
+  stmts.push(...(await movePointStmts(db, sourceUserId, targetUserId, guard, guardParams)))
+  stmts.push({
+    sql: `UPDATE feedbacks SET user_id = ? WHERE user_id = ? AND ${guard}`,
+    params: [targetUserId, sourceUserId, ...guardParams],
+  })
   stmts.push({
     sql: `DELETE FROM members WHERE user_id = ? AND ${guard}`,
     params: [sourceUserId, ...guardParams],
@@ -316,6 +321,77 @@ async function mergeContacts(
       params: [destLedgerId, src.id, ...guardParams],
     })
     byName.set(src.name, src)
+  }
+  return stmts
+}
+
+/**
+ * 积分跟微信身份走。密码账号这边通常还没有积分行，直接改用户号。
+ * 两边都有时，余额相加；连续天数留下更近的那一段，不把已经领过的当天再领一次。
+ */
+async function movePointStmts(
+  db: Db,
+  sourceUserId: number,
+  targetUserId: number,
+  guard: string,
+  guardParams: unknown[],
+): Promise<Stmt[]> {
+  const now = Date.now()
+  const stmts: Stmt[] = [
+    {
+      sql: `UPDATE point_accounts
+            SET balance = balance + COALESCE((SELECT balance FROM point_accounts WHERE user_id = ?), 0),
+                updated_at = ?
+            WHERE user_id = ?
+              AND EXISTS (SELECT 1 FROM point_accounts WHERE user_id = ?)
+              AND ${guard}`,
+      params: [sourceUserId, now, targetUserId, sourceUserId, ...guardParams],
+    },
+    {
+      sql: `DELETE FROM point_accounts
+            WHERE user_id = ?
+              AND EXISTS (SELECT 1 FROM point_accounts WHERE user_id = ?)
+              AND ${guard}`,
+      params: [sourceUserId, targetUserId, ...guardParams],
+    },
+    {
+      sql: `UPDATE point_accounts SET user_id = ? WHERE user_id = ? AND ${guard}`,
+      params: [targetUserId, sourceUserId, ...guardParams],
+    },
+    {
+      sql: `UPDATE point_entries SET user_id = ? WHERE user_id = ? AND ${guard}`,
+      params: [targetUserId, sourceUserId, ...guardParams],
+    },
+    {
+      sql: `UPDATE point_calls SET user_id = ? WHERE user_id = ? AND ${guard}`,
+      params: [targetUserId, sourceUserId, ...guardParams],
+    },
+  ]
+  const source = await db.first<{ last_day: string; streak: number; updated_at: number }>(
+    `SELECT last_day, streak, updated_at FROM point_checkins WHERE user_id = ?`,
+    [sourceUserId],
+  )
+  const target = await db.first<{ last_day: string; streak: number }>(
+    `SELECT last_day, streak FROM point_checkins WHERE user_id = ?`,
+    [targetUserId],
+  )
+  if (source && target) {
+    const sourceLater = source.last_day > target.last_day || (source.last_day === target.last_day && source.streak > target.streak)
+    if (sourceLater) {
+      stmts.push({
+        sql: `UPDATE point_checkins SET last_day = ?, streak = ?, updated_at = ? WHERE user_id = ? AND ${guard}`,
+        params: [source.last_day, source.streak, source.updated_at, targetUserId, ...guardParams],
+      })
+    }
+    stmts.push({
+      sql: `DELETE FROM point_checkins WHERE user_id = ? AND ${guard}`,
+      params: [sourceUserId, ...guardParams],
+    })
+  } else if (source) {
+    stmts.push({
+      sql: `UPDATE point_checkins SET user_id = ? WHERE user_id = ? AND ${guard}`,
+      params: [targetUserId, sourceUserId, ...guardParams],
+    })
   }
   return stmts
 }

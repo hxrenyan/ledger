@@ -71,36 +71,6 @@ function envList() {
   return Object.keys(ENVS).map((k) => ENVS[k])
 }
 
-/**
- * web-view 混合架构的本地兜底。
- *
- * 真正生效的页面归属表来自服务端（GET /api/v1/app/config，见 utils/appConfig.js）：
- * 运维把某页切成 web-view 后即生效，不用发版。这里的值只在
- * 「首次启动还没拉到配置」或「接口挂了」时使用——所以默认全部原生，
- * 宁可多走原生，也不要让用户撞上一个打不开的网页。
- *
- * 启用 web-view 的三个前置条件（缺一不可，详见 README「web-view 接入清单」）：
- *   1. 小程序主体是非个人（企业 / 个体户）——个人主体配不了业务域名；
- *   2. 域名已 HTTPS 化，且 ICP 备案主体与小程序认证主体一致；
- *   3. 该域名在微信后台登记为「业务域名」，并把校验文件放到域名根目录。
- */
-const WEBVIEW_PAGES = {
-  budgets: { mode: 'native', path: '/budgets' },
-  categories: { mode: 'native', path: '/categories' },
-  recurring: { mode: 'native', path: '/recurring' },
-  import: { mode: 'native', path: '/import' },
-  ledger: { mode: 'native', path: '/me' },
-}
-
-/** 深拷贝一份，避免调用方改到这份常量。 */
-function fallbackPages() {
-  const out = {}
-  Object.keys(WEBVIEW_PAGES).forEach(function (key) {
-    out[key] = { mode: WEBVIEW_PAGES[key].mode, path: WEBVIEW_PAGES[key].path }
-  })
-  return out
-}
-
 module.exports = {
   ENVS,
   getBaseUrl,
@@ -110,5 +80,4 @@ module.exports = {
   currentEnv,
   currentEnvKey,
   envList,
-  fallbackPages,
 }

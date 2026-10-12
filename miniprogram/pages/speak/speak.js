@@ -12,6 +12,13 @@ const request = require('../../utils/request')
 const session = require('../../utils/session')
 const ui = require('../../utils/ui')
 
+/** 模型已配置即可用。会话已是微信登录时，不因 status.allowed 为 false 把入口藏掉。 */
+function modelReady(res) {
+  if (!res || !res.available) return false
+  if (res.allowed !== false) return true
+  return session.isWechat()
+}
+
 Page({
   data: {
     /** null = 还在查；false = 语音与图片识别都没配 */
@@ -28,11 +35,11 @@ Page({
     this.pending = 2
     request
       .get('/api/v1/speech/status', null, { withLedger: false })
-      .then((res) => this.setStatus('canSpeak', !!(res && res.available)))
+      .then((res) => this.setStatus('canSpeak', modelReady(res)))
       .catch(() => this.setStatus('canSpeak', false))
     request
       .get('/api/v1/ocr/status', null, { withLedger: false })
-      .then((res) => this.setStatus('canPhoto', !!(res && res.available)))
+      .then((res) => this.setStatus('canPhoto', modelReady(res)))
       .catch(() => this.setStatus('canPhoto', false))
   },
 
@@ -67,7 +74,10 @@ Page({
     this.setData({ show: false })
   },
 
-  onDone() {
+  onDone(e) {
+    const dates = (e.detail && e.detail.dates) || []
+    const latest = dates.filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort().pop()
+    if (latest) getApp().globalData.pendingLedgerDate = latest
     setTimeout(() => wx.navigateBack(), 500)
   },
 

@@ -5,10 +5,11 @@ import { adminApi, setAdminToken } from '../../adminApi.ts'
 import AdminAi from './AdminAi.vue'
 import AdminAsr from './AdminAsr.vue'
 import AdminOcr from './AdminOcr.vue'
-import AdminWebview from './AdminWebview.vue'
 import AdminWechat from './AdminWechat.vue'
+import AdminPoints from './AdminPoints.vue'
+import AdminFeedback from './AdminFeedback.vue'
 
-type Tab = 'users' | 'ledgers' | 'ai' | 'asr' | 'ocr' | 'webview' | 'wechat'
+type Tab = 'users' | 'ledgers' | 'points' | 'feedback' | 'ai' | 'asr' | 'ocr' | 'wechat'
 type Overview = { users: number; ledgers: number; transactions: number; disabled_users: number }
 type UserRow = { id: number; username: string; nickname: string; disabled: boolean; created_at: number; last_seen_at: number | null; ledger_count: number }
 type LedgerRow = { id: number; name: string; owner_username: string; member_count: number; tx_count: number; created_at: number; last_seen_at: number | null }
@@ -21,9 +22,9 @@ const err = ref('')
 const loading = ref(false)
 const busyId = ref<number | ''>('')
 const navGroups = [
-  { title: '概览', items: [{ key: 'users', label: '用户' }, { key: 'ledgers', label: '账本' }] },
+  { title: '概览', items: [{ key: 'users', label: '用户' }, { key: 'ledgers', label: '账本' }, { key: 'points', label: '积分' }, { key: 'feedback', label: '反馈' }] },
   { title: '能力配置', items: [{ key: 'ai', label: 'AI 解析' }, { key: 'asr', label: '语音识别' }, { key: 'ocr', label: '图片识别' }] },
-  { title: '产品配置', items: [{ key: 'wechat', label: '微信登录' }, { key: 'webview', label: 'Web-view' }] },
+  { title: '产品配置', items: [{ key: 'wechat', label: '微信登录' }] },
 ] as const
 async function load() {
   loading.value = true; err.value = ''
@@ -65,7 +66,7 @@ onMounted(load)
         <p v-if="err" class="err admin-alert">{{ err }}</p>
         <section v-if="tab === 'users'" class="admin-panel"><div class="admin-panel-head"><div><h3>用户列表</h3><p class="muted">共 {{ users.length }} 位用户</p></div></div><div v-if="!users.length && !loading" class="admin-empty">暂无用户数据</div><div v-for="u in users" :key="u.id" class="admin-list-row"><div class="admin-avatar">{{ (u.nickname || u.username).slice(0, 1).toUpperCase() }}</div><div class="admin-row-main"><strong>{{ u.nickname || u.username }}</strong><span>@{{ u.username }} · {{ u.ledger_count }} 本账本</span><span>注册 {{ whenAt(u.created_at) }} · 最后使用 {{ whenAt(u.last_seen_at) }}</span></div><span class="admin-status" :class="u.disabled ? 'off' : 'on'">{{ u.disabled ? '已停用' : '正常' }}</span><button class="btn compact" :class="u.disabled ? 'ghost' : 'danger'" type="button" :disabled="busyId === u.id" @click="toggle(u)">{{ u.disabled ? '启用' : '停用' }}</button></div></section>
         <section v-else-if="tab === 'ledgers'" class="admin-panel"><div class="admin-panel-head"><div><h3>账本列表</h3><p class="muted">共 {{ ledgers.length }} 本账本</p></div></div><div v-if="!ledgers.length && !loading" class="admin-empty">暂无账本数据</div><div v-for="l in ledgers" :key="l.id" class="admin-list-row"><div class="admin-avatar ledger">账</div><div class="admin-row-main"><strong>{{ l.name }}</strong><span>主账号 @{{ l.owner_username }}</span><span>创建 {{ whenAt(l.created_at) }} · 最后使用 {{ whenAt(l.last_seen_at) }}</span></div><div class="admin-row-metrics"><span>{{ l.member_count }} 人</span><span>{{ l.tx_count }} 笔</span></div></div></section>
-        <AdminAi v-else-if="tab === 'ai'" /><AdminAsr v-else-if="tab === 'asr'" /><AdminOcr v-else-if="tab === 'ocr'" /><AdminWechat v-else-if="tab === 'wechat'" /><AdminWebview v-else />
+        <AdminPoints v-else-if="tab === 'points'" /><AdminFeedback v-else-if="tab === 'feedback'" /><AdminAi v-else-if="tab === 'ai'" /><AdminAsr v-else-if="tab === 'asr'" /><AdminOcr v-else-if="tab === 'ocr'" /><AdminWechat v-else-if="tab === 'wechat'" />
       </section>
     </main>
   </div>

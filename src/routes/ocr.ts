@@ -8,6 +8,15 @@ import {
   recognizeChain,
   type ImagePayload,
 } from '../ocr/vision.ts'
+import {
+  assertWechatRecognition,
+  getBalance,
+  insufficient,
+  isWechatUser,
+  lackMessage,
+  recognitionRestricted,
+  reserveCall,
+} from '../points/wallet.ts'
 
 /** 认图上限。客户端会先压到这个值以内，这里再挡一次没压过的原图。 */
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024
@@ -16,7 +25,12 @@ const MAX_BASE64_CHARS = Math.ceil((MAX_IMAGE_BYTES / 3) * 4) + 1024
 
 export function registerOcrRoutes(app: Hono<AppEnv>) {
   app.get('/api/v1/ocr/status', async (c) => {
-    return c.json({ available: await ocrAvailable(c.get('db')) })
+    const db = c.get('db')
+    const limited = await recognitionRestricted(db)
+    return c.json({
+      available: await ocrAvailable(db),
+      allowed: !limited || (await isWechatUser(db, c.get('userId'))),
+    })
   })
 
   /**
@@ -28,7 +42,16 @@ export function registerOcrRoutes(app: Hono<AppEnv>) {
    */
   app.post('/api/v1/ocr/scan', async (c) => {
     const image = await readImage(c.req.raw)
-    const profiles = await readOcrProfiles(c.get('db'))
+    const db = c.get('db')
+    const userId = c.get('userId')
+    if (await recognitionRestricted(db)) {
+      await assertWechatRecognition(db, userId)
+      const balance = await getBalance(db, userId)
+      if (balance < 1) throw insufficient(await lackMessage(db, userId, 1, balance))
+      // 认图本身不记一条积分，积分记在后面的「整理成流水」上。这里只占图片次数。
+      await reserveCall(db, userId, 'image')
+    }
+    const profiles = await readOcrProfiles(db)
     const res = await recognizeChain(profiles, image)
     if (!res.ok) throw new HttpError(502, 'ocr_failed', res.error)
     return c.json({ text: res.text, profile: res.profile, chars: res.text.length })

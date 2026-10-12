@@ -1,8 +1,15 @@
-import type { Hono } from 'hono'
+import type { Context, Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { badRequest } from '../http.ts'
 import { routeId } from '../id.ts'
 import { buildPreview, commitImport, listBatches, previewUtterances, suggestWithAi, undoBatch } from '../imports/service.ts'
+import {
+  assertWechatRecognition,
+  chargeByRows,
+  estimateTextPoints,
+  getBalance,
+  payableRowCount,
+} from '../points/wallet.ts'
 
 /**
  * 单次上传的文本上限。原始文件和语音都不落库：
@@ -29,7 +36,7 @@ export function registerImportRoutes(app: Hono<AppEnv>) {
         filename: typeof body?.filename === 'string' ? body.filename.slice(0, 200) : '',
         sheet: typeof body?.sheet === 'string' ? body.sheet.slice(0, 100) : undefined,
       },
-      { useAi: body?.use_ai === true },
+      { useAi: body?.use_ai === true, userId: c.get('userId') },
     )
     return c.json(result)
   })
@@ -38,7 +45,7 @@ export function registerImportRoutes(app: Hono<AppEnv>) {
     const body = await c.req.json().catch(() => ({}))
     const text = typeof body?.text === 'string' ? body.text : ''
     if (text.length > 8000) throw badRequest('文本过长')
-    const preview = await previewUtterances(c.get('db'), c.get('ledgerId'), text)
+    const preview = await chargeText(c, text, 'text', (value) => previewUtterances(c.get('db'), c.get('ledgerId'), value))
     return c.json(preview)
   })
 
@@ -52,7 +59,9 @@ export function registerImportRoutes(app: Hono<AppEnv>) {
     const text = typeof body?.text === 'string' ? body.text : ''
     if (!text.trim()) throw badRequest('没有可解析的文字')
     if (text.length > 20000) throw badRequest('文字过长')
-    const preview = await previewUtterances(c.get('db'), c.get('ledgerId'), text, 'photo')
+    const preview = await chargeText(c, text, 'image', (value) =>
+      previewUtterances(c.get('db'), c.get('ledgerId'), value, 'photo'),
+    )
     return c.json(preview)
   })
 
@@ -91,4 +100,26 @@ export function registerImportRoutes(app: Hono<AppEnv>) {
     const result = await undoBatch(c.get('db'), c.get('ledgerId'), routeId(c.req.param('id'), '批次'))
     return c.json({ ok: true, ...result })
   })
+}
+
+/** 空白文本不调用模型，也不扣分。有内容时先按行数冻结，成功后再按可入账条数结算。 */
+async function chargeText<T extends { items: { status?: string; direction?: string }[] }>(
+  c: Context<AppEnv>,
+  text: string,
+  kind: 'text' | 'image',
+  run: (text: string) => Promise<T>,
+) {
+  const db = c.get('db')
+  const userId = c.get('userId')
+  const estimate = estimateTextPoints(text)
+  if (estimate < 1) {
+    await assertWechatRecognition(db, userId)
+    const preview = await run(text)
+    return { ...preview, points: { charged: 0, balance: await getBalance(db, userId) } }
+  }
+  const charged = await chargeByRows(db, userId, kind, kind, estimate, async () => {
+    const preview = await run(text)
+    return { rows: payableRowCount(preview.items), value: preview }
+  })
+  return { ...charged.value, points: { charged: charged.charged, balance: charged.balance } }
 }

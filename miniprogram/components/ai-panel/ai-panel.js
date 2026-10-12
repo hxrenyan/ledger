@@ -21,6 +21,7 @@
  */
 
 const request = require('../../utils/request')
+const session = require('../../utils/session')
 const image = require('../../utils/image')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
@@ -31,6 +32,53 @@ const MAX_SECONDS = 60
 const PARSE_TIMEOUT_MS = 120000
 /** 核对页里那行原文只作参考，太长就把票据正文挤没了。 */
 const BRIEF_CHARS = 200
+
+const WECHAT_ONLY = '语音识别、图片识别和文本整理仅支持微信登录'
+
+function pointsBody(raw) {
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw)
+    } catch (e) {
+      return null
+    }
+  }
+  return raw && typeof raw === 'object' ? raw : null
+}
+
+/**
+ * 余额不够或不是微信账号时返回 null，并说明原因。够用时返回摘要。
+ * 会话里已经是微信登录时，不以摘要里缺失的 wechat 字段把人拦下。
+ */
+function ensurePoints(need) {
+  const sessionWechat = session.isWechat()
+  return request.get('/api/v1/points').then((raw) => {
+    const summary = pointsBody(raw)
+    if (summary && summary.restricted === false) return summary
+    const flagged = !!(summary && (summary.wechat === true || summary.wechat === 1))
+    if (!flagged && !sessionWechat) {
+      wx.showModal({
+        title: '无法使用',
+        content: WECHAT_ONLY,
+        showCancel: false,
+      })
+      return null
+    }
+    // 登录态已是微信，但这份摘要把余额写成 0（判成非微信时的占位）。交给后面的接口扣费。
+    if (!flagged) return { wechat: true, balance: need, today_checked: false }
+    if (Number(summary.balance) < need) {
+      const lack = need - Number(summary.balance)
+      const tail = summary.today_checked ? '今日进入积分已领取' : '今日进入积分还未领取'
+      wx.showModal({
+        title: '积分不足',
+        content: '这段需要 ' + need + ' 积分，还差 ' + lack + '。' + tail,
+        showCancel: false,
+      })
+      return null
+    }
+    return summary
+  })
+}
 
 function brief(text) {
   const s = String(text || '')
@@ -126,6 +174,7 @@ Component({
     detached() {
       // 录音途中被销毁：这次的结果没人要了，但 activePanel 必须清掉，
       // 否则下一次录音的回调会落在一个已销毁的实例上（正是上面说的那个坑）。
+      this.holding = false
       if (activePanel === this) activePanel = null
       this.clearTimer()
       this.clearStopGuard()
@@ -266,20 +315,34 @@ Component({
     },
 
     startRecord() {
-      if (this.data.state === 'recording') return
-      // 认领这次录音：结束回调由模块级 bindRecorder 转发到这儿（见文件顶部说明）。
-      activePanel = this
-      this.setData({ state: 'recording', mode: 'voice', seconds: 0, tip: '松开发送' })
-      this.ensureRecorder().start({ duration: MAX_SECONDS * 1000, format: 'mp3', sampleRate: 16000, encodeBitRate: 48000 })
-      this.clearTimer()
-      this.timer = setInterval(() => {
-        const s = this.data.seconds + 1
-        this.setData({ seconds: s })
-        if (s >= MAX_SECONDS) this.finishRecord()
-      }, 1000)
+      if (this.data.state === 'recording' || this.holding) return
+      this.holding = true
+      ensurePoints(1)
+        .then((summary) => {
+          // 余额查询回来时手指已经松开，就不要再开录，否则按钮会在松手后才变状态。
+          if (!summary || !this.holding || this.data.state === 'recording') {
+            this.holding = false
+            return
+          }
+          // 认领这次录音：结束回调由模块级 bindRecorder 转发到这儿（见文件顶部说明）。
+          activePanel = this
+          this.setData({ state: 'recording', mode: 'voice', seconds: 0, tip: '松开发送' })
+          this.ensureRecorder().start({ duration: MAX_SECONDS * 1000, format: 'mp3', sampleRate: 16000, encodeBitRate: 48000 })
+          this.clearTimer()
+          this.timer = setInterval(() => {
+            const s = this.data.seconds + 1
+            this.setData({ seconds: s })
+            if (s >= MAX_SECONDS) this.finishRecord()
+          }, 1000)
+        })
+        .catch((err) => {
+          this.holding = false
+          this.onFail(err, '暂时无法录音')
+        })
     },
 
     finishRecord() {
+      this.holding = false
       if (this.data.state !== 'recording') return
       this.clearTimer()
       this.setData({ state: 'busy', tip: '识别中…' })
@@ -307,9 +370,26 @@ Component({
         ui.toast('说得太短了')
         return
       }
-      request
-        .uploadBinary({ path: '/api/v1/speech/transcribe', filePath: filePath, ext: 'mp3' })
+      const durationMs = res.duration || this.data.seconds * 1000
+      let seconds = Math.ceil(durationMs / 1000)
+      if (seconds < 1) seconds = 1
+      if (seconds > MAX_SECONDS) seconds = MAX_SECONDS
+      const need = Math.max(1, Math.ceil(seconds / 2))
+      ensurePoints(need)
+        .then((summary) => {
+          if (!summary) {
+            this.setData({ state: 'idle', tip: '' })
+            return null
+          }
+          return request.uploadBinary({
+            path: '/api/v1/speech/transcribe',
+            filePath: filePath,
+            ext: 'mp3',
+            formData: { duration_ms: String(durationMs) },
+          })
+        })
         .then((data) => {
+          if (!data) return null
           const text = (data && data.text) || ''
           if (!text.trim()) {
             this.setData({ state: 'idle', tip: '' })
@@ -341,19 +421,25 @@ Component({
      */
     pickPhoto() {
       if (this.data.state === 'busy' || this.data.state === 'recording') return
-      this.setData({ mode: 'photo' })
-      image
-        .pick()
+      ensurePoints(1)
+        .then((summary) => {
+          if (!summary) return null
+          this.setData({ mode: 'photo' })
+          return image.pick()
+        })
         .then((picked) => {
+          if (!picked) return null
           this.setData({ state: 'busy', tip: '处理照片…' })
           return image.prepare(picked)
         })
         .then((ready) => {
+          if (!ready) return null
           this.setData({ tip: '识别中…' })
           this.armSlowTip()
           return request.scanImage(ready)
         })
         .then((res) => {
+          if (!res) return null
           const text = (res && res.text) || ''
           if (!text.trim()) {
             this.setData({ state: 'idle', tip: '' })
@@ -389,6 +475,11 @@ Component({
       const cancelled = err && err.code === 'cancelled'
       this.setData({ state: 'idle', tip: '' })
       if (cancelled) return
+      const message = (err && err.message) || fallback
+      if (err && (err.code === 'insufficient_points' || err.status === 403)) {
+        wx.showModal({ title: err.status === 403 ? '无法使用' : '积分不足', content: message, showCancel: false })
+        return
+      }
       ui.fail(err, fallback)
     },
 
@@ -571,8 +662,18 @@ Component({
         .then((res) => {
           const n = (res && res.imported) || 0
           const gifts = (res && res.gifts) || 0
-          ui.ok(gifts ? '记下 ' + n + ' 笔，含 ' + gifts + ' 笔人情' : '记下 ' + n + ' 笔')
-          this.triggerEvent('done', { imported: n, gifts: gifts })
+          const failed = (res && res.failed) || []
+          const duplicates = (res && res.duplicates) || 0
+          if (!n && !gifts) {
+            const reason = failed[0] && failed[0].reason
+            ui.toast(reason ? '没记下：' + reason : duplicates ? '这几笔已经记过了' : '没有写下新记录')
+            return
+          }
+          const dates = rows.map((row) => row.date).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date))
+          const latest = dates.slice().sort().pop()
+          const otherMonth = latest && latest.slice(0, 7) !== time.shanghaiMonth()
+          ui.ok(otherMonth ? Number(latest.slice(5, 7)) + '月' + Number(latest.slice(8, 10)) + '日' : gifts ? '记下 ' + n + ' 笔，含 ' + gifts + ' 笔人情' : '记下 ' + n + ' 笔')
+          this.triggerEvent('done', { imported: n, gifts: gifts, dates: dates })
           this.triggerEvent('close')
         })
         .catch((err) => ui.fail(err, '保存失败'))

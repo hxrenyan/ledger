@@ -2,7 +2,7 @@
  * 「缺账本」的状态码回归测试。
  *
  * 背景：账本中间件原本对「已通过鉴权、但没带 X-Ledger-Id」的请求返回 401。
- * 但 401 在客户端（小程序 utils/request.js、H5 web/src/api.ts）的语义是
+ * 但 401 在小程序 utils/request.js 的语义是
  * 「登录过期」，会被处理成「清会话 + 跳登录页」。
  *
  * 实际踩到的现象：小程序明细页会调 GET /api/v1/speech/status（它只读全局的
@@ -81,6 +81,28 @@ describe('账本上下文与 401 的边界', () => {
     })
     expect(res.status).toBe(200)
     expect(res.body).toHaveProperty('available')
+  })
+
+  it('用户反馈与账本无关，不带账本头也能访问', async () => {
+    const { app } = await setup()
+    const { token } = await signup(app, 'feedbacker')
+
+    const res = await json(app, '/api/v1/feedbacks', {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ items: [] })
+  })
+
+  it('积分摘要与账本无关，不带账本头也能访问', async () => {
+    const { app } = await setup()
+    const { token } = await signup(app, 'pointer')
+
+    const res = await json(app, '/api/v1/points', {
+      headers: { authorization: `Bearer ${token}` },
+    })
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ wechat: false, balance: 0 })
   })
 
   it('账本不属于自己时返回 403，不能退化成 401', async () => {

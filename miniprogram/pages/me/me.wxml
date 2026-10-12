@@ -36,16 +36,24 @@
       <view>语音记账</view>
       <view class="arrow">›</view>
     </view>
+    <view class="link-row" wx:if="{{wechatBound}}" bindtap="openPoints">
+      <view>积分</view>
+      <view class="arrow">{{pointBalance === '' ? '' : pointBalance + ' 分'}} ›</view>
+    </view>
   </view>
 
   <view class="card">
-    <view class="link-row" bindtap="exportCsv">
-      <view>导出账单 CSV</view>
+    <view class="link-row" bindtap="exportBook">
+      <view>导出账单</view>
       <view class="arrow">›</view>
     </view>
     <view class="link-row" wx:if="{{wechatBound && !hasPassword}}" bindtap="bindAccount">
       <view>绑定已有账号</view>
       <view class="arrow">把老账号并进来 ›</view>
+    </view>
+    <view class="link-row" wx:if="{{!guest}}" bindtap="openFeedback">
+      <view>用户反馈</view>
+      <view class="arrow">›</view>
     </view>
     <view class="link-row" bindtap="about">
       <view>关于</view>

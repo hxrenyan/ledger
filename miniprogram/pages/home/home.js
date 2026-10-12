@@ -7,7 +7,7 @@
  * 数据来源：GET /transactions?month= 、GET /stats/monthly?month= 、GET /stats/overview?month=
  * 金额一律是整数分，展示时才转元。搜索与账户/分类筛选交给服务端（同一组 query 参数）。
  *
- * 页面跳转一律走 utils/nav.go —— 只有它知道某个页当前该走原生还是 web-view。
+ * 页面跳转一律走 utils/nav.go。
  */
 
 const request = require('../../utils/request')
@@ -18,6 +18,13 @@ const time = require('../../utils/time')
 const ui = require('../../utils/ui')
 
 const SH_OFFSET = 8 * 3600 * 1000
+
+/** 模型已配置即可用。会话已是微信登录时，不因 status.allowed 为 false 把入口藏掉。 */
+function modelReady(res) {
+  if (!res || !res.available) return false
+  if (res.allowed !== false) return true
+  return session.isWechat()
+}
 
 function timeText(ms) {
   const d = new Date(ms + SH_OFFSET)
@@ -144,6 +151,14 @@ Page({
       this.loadedOnce = true
       return
     }
+    // 拍照/语音在单独页面保存后，把要看的日期带回来。本页浮层走 onVoiceDone，不经这里。
+    const pending = getApp().globalData.pendingLedgerDate
+    if (pending && /^\d{4}-\d{2}-\d{2}$/.test(pending)) {
+      getApp().globalData.pendingLedgerDate = ''
+      this.focusDate(pending)
+      this.loadedOnce = true
+      return
+    }
     // 从记账页返回要看到最新数据；首次 onShow 紧接 onLoad，跳过一次重复请求。
     if (this.loadedOnce) this.loadMonth()
     this.loadedOnce = true
@@ -194,14 +209,14 @@ Page({
     request
       .get('/api/v1/speech/status', null, { withLedger: false })
       .then((res) => {
-        this.setAiStatus('canSpeak', !!(res && res.available))
+        this.setAiStatus('canSpeak', modelReady(res))
         settled()
       })
       .catch(() => this.setAiStatus('canSpeak', false))
     request
       .get('/api/v1/ocr/status', null, { withLedger: false })
       .then((res) => {
-        this.setAiStatus('canPhoto', !!(res && res.available))
+        this.setAiStatus('canPhoto', modelReady(res))
         settled()
       })
       .catch(() => this.setAiStatus('canPhoto', false))
@@ -399,16 +414,30 @@ Page({
     this.changeMonth(month)
   },
 
-  changeMonth(month) {
+  changeMonth(month, day) {
     this.setData({
       month: month,
       monthText: time.monthLabel(month),
       isCurrentMonth: month === time.shanghaiMonth(),
-      selectedDay: '',
+      selectedDay: day || '',
       dayItems: [],
     })
     this.buildCells(month)
     this.loadMonth()
+  },
+
+  /** 保存落在别的月份时，列表停在本月会像没记下。切到那一天再刷新。 */
+  focusDate(date) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      this.loadMonth()
+      return
+    }
+    const month = date.slice(0, 7)
+    if (month !== this.data.month) this.changeMonth(month, date)
+    else {
+      this.setData({ selectedDay: date })
+      this.loadMonth()
+    }
   },
 
   switchView(e) {
@@ -572,8 +601,11 @@ Page({
     this.setData({ showVoice: false })
   },
 
-  onVoiceDone() {
-    this.loadMonth()
+  onVoiceDone(e) {
+    const dates = (e.detail && e.detail.dates) || []
+    const latest = dates.filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)).sort().pop()
+    if (latest) this.focusDate(latest)
+    else this.loadMonth()
   },
 
   onShareAppMessage() {

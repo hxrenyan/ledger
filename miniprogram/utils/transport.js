@@ -26,6 +26,8 @@ function directSend(options) {
       method: options.method,
       data: options.data,
       header: options.header,
+      dataType: options.dataType || 'json',
+      enableCache: false,
       timeout: options.timeout,
       success: function (res) {
         resolve({ statusCode: res.statusCode, data: res.data })

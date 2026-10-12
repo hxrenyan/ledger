@@ -8,13 +8,14 @@
     "pages/gift-form/gift-form",
     "pages/assets/assets",
     "pages/me/me",
+    "pages/points/points",
+    "pages/feedback/feedback",
     "pages/ledger/ledger",
     "pages/budgets/budgets",
     "pages/categories/categories",
     "pages/recurring/recurring",
     "pages/speak/speak",
-    "pages/import/import",
-    "pages/webview/webview"
+    "pages/import/import"
   ],
   "window": {
     "navigationBarBackgroundColor": "#f4f5f8",

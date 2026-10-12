@@ -47,6 +47,11 @@ npm run db:migrate
 | `ai_profiles` | 自增整数 | 模型配置。`llm` 解析账单，`asr` 语音识别，`ocr` 图片识别；同 kind 内按 `sort_order` 接力。不保存录音和账单原文 |
 | `app_configs` | `key` | 服务端业务配置。目前存 `webview.enabled` / `webview.host` / `webview.pages`（页面归属表，原生 or web-view）。改完即生效，不用发版 |
 | `handoff_codes` | `code_hash` | 一次性会话交接码。web-view 里没有 `wx.login`，网页侧靠它换回会话；只存 SHA-256，5 分钟过期，用一次即失效 |
+| `point_accounts` | `user_id` | 微信用户积分余额。一人一行，没有微信身份的账号不写入 |
+| `point_entries` | 自增整数 | 积分明细，只追加。`biz_key` 避免同一天或同一次识别重复入账，见 `idx_point_entries_biz` |
+| `point_checkins` | `user_id` | 连续进入。`last_day` 是上海日期，断一天从 1 重新计 |
+| `point_calls` | 自增整数 | 每种识别每天的调用次数，含失败。按 `user_id, kind, day` 计数，见 `idx_point_calls_user_day` |
+| `feedbacks` | 自增整数 | 用户反馈。自己的列表走 `idx_feedbacks_user`，后台按状态走 `idx_feedbacks_status`，全部按时间走 `idx_feedbacks_recent` |
 
 新环境只用 `schema.sql`。线上已有数据只追加 `sql/migrations/`，不要对生产库重跑全量 schema。
 

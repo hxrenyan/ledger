@@ -6,7 +6,6 @@
 
 const request = require('../../utils/request')
 const session = require('../../utils/session')
-const appConfig = require('../../utils/appConfig')
 const config = require('../../config')
 const ui = require('../../utils/ui')
 
@@ -68,17 +67,15 @@ Page({
   backToProd() {
     if (this.data.envKey === 'prod') return
     config.setEnv('prod')
-    // 换了后端，旧 token 和归属表缓存都不能再用（归属表是服务端下发的，本地的可能来自另一个后端）。
+    // 换了后端，旧 token 不能再用。
     session.clear()
-    appConfig.clearCache()
     this.syncEnv()
     ui.toast('已切回线上')
   },
 
-  /** 登录成功后统一动作：写会话、拉归属表、进首页。 */
+  /** 登录成功后写会话并进首页。 */
   afterLogin(body) {
     session.apply(body)
-    appConfig.refresh()
     wx.reLaunch({ url: '/pages/home/home' })
   },
 

@@ -25,17 +25,15 @@
     "jose": "^6.2.12"
   },
   "devDependencies": {
-    "tsx": "^4.23.15",
     "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.13.0",
     "@vitejs/plugin-vue": "^6.0.9",
-    "pinia": "^4.0.3",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.3",
     "vite": "^8.3.0",
     "vitest": "^3.2.4",
     "vue": "^3.5.43",
     "vue-router": "^5.3.1",
-    "vue-tsc": "^3.3.11",
-    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+    "vue-tsc": "^3.3.11"
   }
 }

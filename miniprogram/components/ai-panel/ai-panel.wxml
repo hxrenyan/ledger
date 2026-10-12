@@ -23,6 +23,8 @@
       <view
         class="ap-talk {{state === 'recording' ? 'on' : ''}}"
         wx:if="{{canSpeak || state === 'recording'}}"
+        hover-class="none"
+        catchtouchmove="noop"
         bindtouchstart="startRecord"
         bindtouchend="finishRecord"
         bindtouchcancel="finishRecord"
@@ -31,7 +33,8 @@
         <text wx:else>按住说话</text>
       </view>
 
-      <view class="ap-photo" wx:if="{{canPhoto && state !== 'recording'}}" bindtap="pickPhoto">
+      <!-- 录音时仍占位。拿掉它浮层会变矮，按住的圆按钮会从手指底下挪走。 -->
+      <view class="ap-photo {{state === 'recording' ? 'hold' : ''}}" wx:if="{{canPhoto}}" bindtap="pickPhoto">
         <view class="ap-photo-ico"></view>
         <text>拍一张小票 / 支付截图</text>
       </view>

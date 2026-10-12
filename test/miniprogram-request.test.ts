@@ -306,7 +306,14 @@ describe('认图：直连与云通道各走各的送法', () => {
   const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0x7f])
 
   it('直连：走 multipart，分片类型就是图片类型', async () => {
-    const { app, session, ledgerId } = await setupWithTx()
+    const { app, db, session, ledgerId } = await setupWithTx()
+    const owner = await db.first<{ id: number }>(`SELECT id FROM users WHERE username = 'mpuser'`)
+    const now = Date.now()
+    await db.run(
+      `INSERT INTO user_identities (provider, openid, user_id, created_at) VALUES ('wechat', 'mp-ocr', ?, ?)`,
+      [owner!.id, now],
+    )
+    await db.run(`INSERT INTO point_accounts (user_id, balance, updated_at) VALUES (?, 10, ?)`, [owner!.id, now])
     const { wx, log } = createWx(app, PNG)
     const { mod } = loadRequestModule(wx, { token: session.token, ledgerId })
 

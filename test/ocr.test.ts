@@ -37,11 +37,18 @@ async function setup() {
  * 小程序那边调用时 token 是自动挂上的，所以这里也得先注册一个用户。
  */
 async function setupAuthed() {
-  const { app, db } = await setup()
-  const reg = await app.request('/api/v1/auth/register', {
+  const db = createSqliteDb(':memory:')
+  await ensureMigrated(db)
+  const app = createApp({
+    db,
+    jwtSecret: 'test-secret-test-secret',
+    adminToken: 'admin-secret',
+    exchangeWechatCode: async () => ({ openid: 'ocr-openid', unionid: null }),
+  })
+  const reg = await app.request('/api/v1/auth/wechat', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ username: 'ocruser', password: 'password1' }),
+    body: JSON.stringify({ code: 'ok' }),
   })
   const session = (await reg.json()) as { token: string; ledgers: { id: string }[] }
   return {
@@ -222,7 +229,7 @@ describe('OCR 接口：两条送法共用一套校验', () => {
   it('没配模型时 /ocr/status 是 false，/ocr/scan 报 502 而不是 500', async () => {
     const { app, headers } = await setupAuthed()
     const status = await json(app, '/api/v1/ocr/status', { headers })
-    expect(status.body).toEqual({ available: false })
+    expect(status.body).toMatchObject({ available: false, allowed: true })
 
     const form = new FormData()
     form.set('file', new File([PNG], 'a.png', { type: 'image/png' }))
