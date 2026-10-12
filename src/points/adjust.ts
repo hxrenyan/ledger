@@ -61,16 +61,16 @@ export async function adjustPointsMany(db: Db, userIds: (number | string)[], del
      WHERE u.id IN (${placeholders})`,
     [WECHAT, ...userIds],
   )
-  const byId = new Map(rows.map((row) => [Number(row.id), row]))
-  if (userIds.some((id) => !byId.has(id))) throw notFound('用户不存在')
-  if (userIds.some((id) => Number(byId.get(id)?.wechat) !== 1)) {
+  const byId = new Map(rows.map((row) => [String(row.id), row]))
+  if (userIds.some((id) => !byId.has(String(id)))) throw notFound('用户不存在')
+  if (userIds.some((id) => Number(byId.get(String(id))?.wechat) !== 1)) {
     throw badRequest(userIds.length === 1 ? '该账号没有微信登录，不能分配积分' : '有账号没有微信登录，不能分配积分')
   }
   if (delta < 0) {
-    const short = userIds.filter((id) => Number(byId.get(id)?.balance) + delta < 0)
+    const short = userIds.filter((id) => Number(byId.get(String(id))?.balance) + delta < 0)
     if (short.length) {
       if (userIds.length === 1) throw badRequest('扣减后余额不能小于 0')
-      const names = short.map((id) => displayName(byId.get(id))).join('、')
+      const names = short.map((id) => displayName(byId.get(String(id)))).join('、')
       throw badRequest(`这些账号扣减后余额会小于 0：${names}，这次没有分配`)
     }
   }
@@ -133,9 +133,9 @@ export async function adjustPointsMany(db: Db, userIds: (number | string)[], del
      WHERE id IN (${entryIds.map(() => '?').join(', ')})`,
     entryIds,
   )
-  const entryByUser = new Map(loaded.map((row) => [Number(row.user_id), normalizeEntry(row)]))
+  const entryByUser = new Map(loaded.map((row) => [String(row.user_id), normalizeEntry(row)]))
   return userIds.map((userId) => {
-    const entry = entryByUser.get(userId)
+    const entry = entryByUser.get(String(userId))
     if (!entry) throw badRequest('分配结果不完整，请重试')
     return entry
   })
