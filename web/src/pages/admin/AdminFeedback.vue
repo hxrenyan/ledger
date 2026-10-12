@@ -16,7 +16,8 @@ type Item = {
   status: 'open' | 'done'
   status_label: string
   reply: string
-  time: string
+  created_at: number
+  updated_at: number
 }
 
 const status = ref<Status>('open')
@@ -75,9 +76,12 @@ async function save(item: Item, next: 'open' | 'done') {
   err.value = ''
   msg.value = ''
   try {
+    const body = next === 'done'
+      ? { status: next, reply: drafts.value[item.id] ?? '' }
+      : { status: next }
     await adminApi(`/api/v1/admin/feedbacks/${item.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ status: next, reply: drafts.value[item.id] ?? '' }),
+      body: JSON.stringify(body),
     })
     msg.value = next === 'done' ? '已标成已处理' : '已重新打开'
     await load()
@@ -86,6 +90,11 @@ async function save(item: Item, next: 'open' | 'done') {
   } finally {
     busyId.value = ''
   }
+}
+
+function whenAt(ms: number) {
+  if (!ms) return '暂无'
+  return new Date(ms + 8 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ')
 }
 
 function pick(next: Status) {
@@ -113,17 +122,25 @@ defineExpose({ reload: load })
     <p v-if="msg" class="admin-success">{{ msg }}</p>
     <div v-if="!items.length && !loading" class="admin-empty">{{ query.trim() ? '没有匹配的反馈' : '没有反馈' }}</div>
     <article v-for="item in items" :key="item.id" class="feedback-item">
-      <div class="admin-list-row">
+      <div class="feedback-head">
         <div class="admin-avatar">{{ (item.nickname || item.username || '?').slice(0, 1) }}</div>
-        <div class="admin-row-main">
+        <div class="feedback-who">
           <strong>{{ item.nickname || item.username || '已删除用户' }}</strong>
-          <span>@{{ item.username || '—' }} · <span class="admin-time">{{ item.time }}</span></span>
-          <span v-if="item.contact">联系方式 {{ item.contact }}</span>
+          <span>@{{ item.username || '—' }}</span>
         </div>
         <span class="admin-status" :class="item.status === 'done' ? 'on' : 'off'">{{ item.status_label }}</span>
       </div>
       <p class="feedback-content">{{ item.content }}</p>
-      <label class="field">
+      <div class="feedback-meta">
+        <span>提交 <time class="admin-time">{{ whenAt(item.created_at) }}</time></span>
+        <span v-if="item.updated_at && item.updated_at !== item.created_at">更新 <time class="admin-time">{{ whenAt(item.updated_at) }}</time></span>
+        <span v-if="item.contact">联系方式 {{ item.contact }}</span>
+      </div>
+      <div v-if="item.status === 'done'" class="feedback-locked">
+        <span>回复</span>
+        <p :class="{ empty: !item.reply }">{{ item.reply || '没有回复' }}</p>
+      </div>
+      <label v-else class="field feedback-field">
         <span>回复</span>
         <textarea class="feedback-reply" maxlength="500" :value="drafts[item.id]" @input="drafts[item.id] = ($event.target as HTMLTextAreaElement).value" />
       </label>
@@ -143,13 +160,26 @@ defineExpose({ reload: load })
 
 <style scoped>
 .feedback-item {
-  padding: 12px 0;
+  padding: 16px 0;
   border-top: 1px solid #ececef;
 }
+.feedback-item:first-of-type { border-top: 0; padding-top: 0; }
+.feedback-head { display: flex; align-items: center; gap: 12px; }
+.feedback-who { min-width: 0; flex: 1; }
+.feedback-who strong, .feedback-who span { display: block; }
+.feedback-who strong { font-size: 14px; }
+.feedback-who span { color: #89909d; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feedback-content {
-  margin: 8px 0 12px;
+  margin: 10px 0 8px;
   white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.55;
 }
+.feedback-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 12px; color: #89909d; font-size: 12px; }
+.feedback-field { margin-bottom: 0; }
+.feedback-locked span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 13px; }
+.feedback-locked p { margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.55; }
+.feedback-locked p.empty { color: #89909d; }
 .feedback-reply {
   width: 100%;
   height: 72px;
@@ -157,7 +187,5 @@ defineExpose({ reload: load })
   box-sizing: border-box;
   resize: vertical;
 }
-.feedback-item .btn {
-  width: auto;
-}
+.feedback-item .btn { width: auto; }
 </style>

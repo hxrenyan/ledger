@@ -119,7 +119,10 @@ export async function updateFeedback(db: Db, id: number, status: FeedbackStatus 
   )
   if (!existing) throw notFound('反馈不存在')
   const nextStatus = status ?? (existing.status === 'done' ? 'done' : 'open')
-  const nextReply = reply ?? existing.reply
+  if (existing.status === 'done' && reply != null && reply !== existing.reply) {
+    throw badRequest('已处理的反馈不能修改回复，请先重新打开')
+  }
+  const nextReply = existing.status === 'done' ? existing.reply : (reply ?? existing.reply)
   const now = Date.now()
   await db.run(`UPDATE feedbacks SET status = ?, reply = ?, updated_at = ? WHERE id = ?`, [nextStatus, nextReply, now, id])
   return {

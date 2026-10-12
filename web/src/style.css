@@ -286,9 +286,11 @@ input.bare {
 .admin-table-wrap { overflow-x: auto; }
 .admin-table { min-width: 760px; }
 .admin-table-head, .admin-table-row { display: grid; grid-template-columns: var(--cols); align-items: center; gap: 8px; }
-.admin-table.users { --cols: minmax(180px, 1.7fr) 64px 156px 156px 72px 64px; }
-.admin-table.ledgers { --cols: minmax(160px, 1.5fr) minmax(120px, 1fr) 64px 72px 156px 156px; }
-.admin-table.points { --cols: 28px minmax(180px, 1.7fr) 72px 88px 56px; min-width: 560px; }
+.admin-table.users { --cols: minmax(180px, 1.7fr) 64px 168px 168px 72px 64px; }
+.admin-table.ledgers { --cols: minmax(160px, 1.5fr) minmax(120px, 1fr) 64px 72px 168px 168px; }
+.admin-table.points { --cols: 28px minmax(160px, 1.6fr) 72px 80px 156px 56px; min-width: 760px; }
+.admin-sort { justify-self: start; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 600; padding: 0; cursor: pointer; white-space: nowrap; }
+.admin-sort.on { color: #3157d5; }
 .admin-table.users .admin-table-head > :last-child,
 .admin-table.points .admin-table-head > :last-child,
 .admin-table.users .admin-table-row > :last-child,

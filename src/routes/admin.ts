@@ -59,6 +59,8 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
     }
     if (status === 'active') where.push('u.disabled = 0')
     if (status === 'disabled') where.push('u.disabled = 1')
+    const sort = timeSort(c.req.query('sort'))
+    const order = timeOrder(c.req.query('order'))
     const rows = await c.get('db').all<{
       id: number
       username: string
@@ -74,7 +76,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
        LEFT JOIN members m ON m.user_id = u.id
        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
        GROUP BY u.id
-       ORDER BY u.created_at DESC`,
+       ORDER BY ${timeOrderSql('u', sort, order)}`,
       args,
     )
     return c.json({
@@ -153,6 +155,8 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
 
   app.get('/api/v1/admin/ledgers', async (c) => {
     const like = searchLike(c.req.query('q'), true)
+    const sort = timeSort(c.req.query('sort'))
+    const order = timeOrder(c.req.query('order'))
     const rows = await c.get('db').all<{
       id: number
       name: string
@@ -174,7 +178,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
          SELECT ledger_id, COUNT(*) AS n FROM transactions GROUP BY ledger_id
        ) tc ON tc.ledger_id = l.id
        ${like ? `WHERE (l.name LIKE ? ESCAPE '\\' OR u.username LIKE ? ESCAPE '\\' OR u.nickname LIKE ? ESCAPE '\\')` : ''}
-       ORDER BY l.created_at DESC`,
+       ORDER BY ${timeOrderSql('l', sort, order)}`,
       like ? [like, like, like] : [],
     )
     return c.json({
@@ -335,6 +339,28 @@ function recordId(value: unknown, label: string): number | string {
     return value
   }
   throw badRequest(`${label}无效`)
+}
+
+type TimeSort = 'created' | 'seen'
+type TimeOrder = 'asc' | 'desc'
+
+function timeSort(raw: string | undefined): TimeSort {
+  if (raw == null || raw === '' || raw === 'created') return 'created'
+  if (raw === 'seen') return 'seen'
+  throw badRequest('排序只能是 created 或 seen')
+}
+
+function timeOrder(raw: string | undefined): TimeOrder {
+  if (raw == null || raw === '' || raw === 'desc') return 'desc'
+  if (raw === 'asc') return 'asc'
+  throw badRequest('顺序只能是 asc 或 desc')
+}
+
+/** 排序列只来自白名单。正序时没有最后使用时间的在前，倒序时在后。 */
+function timeOrderSql(alias: 'u' | 'l', sort: TimeSort, order: TimeOrder) {
+  const dir = order === 'asc' ? 'ASC' : 'DESC'
+  const column = sort === 'seen' ? `${alias}.last_seen_at` : `${alias}.created_at`
+  return `${column} ${dir}, ${alias}.id ${dir}`
 }
 
 /** 后台搜索词。空串不筛选。用户、账本、积分会去掉开头的 @。 */

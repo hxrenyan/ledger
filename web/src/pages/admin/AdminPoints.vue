@@ -11,6 +11,7 @@ type PointUser = {
   nickname: string
   disabled: boolean
   balance: number
+  updated_at: number | null
 }
 
 type PointEntry = {
@@ -193,7 +194,8 @@ async function submitBatch() {
   }
 }
 
-function whenAt(ms: number) {
+function whenAt(ms: number | null) {
+  if (!ms) return '暂无'
   return new Date(ms + 8 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ')
 }
 
@@ -244,7 +246,7 @@ defineExpose({ reload: load })
       <div v-if="!users.length && !loading" class="admin-empty">{{ query.trim() ? '没有匹配的微信用户' : '还没有微信用户' }}</div>
       <div v-else-if="users.length" class="admin-table-wrap">
         <div class="admin-table points">
-          <div class="admin-table-head"><span></span><span>用户</span><span>状态</span><span>余额</span><span>操作</span></div>
+          <div class="admin-table-head"><span></span><span>用户</span><span>状态</span><span>余额</span><span>修改时间</span><span>操作</span></div>
           <div v-for="u in users" :key="u.id" class="point-user">
             <div class="admin-table-row">
               <input class="point-check" type="checkbox" :checked="selected.includes(u.id)" :aria-label="`选择 ${u.nickname || u.username}`" @change="toggle(u.id)" />
@@ -254,6 +256,7 @@ defineExpose({ reload: load })
               </div>
               <span class="admin-status" :class="u.disabled ? 'off' : 'on'">{{ u.disabled ? '已停用' : '正常' }}</span>
               <span class="point-balance">{{ u.balance }} 分</span>
+              <span class="admin-time">{{ whenAt(u.updated_at) }}</span>
               <button class="admin-row-btn" type="button" @click="open(u)">{{ openId === u.id ? '收起' : '明细' }}</button>
             </div>
             <ul v-if="openId === u.id" class="point-entries">

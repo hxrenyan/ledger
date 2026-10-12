@@ -24,6 +24,7 @@ export type WechatPointUser = {
   nickname: string
   disabled: boolean
   balance: number
+  updated_at: number | null
 }
 
 /**
@@ -191,8 +192,9 @@ export async function listWechatPointUsers(db: Db, like: string | null = null): 
     nickname: string
     disabled: number
     balance: number
+    updated_at: number | null
   }>(
-    `SELECT u.id, u.username, u.nickname, u.disabled, COALESCE(p.balance, 0) AS balance
+    `SELECT u.id, u.username, u.nickname, u.disabled, COALESCE(p.balance, 0) AS balance, p.updated_at
      FROM users u
      JOIN user_identities i ON i.user_id = u.id AND i.provider = ?
      LEFT JOIN point_accounts p ON p.user_id = u.id
@@ -206,6 +208,7 @@ export async function listWechatPointUsers(db: Db, like: string | null = null): 
     nickname: row.nickname,
     disabled: !!row.disabled,
     balance: Number(row.balance),
+    updated_at: row.updated_at == null ? null : Number(row.updated_at),
   }))
 }
 

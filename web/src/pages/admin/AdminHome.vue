@@ -11,6 +11,8 @@ import AdminFeedback from './AdminFeedback.vue'
 
 type Tab = 'users' | 'ledgers' | 'points' | 'feedback' | 'ai' | 'asr' | 'ocr' | 'wechat'
 type UserStatus = 'all' | 'active' | 'disabled'
+type TimeSort = 'created' | 'seen'
+type TimeOrder = 'asc' | 'desc'
 type Overview = { users: number; ledgers: number; transactions: number; disabled_users: number }
 type UserRow = { id: number; username: string; nickname: string; disabled: boolean; created_at: number; last_seen_at: number | null; ledger_count: number }
 type LedgerRow = { id: number; name: string; owner_username: string; member_count: number; tx_count: number; created_at: number; last_seen_at: number | null }
@@ -28,7 +30,11 @@ const refreshing = ref(false)
 const busyId = ref<number | ''>('')
 const userQuery = ref('')
 const userStatus = ref<UserStatus>('all')
+const userSort = ref<TimeSort>('created')
+const userOrder = ref<TimeOrder>('desc')
 const ledgerQuery = ref('')
+const ledgerSort = ref<TimeSort>('created')
+const ledgerOrder = ref<TimeOrder>('desc')
 const ledgersReady = ref(false)
 const pointsPanel = ref<Reloadable | null>(null)
 const feedbackPanel = ref<Reloadable | null>(null)
@@ -85,7 +91,11 @@ async function loadUsers() {
   userLoading.value = true
   try {
     const status = userStatus.value === 'all' ? '' : userStatus.value
-    const data = await adminApi<{ items: UserRow[] }>(queryPath('/api/v1/admin/users', userQuery.value, { status }))
+    const data = await adminApi<{ items: UserRow[] }>(queryPath('/api/v1/admin/users', userQuery.value, {
+      status,
+      sort: userSort.value,
+      order: userOrder.value,
+    }))
     if (req !== userReq) return
     users.value = data.items
     err.value = ''
@@ -101,7 +111,10 @@ async function loadLedgers() {
   const req = ++ledgerReq
   ledgerLoading.value = true
   try {
-    const data = await adminApi<{ items: LedgerRow[] }>(queryPath('/api/v1/admin/ledgers', ledgerQuery.value))
+    const data = await adminApi<{ items: LedgerRow[] }>(queryPath('/api/v1/admin/ledgers', ledgerQuery.value, {
+      sort: ledgerSort.value,
+      order: ledgerOrder.value,
+    }))
     if (req !== ledgerReq) return
     ledgers.value = data.items
     ledgersReady.value = true
@@ -129,6 +142,47 @@ function setUserStatus(next: UserStatus) {
   if (userStatus.value === next) return
   userStatus.value = next
   void loadUsers()
+}
+
+function setUserSort(key: TimeSort) {
+  if (userSort.value === key) return
+  userSort.value = key
+  void loadUsers()
+}
+
+function toggleUserSort(key: TimeSort) {
+  if (userSort.value === key) userOrder.value = userOrder.value === 'desc' ? 'asc' : 'desc'
+  else userSort.value = key
+  void loadUsers()
+}
+
+function setUserOrder(order: TimeOrder) {
+  if (userOrder.value === order) return
+  userOrder.value = order
+  void loadUsers()
+}
+
+function setLedgerSort(key: TimeSort) {
+  if (ledgerSort.value === key) return
+  ledgerSort.value = key
+  void loadLedgers()
+}
+
+function toggleLedgerSort(key: TimeSort) {
+  if (ledgerSort.value === key) ledgerOrder.value = ledgerOrder.value === 'desc' ? 'asc' : 'desc'
+  else ledgerSort.value = key
+  void loadLedgers()
+}
+
+function setLedgerOrder(order: TimeOrder) {
+  if (ledgerOrder.value === order) return
+  ledgerOrder.value = order
+  void loadLedgers()
+}
+
+function sortMark(active: boolean, order: TimeOrder) {
+  if (!active) return ''
+  return order === 'asc' ? ' ↑' : ' ↓'
 }
 
 function onLedgerInput() {
@@ -262,12 +316,25 @@ onMounted(() => {
             <div class="admin-seg">
               <button v-for="item in userFilters" :key="item.key" type="button" :class="{ on: userStatus === item.key }" @click="setUserStatus(item.key)">{{ item.label }}</button>
             </div>
+            <div class="admin-seg" aria-label="用户排序">
+              <button type="button" :class="{ on: userSort === 'created' }" @click="setUserSort('created')">注册时间</button>
+              <button type="button" :class="{ on: userSort === 'seen' }" @click="setUserSort('seen')">最后使用时间</button>
+            </div>
+            <div class="admin-seg" aria-label="用户顺序">
+              <button type="button" :class="{ on: userOrder === 'desc' }" @click="setUserOrder('desc')">倒序</button>
+              <button type="button" :class="{ on: userOrder === 'asc' }" @click="setUserOrder('asc')">正序</button>
+            </div>
             <span class="count">{{ userLoading ? '查询中' : `${users.length} 位` }}</span>
           </div>
           <div v-if="!users.length && !userLoading" class="admin-empty">{{ userEmpty }}</div>
           <div v-else-if="users.length" class="admin-table-wrap">
             <div class="admin-table users">
-              <div class="admin-table-head"><span>用户</span><span>账本</span><span>注册</span><span>最后使用</span><span>状态</span><span>操作</span></div>
+              <div class="admin-table-head">
+                <span>用户</span><span>账本</span>
+                <button type="button" class="admin-sort" :class="{ on: userSort === 'created' }" @click="toggleUserSort('created')">注册时间{{ sortMark(userSort === 'created', userOrder) }}</button>
+                <button type="button" class="admin-sort" :class="{ on: userSort === 'seen' }" @click="toggleUserSort('seen')">最后使用时间{{ sortMark(userSort === 'seen', userOrder) }}</button>
+                <span>状态</span><span>操作</span>
+              </div>
               <div v-for="u in users" :key="u.id" class="admin-table-row">
                 <div class="admin-person">
                   <div class="admin-avatar">{{ (u.nickname || u.username).slice(0, 1).toUpperCase() }}</div>
@@ -289,12 +356,24 @@ onMounted(() => {
               <input v-model="ledgerQuery" placeholder="搜索账本、账号或昵称" aria-label="搜索账本" @input="onLedgerInput" />
               <button v-if="ledgerQuery" class="admin-search-clear" type="button" @click="clearLedgerQuery">清除</button>
             </label>
+            <div class="admin-seg" aria-label="账本排序">
+              <button type="button" :class="{ on: ledgerSort === 'created' }" @click="setLedgerSort('created')">创建时间</button>
+              <button type="button" :class="{ on: ledgerSort === 'seen' }" @click="setLedgerSort('seen')">最后使用时间</button>
+            </div>
+            <div class="admin-seg" aria-label="账本顺序">
+              <button type="button" :class="{ on: ledgerOrder === 'desc' }" @click="setLedgerOrder('desc')">倒序</button>
+              <button type="button" :class="{ on: ledgerOrder === 'asc' }" @click="setLedgerOrder('asc')">正序</button>
+            </div>
             <span class="count">{{ ledgerLoading ? '查询中' : `${ledgers.length} 本` }}</span>
           </div>
           <div v-if="!ledgers.length && !ledgerLoading" class="admin-empty">{{ ledgerEmpty }}</div>
           <div v-else-if="ledgers.length" class="admin-table-wrap">
             <div class="admin-table ledgers">
-              <div class="admin-table-head"><span>账本</span><span>主账号</span><span>成员</span><span>流水</span><span>创建</span><span>最后使用</span></div>
+              <div class="admin-table-head">
+                <span>账本</span><span>主账号</span><span>成员</span><span>流水</span>
+                <button type="button" class="admin-sort" :class="{ on: ledgerSort === 'created' }" @click="toggleLedgerSort('created')">创建时间{{ sortMark(ledgerSort === 'created', ledgerOrder) }}</button>
+                <button type="button" class="admin-sort" :class="{ on: ledgerSort === 'seen' }" @click="toggleLedgerSort('seen')">最后使用时间{{ sortMark(ledgerSort === 'seen', ledgerOrder) }}</button>
+              </div>
               <div v-for="l in ledgers" :key="l.id" class="admin-table-row">
                 <div class="admin-person">
                   <div class="admin-avatar ledger">账</div>
