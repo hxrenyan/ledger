@@ -10,7 +10,7 @@ const WECHAT = 'wechat'
 
 export type PointEntry = {
   id: number
-  user_id: number
+  user_id: number | string
   delta: number
   balance_after: number
   kind: 'admin_grant' | 'admin_deduct'
@@ -19,7 +19,7 @@ export type PointEntry = {
 }
 
 export type WechatPointUser = {
-  id: number
+  id: number | string
   username: string
   nickname: string
   disabled: boolean
@@ -30,7 +30,7 @@ export type WechatPointUser = {
  * 管理员给一位微信用户加减积分。
  * 正数记 admin_grant，负数记 admin_deduct。
  */
-export async function adjustPoints(db: Db, userId: number, delta: number, note: string): Promise<PointEntry> {
+export async function adjustPoints(db: Db, userId: number | string, delta: number, note: string): Promise<PointEntry> {
   const [entry] = await adjustPointsMany(db, [userId], delta, note)
   return entry
 }
@@ -39,7 +39,7 @@ export async function adjustPoints(db: Db, userId: number, delta: number, note: 
  * 同一变动、同一备注分配给多位微信用户。
  * 任何人不能分配时，整批不写入。
  */
-export async function adjustPointsMany(db: Db, userIds: number[], delta: number, note: string): Promise<PointEntry[]> {
+export async function adjustPointsMany(db: Db, userIds: (number | string)[], delta: number, note: string): Promise<PointEntry[]> {
   const text = assertDeltaAndNote(delta, note)
   if (userIds.length === 0) throw badRequest('请选择用户')
   if (userIds.length > BATCH_LIMIT) throw badRequest('一次最多分配 100 位用户')
@@ -168,7 +168,7 @@ function normalizeEntry(row: PointEntry): PointEntry {
 }
 
 /** 没有微信身份的账号不能有积分。用户不存在和「不是微信用户」分开返回。 */
-export async function assertWechatUser(db: Db, userId: number) {
+export async function assertWechatUser(db: Db, userId: number | string) {
   const user = await db.first<{ id: number }>(
     `SELECT u.id
      FROM users u
@@ -182,8 +182,9 @@ export async function assertWechatUser(db: Db, userId: number) {
   throw badRequest('该账号没有微信登录，不能分配积分')
 }
 
-/** 管理后台积分页：只列出有微信身份的账号。 */
-export async function listWechatPointUsers(db: Db): Promise<WechatPointUser[]> {
+/** 管理后台积分页：只列出有微信身份的账号。like 为空时不做昵称或账号筛选。 */
+export async function listWechatPointUsers(db: Db, like: string | null = null): Promise<WechatPointUser[]> {
+  const pattern = like ?? ''
   const rows = await db.all<{
     id: number
     username: string
@@ -195,8 +196,9 @@ export async function listWechatPointUsers(db: Db): Promise<WechatPointUser[]> {
      FROM users u
      JOIN user_identities i ON i.user_id = u.id AND i.provider = ?
      LEFT JOIN point_accounts p ON p.user_id = u.id
+     WHERE (? = '' OR u.username LIKE ? ESCAPE '\\' OR u.nickname LIKE ? ESCAPE '\\')
      ORDER BY u.created_at DESC`,
-    [WECHAT],
+    [WECHAT, pattern, pattern, pattern],
   )
   return rows.map((row) => ({
     id: row.id,
@@ -208,7 +210,7 @@ export async function listWechatPointUsers(db: Db): Promise<WechatPointUser[]> {
 }
 
 /** 某个用户最近的积分明细，新的在前。 */
-export async function listPointEntries(db: Db, userId: number, limit = 20): Promise<PointEntry[]> {
+export async function listPointEntries(db: Db, userId: number | string, limit = 20): Promise<PointEntry[]> {
   const rows = await db.all<PointEntry>(
     `SELECT id, user_id, delta, balance_after, kind, note, created_at
      FROM point_entries

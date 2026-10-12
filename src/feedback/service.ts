@@ -82,17 +82,26 @@ export async function listOwnFeedback(db: Db, userId: number): Promise<FeedbackI
   return rows.map(toItem)
 }
 
-export async function listAdminFeedback(db: Db, status: FeedbackStatus | 'all'): Promise<AdminFeedbackItem[]> {
-  const filtered = status !== 'all'
+export async function listAdminFeedback(db: Db, status: FeedbackStatus | 'all', like: string | null = null): Promise<AdminFeedbackItem[]> {
+  const where: string[] = []
+  const args: unknown[] = []
+  if (status !== 'all') {
+    where.push('f.status = ?')
+    args.push(status)
+  }
+  if (like) {
+    where.push(`(f.content LIKE ? ESCAPE '\\' OR f.contact LIKE ? ESCAPE '\\' OR IFNULL(u.username, '') LIKE ? ESCAPE '\\' OR IFNULL(u.nickname, '') LIKE ? ESCAPE '\\')`)
+    args.push(like, like, like, like)
+  }
   const rows = await db.all<FeedbackRow>(
     `SELECT f.id, f.user_id, f.content, f.contact, f.status, f.reply, f.created_at, f.updated_at,
             u.username, u.nickname
      FROM feedbacks f
      LEFT JOIN users u ON u.id = f.user_id
-     ${filtered ? 'WHERE f.status = ?' : ''}
+     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
      ORDER BY f.created_at DESC, f.id DESC
      LIMIT 100`,
-    filtered ? [status] : [],
+    args,
   )
   return rows.map((row) => ({
     ...toItem(row),

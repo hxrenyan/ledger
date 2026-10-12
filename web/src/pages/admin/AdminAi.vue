@@ -37,8 +37,12 @@ function blank(): AiItem {
 
 async function load() {
   err.value = ''
-  const data = await adminApi<{ items: Omit<AiItem, 'api_key' | 'clear_key'>[] }>('/api/v1/admin/ai')
-  items.value = data.items.map((item) => ({ ...item, api_key: '', clear_key: false }))
+  try {
+    const data = await adminApi<{ items: Omit<AiItem, 'api_key' | 'clear_key'>[] }>('/api/v1/admin/ai')
+    items.value = data.items.map((item) => ({ ...item, api_key: '', clear_key: false }))
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : '加载失败'
+  }
 }
 
 function add() {
@@ -122,11 +126,8 @@ async function test(item: AiItem) {
   }
 }
 
-onMounted(() => {
-  load().catch((e) => {
-    err.value = e instanceof Error ? e.message : '加载失败'
-  })
-})
+onMounted(load)
+defineExpose({ reload: load })
 </script>
 
 <template>
@@ -137,52 +138,58 @@ onMounted(() => {
     </p></div></div>
     <div v-for="(item, index) in items" :key="item.id || index" class="admin-config-block">
       <div class="admin-block-heading">
-        <strong>第 {{ index + 1 }} 套</strong>
-        <div class="inline">
-          <button class="btn ghost compact" type="button" :disabled="index === 0" @click="move(index, -1)">上移</button>
-          <button class="btn ghost compact" type="button" :disabled="index === items.length - 1" @click="move(index, 1)">下移</button>
-          <button class="btn danger compact" type="button" @click="remove(index)">删除</button>
+        <strong>第 {{ index + 1 }} 套{{ item.name ? ` · ${item.name}` : '' }}</strong>
+        <div class="admin-actions-inline">
+          <button class="admin-row-btn" type="button" :disabled="index === 0" @click="move(index, -1)">上移</button>
+          <button class="admin-row-btn" type="button" :disabled="index === items.length - 1" @click="move(index, 1)">下移</button>
+          <button class="admin-row-btn danger" type="button" @click="remove(index)">删除</button>
         </div>
       </div>
-      <div class="field">
-        <span>参与接力</span>
-        <select v-model="item.enabled">
-          <option :value="true">是</option>
-          <option :value="false">否</option>
-        </select>
-      </div>
-      <div class="field">
-        <span>名称</span>
-        <input v-model="item.name" placeholder="DeepSeek" />
-      </div>
-      <div class="field">
-        <span>快速填充</span>
-        <select @change="applyPreset(item, $event)">
-          <option value="">选择常见服务（可选）</option>
-          <option v-for="p in PRESETS" :key="p.label" :value="p.label">{{ p.label }}</option>
-        </select>
-      </div>
-      <div class="field">
-        <span>base_url</span>
-        <input v-model="item.base_url" placeholder="https://api.deepseek.com/v1" />
-      </div>
-      <div class="field">
-        <span>model</span>
-        <input v-model="item.model" placeholder="deepseek-chat" />
-      </div>
-      <div class="field">
-        <span>api_key{{ item.key_hint ? `（已保存：${item.key_hint}，留空不改）` : '' }}</span>
-        <input v-model="item.api_key" type="password" autocomplete="off" :placeholder="item.key_hint ? '留空则不修改' : 'sk-...'" />
+      <div class="admin-fields">
+        <label class="field">
+          <span>名称</span>
+          <input v-model="item.name" placeholder="DeepSeek" />
+        </label>
+        <div class="field admin-switch-field">
+          <span>参与接力</span>
+          <label class="admin-switch">
+            <input v-model="item.enabled" type="checkbox" aria-label="参与接力" />
+            <span></span>
+          </label>
+        </div>
+        <label class="field">
+          <span>快速填充</span>
+          <select @change="applyPreset(item, $event)">
+            <option value="">选择常见服务</option>
+            <option v-for="p in PRESETS" :key="p.label" :value="p.label">{{ p.label }}</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>model</span>
+          <input v-model="item.model" placeholder="deepseek-chat" />
+        </label>
+        <label class="field span-2">
+          <span>base_url</span>
+          <input v-model="item.base_url" placeholder="https://api.deepseek.com/v1" />
+        </label>
+        <label class="field span-2">
+          <span>api_key{{ item.key_hint ? `（已保存：${item.key_hint}，留空不改）` : '' }}</span>
+          <input v-model="item.api_key" type="password" autocomplete="off" :placeholder="item.key_hint ? '留空则不修改' : 'sk-...'" />
+        </label>
       </div>
       <p v-if="item.endpoint" class="muted">实际请求：{{ item.endpoint }}</p>
-      <button class="btn ghost compact" type="button" :disabled="busy" @click="test(item)">测试这一套</button>
+      <div class="admin-card-actions">
+        <button class="btn ghost compact" type="button" :disabled="busy" @click="test(item)">测试这一套</button>
+      </div>
     </div>
-    <p v-if="err" class="err">{{ err }}</p>
-    <p v-if="msg" class="muted">{{ msg }}</p>
+    <p v-if="err" class="err admin-alert">{{ err }}</p>
+    <p v-if="msg" class="admin-success">{{ msg }}</p>
     <div class="admin-savebar">
       <span class="muted">密钥留空表示不修改已保存值</span>
-      <button class="btn ghost" type="button" :disabled="busy || items.length >= 8" @click="add">添加一套</button>
-      <button class="btn" type="button" :disabled="busy" @click="save">保存</button>
+      <div class="admin-actions-inline">
+        <button class="btn ghost" type="button" :disabled="busy || items.length >= 8" @click="add">添加一套</button>
+        <button class="btn" type="button" :disabled="busy" @click="save">{{ busy ? '保存中…' : '保存' }}</button>
+      </div>
     </div>
   </div>
 </template>

@@ -20,12 +20,15 @@ type Item = {
 }
 
 const status = ref<Status>('open')
+const query = ref('')
 const items = ref<Item[]>([])
 const drafts = ref<Record<number, string>>({})
 const err = ref('')
 const msg = ref('')
 const loading = ref(false)
 const busyId = ref<number | ''>('')
+let queryTimer = 0
+let listReq = 0
 
 const filters: { key: Status; label: string }[] = [
   { key: 'open', label: '待处理' },
@@ -34,19 +37,36 @@ const filters: { key: Status; label: string }[] = [
 ]
 
 async function load() {
+  const req = ++listReq
   loading.value = true
-  err.value = ''
   try {
-    const data = await adminApi<{ items: Item[] }>(`/api/v1/admin/feedbacks?status=${status.value}`)
+    const params = new URLSearchParams({ status: status.value })
+    const q = query.value.trim()
+    if (q) params.set('q', q)
+    const data = await adminApi<{ items: Item[] }>(`/api/v1/admin/feedbacks?${params}`)
+    if (req !== listReq) return
     items.value = data.items
     const next: Record<number, string> = {}
     for (const item of data.items) next[item.id] = drafts.value[item.id] ?? item.reply
     drafts.value = next
+    err.value = ''
   } catch (e) {
+    if (req !== listReq) return
     err.value = e instanceof Error ? e.message : '加载失败'
   } finally {
-    loading.value = false
+    if (req === listReq) loading.value = false
   }
+}
+
+function onQuery() {
+  window.clearTimeout(queryTimer)
+  queryTimer = window.setTimeout(() => { void load() }, 250)
+}
+
+function clearQuery() {
+  query.value = ''
+  window.clearTimeout(queryTimer)
+  void load()
 }
 
 async function save(item: Item, next: 'open' | 'done') {
@@ -74,35 +94,30 @@ function pick(next: Status) {
 }
 
 onMounted(load)
+defineExpose({ reload: load })
 </script>
 
 <template>
   <section class="admin-panel">
-    <div class="admin-panel-head">
-      <div>
-        <h3>用户反馈</h3>
-        <p class="muted">{{ loading ? '加载中' : `共 ${items.length} 条` }}</p>
+    <div class="admin-toolbar">
+      <label class="admin-search">
+        <input v-model="query" placeholder="搜索内容、联系方式或用户" aria-label="搜索反馈" @input="onQuery" />
+        <button v-if="query" class="admin-search-clear" type="button" @click="clearQuery">清除</button>
+      </label>
+      <div class="admin-seg">
+        <button v-for="item in filters" :key="item.key" type="button" :class="{ on: status === item.key }" @click="pick(item.key)">{{ item.label }}</button>
       </div>
-      <div class="feedback-filters">
-        <button
-          v-for="item in filters"
-          :key="item.key"
-          class="btn ghost compact"
-          :class="{ on: status === item.key }"
-          type="button"
-          @click="pick(item.key)"
-        >{{ item.label }}</button>
-      </div>
+      <span class="count">{{ loading ? '查询中' : `${items.length} 条` }}</span>
     </div>
-    <p v-if="err" class="err">{{ err }}</p>
-    <p v-if="msg" class="muted">{{ msg }}</p>
-    <div v-if="!items.length && !loading" class="admin-empty">没有反馈</div>
+    <p v-if="err" class="err admin-alert">{{ err }}</p>
+    <p v-if="msg" class="admin-success">{{ msg }}</p>
+    <div v-if="!items.length && !loading" class="admin-empty">{{ query.trim() ? '没有匹配的反馈' : '没有反馈' }}</div>
     <article v-for="item in items" :key="item.id" class="feedback-item">
       <div class="admin-list-row">
         <div class="admin-avatar">{{ (item.nickname || item.username || '?').slice(0, 1) }}</div>
         <div class="admin-row-main">
           <strong>{{ item.nickname || item.username || '已删除用户' }}</strong>
-          <span>@{{ item.username || '—' }} · {{ item.time }}</span>
+          <span>@{{ item.username || '—' }} · <span class="admin-time">{{ item.time }}</span></span>
           <span v-if="item.contact">联系方式 {{ item.contact }}</span>
         </div>
         <span class="admin-status" :class="item.status === 'done' ? 'on' : 'off'">{{ item.status_label }}</span>
@@ -110,32 +125,23 @@ onMounted(load)
       <p class="feedback-content">{{ item.content }}</p>
       <label class="field">
         <span>回复</span>
-        <textarea class="feedback-reply" :value="drafts[item.id]" @input="drafts[item.id] = ($event.target as HTMLTextAreaElement).value" />
+        <textarea class="feedback-reply" maxlength="500" :value="drafts[item.id]" @input="drafts[item.id] = ($event.target as HTMLTextAreaElement).value" />
       </label>
-      <button
-        v-if="item.status === 'open'"
-        class="btn compact"
-        type="button"
-        :disabled="busyId === item.id"
-        @click="save(item, 'done')"
-      >标记已处理</button>
-      <button v-else class="btn ghost compact" type="button" :disabled="busyId === item.id" @click="save(item, 'open')">重新打开</button>
+      <div class="admin-card-actions">
+        <button
+          v-if="item.status === 'open'"
+          class="btn compact"
+          type="button"
+          :disabled="busyId === item.id"
+          @click="save(item, 'done')"
+        >{{ busyId === item.id ? '保存中…' : '标记已处理' }}</button>
+        <button v-else class="admin-row-btn" type="button" :disabled="busyId === item.id" @click="save(item, 'open')">{{ busyId === item.id ? '保存中' : '重新打开' }}</button>
+      </div>
     </article>
   </section>
 </template>
 
 <style scoped>
-.feedback-filters {
-  display: flex;
-  gap: 8px;
-}
-.feedback-filters .btn {
-  width: auto;
-}
-.feedback-filters .on {
-  background: #eef0ff;
-  color: #3b5bdb;
-}
 .feedback-item {
   padding: 12px 0;
   border-top: 1px solid #ececef;

@@ -6,9 +6,12 @@ import { adminApi, setAdminToken } from '../../adminApi.ts'
 const router = useRouter()
 const password = ref('')
 const err = ref('')
+const busy = ref(false)
 
 async function submit() {
+  if (busy.value) return
   err.value = ''
+  busy.value = true
   try {
     const body = await adminApi<{ token: string }>('/api/v1/admin/login', {
       method: 'POST',
@@ -18,6 +21,8 @@ async function submit() {
     router.replace('/admin')
   } catch (e) {
     err.value = e instanceof Error ? e.message : '登录失败'
+  } finally {
+    busy.value = false
   }
 }
 </script>
@@ -31,7 +36,7 @@ async function submit() {
       <form @submit.prevent="submit">
         <label class="field"><span>管理员口令</span><input v-model="password" type="password" autocomplete="current-password" /></label>
         <p v-if="err" class="err">{{ err }}</p>
-        <button class="btn" type="submit">登录</button>
+        <button class="btn" type="submit" :disabled="busy || !password.trim()">{{ busy ? '登录中…' : '登录' }}</button>
       </form>
     </div>
   </div>

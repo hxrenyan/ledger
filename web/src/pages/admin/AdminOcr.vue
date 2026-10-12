@@ -37,8 +37,12 @@ function blank(): OcrItem {
 
 async function load() {
   err.value = ''
-  const data = await adminApi<{ items: Omit<OcrItem, 'api_key' | 'clear_key'>[] }>('/api/v1/admin/ocr')
-  items.value = data.items.map((item) => ({ ...item, api_key: '', clear_key: false }))
+  try {
+    const data = await adminApi<{ items: Omit<OcrItem, 'api_key' | 'clear_key'>[] }>('/api/v1/admin/ocr')
+    items.value = data.items.map((item) => ({ ...item, api_key: '', clear_key: false }))
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : '加载失败'
+  }
 }
 
 function add() {
@@ -123,11 +127,8 @@ async function test(item: OcrItem, event: Event) {
   }
 }
 
-onMounted(() => {
-  load().catch((e) => {
-    err.value = e instanceof Error ? e.message : '加载失败'
-  })
-})
+onMounted(load)
+defineExpose({ reload: load })
 </script>
 
 <template>
@@ -142,46 +143,49 @@ onMounted(() => {
     </p></div></div>
     <div v-for="(item, index) in items" :key="item.id || index" class="admin-config-block">
       <div class="admin-block-heading">
-        <strong>第 {{ index + 1 }} 套</strong>
-        <div class="inline">
-          <button class="btn ghost compact" type="button" :disabled="index === 0" @click="move(index, -1)">上移</button>
-          <button class="btn ghost compact" type="button" :disabled="index === items.length - 1" @click="move(index, 1)">下移</button>
-          <button class="btn danger compact" type="button" @click="remove(index)">删除</button>
+        <strong>第 {{ index + 1 }} 套{{ item.name ? ` · ${item.name}` : '' }}</strong>
+        <div class="admin-actions-inline">
+          <button class="admin-row-btn" type="button" :disabled="index === 0" @click="move(index, -1)">上移</button>
+          <button class="admin-row-btn" type="button" :disabled="index === items.length - 1" @click="move(index, 1)">下移</button>
+          <button class="admin-row-btn danger" type="button" @click="remove(index)">删除</button>
         </div>
       </div>
-      <div class="field">
-        <span>参与接力</span>
-        <select v-model="item.enabled">
-          <option :value="true">是</option>
-          <option :value="false">否</option>
-        </select>
-      </div>
-      <div class="field">
-        <span>名称</span>
-        <input v-model="item.name" placeholder="DeepSeek-OCR" />
-      </div>
-      <div class="field">
-        <span>base_url</span>
-        <input v-model="item.base_url" placeholder="https://api.siliconflow.cn/v1" />
-      </div>
-      <div class="field">
-        <span>model</span>
-        <input v-model="item.model" placeholder="deepseek-ai/DeepSeek-OCR" />
-      </div>
-      <div class="field">
-        <span>api_key{{ item.key_hint ? `（已保存：${item.key_hint}，留空不改）` : '' }}</span>
-        <input v-model="item.api_key" type="password" autocomplete="off" :placeholder="item.key_hint ? '留空则不修改' : 'sk-...'" />
+      <div class="admin-fields">
+        <label class="field">
+          <span>名称</span>
+          <input v-model="item.name" placeholder="DeepSeek-OCR" />
+        </label>
+        <div class="field admin-switch-field">
+          <span>参与接力</span>
+          <label class="admin-switch"><input v-model="item.enabled" type="checkbox" aria-label="参与接力" /><span></span></label>
+        </div>
+        <label class="field span-2">
+          <span>base_url</span>
+          <input v-model="item.base_url" placeholder="https://api.siliconflow.cn/v1" />
+        </label>
+        <label class="field span-2">
+          <span>model</span>
+          <input v-model="item.model" placeholder="deepseek-ai/DeepSeek-OCR" />
+        </label>
+        <label class="field span-2">
+          <span>api_key{{ item.key_hint ? `（已保存：${item.key_hint}，留空不改）` : '' }}</span>
+          <input v-model="item.api_key" type="password" autocomplete="off" :placeholder="item.key_hint ? '留空则不修改' : 'sk-...'" />
+        </label>
       </div>
       <p v-if="item.endpoint" class="muted">实际请求：{{ item.endpoint }}</p>
-      <button class="btn ghost compact" type="button" :disabled="busy" @click="openFile">用一张图测试这一套</button>
-      <input class="file-hidden" type="file" accept="image/*" @change="test(item, $event)" />
+      <div class="admin-card-actions">
+        <button class="btn ghost compact" type="button" :disabled="busy" @click="openFile">用一张图测试这一套</button>
+        <input class="file-hidden" type="file" accept="image/*" @change="test(item, $event)" />
+      </div>
     </div>
-    <p v-if="err" class="err">{{ err }}</p>
-    <pre v-if="msg" class="muted" style="white-space:pre-wrap">{{ msg }}</pre>
+    <p v-if="err" class="err admin-alert">{{ err }}</p>
+    <pre v-if="msg" class="admin-success" style="white-space:pre-wrap">{{ msg }}</pre>
     <div class="admin-savebar">
       <span class="muted">图片只用于本次测试，不会保存</span>
-      <button class="btn ghost" type="button" :disabled="busy || items.length >= 8" @click="add">添加一套</button>
-      <button class="btn" type="button" :disabled="busy" @click="save">保存</button>
+      <div class="admin-actions-inline">
+        <button class="btn ghost" type="button" :disabled="busy || items.length >= 8" @click="add">添加一套</button>
+        <button class="btn" type="button" :disabled="busy" @click="save">{{ busy ? '保存中…' : '保存' }}</button>
+      </div>
     </div>
   </div>
 </template>

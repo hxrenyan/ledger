@@ -15,11 +15,16 @@ const msg = ref('')
 const busy = ref(false)
 
 async function load() {
-  const data = await adminApi<{ app_id: string; secret_hint: string; configured: boolean }>('/api/v1/admin/wechat')
-  appId.value = data.app_id
-  secretHint.value = data.secret_hint
-  configured.value = data.configured
-  appSecret.value = ''
+  try {
+    const data = await adminApi<{ app_id: string; secret_hint: string; configured: boolean }>('/api/v1/admin/wechat')
+    appId.value = data.app_id
+    secretHint.value = data.secret_hint
+    configured.value = data.configured
+    appSecret.value = ''
+    err.value = ''
+  } catch (e) {
+    err.value = e instanceof Error ? e.message : '加载失败'
+  }
 }
 
 async function save() {
@@ -43,7 +48,8 @@ async function save() {
   }
 }
 
-onMounted(() => load().catch((e) => { err.value = e instanceof Error ? e.message : '加载失败' }))
+onMounted(load)
+defineExpose({ reload: load })
 </script>
 
 <template>
@@ -70,7 +76,9 @@ onMounted(() => load().catch((e) => { err.value = e instanceof Error ? e.message
     <p v-if="msg" class="admin-success">{{ msg }}</p>
     <div class="admin-savebar">
       <span class="muted">AppSecret 只保存在服务端</span>
-      <button class="btn" type="button" :disabled="busy" @click="save">{{ busy ? '保存中…' : '保存' }}</button>
+      <div class="admin-actions-inline">
+        <button class="btn" type="button" :disabled="busy" @click="save">{{ busy ? '保存中…' : '保存' }}</button>
+      </div>
     </div>
   </div>
 </template>

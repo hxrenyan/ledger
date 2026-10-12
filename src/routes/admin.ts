@@ -25,20 +25,40 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
   })
 
   app.get('/api/v1/admin/overview', async (c) => {
-    const db = c.get('db')
-    const users = await db.first<{ n: number }>(`SELECT COUNT(*) AS n FROM users`)
-    const ledgers = await db.first<{ n: number }>(`SELECT COUNT(*) AS n FROM ledgers`)
-    const txs = await db.first<{ n: number }>(`SELECT COUNT(*) AS n FROM transactions`)
-    const disabled = await db.first<{ n: number }>(`SELECT COUNT(*) AS n FROM users WHERE disabled = 1`)
+    const row = await c.get('db').first<{
+      users: number
+      ledgers: number
+      transactions: number
+      disabled_users: number
+    }>(
+      `SELECT
+         (SELECT COUNT(*) FROM users) AS users,
+         (SELECT COUNT(*) FROM ledgers) AS ledgers,
+         (SELECT COUNT(*) FROM transactions) AS transactions,
+         (SELECT COUNT(*) FROM users WHERE disabled = 1) AS disabled_users`,
+    )
     return c.json({
-      users: Number(users?.n ?? 0),
-      ledgers: Number(ledgers?.n ?? 0),
-      transactions: Number(txs?.n ?? 0),
-      disabled_users: Number(disabled?.n ?? 0),
+      users: Number(row?.users ?? 0),
+      ledgers: Number(row?.ledgers ?? 0),
+      transactions: Number(row?.transactions ?? 0),
+      disabled_users: Number(row?.disabled_users ?? 0),
     })
   })
 
   app.get('/api/v1/admin/users', async (c) => {
+    const status = c.req.query('status') || 'all'
+    if (status !== 'all' && status !== 'active' && status !== 'disabled') {
+      throw badRequest('状态只能是 all、active 或 disabled')
+    }
+    const like = searchLike(c.req.query('q'), true)
+    const where: string[] = []
+    const args: unknown[] = []
+    if (like) {
+      where.push(`(u.username LIKE ? ESCAPE '\\' OR u.nickname LIKE ? ESCAPE '\\')`)
+      args.push(like, like)
+    }
+    if (status === 'active') where.push('u.disabled = 0')
+    if (status === 'disabled') where.push('u.disabled = 1')
     const rows = await c.get('db').all<{
       id: number
       username: string
@@ -49,9 +69,13 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
       ledger_count: number
     }>(
       `SELECT u.id, u.username, u.nickname, u.disabled, u.created_at, u.last_seen_at,
-              (SELECT COUNT(*) FROM members m WHERE m.user_id = u.id) AS ledger_count
+              COUNT(m.ledger_id) AS ledger_count
        FROM users u
+       LEFT JOIN members m ON m.user_id = u.id
+       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+       GROUP BY u.id
        ORDER BY u.created_at DESC`,
+      args,
     )
     return c.json({
       items: rows.map((r) => ({
@@ -67,7 +91,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
   })
 
   app.patch('/api/v1/admin/users/:id', async (c) => {
-    const id = routeId(c.req.param('id'), '用户')
+    const id = recordId(c.req.param('id'), '用户')
     const body = await c.req.json().catch(() => ({}))
     if (typeof body.disabled !== 'boolean') throw badRequest('请提供 disabled')
     const db = c.get('db')
@@ -78,7 +102,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
   })
 
   app.get('/api/v1/admin/points', async (c) => {
-    return c.json({ items: await listWechatPointUsers(c.get('db')) })
+    return c.json({ items: await listWechatPointUsers(c.get('db'), searchLike(c.req.query('q'), true)) })
   })
 
   app.post('/api/v1/admin/points', async (c) => {
@@ -86,17 +110,13 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
     if (!Array.isArray(body.user_ids) || typeof body.delta !== 'number' || typeof body.note !== 'string') {
       throw badRequest('请选择用户，并填写积分变动和备注')
     }
-    const userIds = body.user_ids.map((id: unknown) => {
-      const parsed = parseId(id)
-      if (parsed == null) throw badRequest('用户编号无效')
-      return parsed
-    })
+    const userIds = body.user_ids.map((id: unknown) => recordId(id, '用户'))
     const items = await adjustPointsMany(c.get('db'), userIds, body.delta, body.note)
     return c.json({ items })
   })
 
   app.get('/api/v1/admin/users/:id/points', async (c) => {
-    const id = routeId(c.req.param('id'), '用户')
+    const id = recordId(c.req.param('id'), '用户')
     const db = c.get('db')
     await assertWechatUser(db, id)
     const account = await db.first<{ balance: number }>(`SELECT balance FROM point_accounts WHERE user_id = ?`, [id])
@@ -105,7 +125,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
   })
 
   app.post('/api/v1/admin/users/:id/points', async (c) => {
-    const id = routeId(c.req.param('id'), '用户')
+    const id = recordId(c.req.param('id'), '用户')
     const body = await c.req.json().catch(() => ({}))
     if (typeof body.delta !== 'number' || typeof body.note !== 'string') throw badRequest('请提供积分变动和备注')
     const entry = await adjustPoints(c.get('db'), id, body.delta, body.note)
@@ -115,7 +135,7 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
   app.get('/api/v1/admin/feedbacks', async (c) => {
     const status = parseFeedbackStatus(c.req.query('status') || 'open')
     if (!status) throw badRequest('状态只能是 open、done 或 all')
-    return c.json({ items: await listAdminFeedback(c.get('db'), status) })
+    return c.json({ items: await listAdminFeedback(c.get('db'), status, searchLike(c.req.query('q'))) })
   })
 
   app.patch('/api/v1/admin/feedbacks/:id', async (c) => {
@@ -131,7 +151,9 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
     return c.json(item)
   })
 
-  app.get('/api/v1/admin/ledgers', async (c) => {    const rows = await c.get('db').all<{
+  app.get('/api/v1/admin/ledgers', async (c) => {
+    const like = searchLike(c.req.query('q'), true)
+    const rows = await c.get('db').all<{
       id: number
       name: string
       owner_username: string
@@ -141,11 +163,19 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
       last_seen_at: number | null
     }>(
       `SELECT l.id, l.name, l.created_at, l.last_seen_at, u.username AS owner_username,
-              (SELECT COUNT(*) FROM members m WHERE m.ledger_id = l.id) AS member_count,
-              (SELECT COUNT(*) FROM transactions t WHERE t.ledger_id = l.id) AS tx_count
+              COALESCE(mc.n, 0) AS member_count,
+              COALESCE(tc.n, 0) AS tx_count
        FROM ledgers l
        JOIN users u ON u.id = l.owner_id
+       LEFT JOIN (
+         SELECT ledger_id, COUNT(*) AS n FROM members GROUP BY ledger_id
+       ) mc ON mc.ledger_id = l.id
+       LEFT JOIN (
+         SELECT ledger_id, COUNT(*) AS n FROM transactions GROUP BY ledger_id
+       ) tc ON tc.ledger_id = l.id
+       ${like ? `WHERE (l.name LIKE ? ESCAPE '\\' OR u.username LIKE ? ESCAPE '\\' OR u.nickname LIKE ? ESCAPE '\\')` : ''}
        ORDER BY l.created_at DESC`,
+      like ? [like, like, like] : [],
     )
     return c.json({
       items: rows.map((r) => ({
@@ -295,4 +325,23 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
 function strField(form: FormData, key: string): string {
   const v = form.get(key)
   return typeof v === 'string' ? v.trim() : ''
+}
+
+/** 新库是正整数。旧本地库的用户主键仍是 UUID，列表原样返回，按钮也要认。 */
+function recordId(value: unknown, label: string): number | string {
+  const parsed = parseId(value)
+  if (parsed != null) return parsed
+  if (typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    return value
+  }
+  throw badRequest(`${label}无效`)
+}
+
+/** 后台搜索词。空串不筛选。用户、账本、积分会去掉开头的 @。 */
+function searchLike(raw: string | undefined, stripAt = false): string | null {
+  let text = (raw ?? '').trim()
+  if (stripAt) text = text.replace(/^@+/, '')
+  if (!text) return null
+  if (text.length > 40) throw badRequest('搜索词最多 40 字')
+  return `%${text.replace(/[\\%_]/g, (ch) => `\\${ch}`)}%`
 }

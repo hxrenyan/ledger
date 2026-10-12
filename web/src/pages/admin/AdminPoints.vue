@@ -2,7 +2,7 @@
 /**
  * 只给有微信登录的账号手动加减积分。勾选多位时，同一次变动和同一条备注一起提交。
  */
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { adminApi } from '../../adminApi.ts'
 
 type PointUser = {
@@ -25,9 +25,12 @@ type PointEntry = {
 
 const users = ref<PointUser[]>([])
 const selected = ref<number[]>([])
+const query = ref('')
 const err = ref('')
 const msg = ref('')
 const loading = ref(false)
+let queryTimer = 0
+let listReq = 0
 const openId = ref<number | ''>('')
 const deltaText = ref('')
 const note = ref('')
@@ -37,6 +40,13 @@ const restricted = ref(false)
 const limitBusy = ref(false)
 
 const kindLabel: Record<string, string> = {
+  signup_grant: '新用户赠送',
+  daily_enter: '每日进入',
+  streak_bonus: '连续进入奖励',
+  speech: '语音识别',
+  image: '图片识别',
+  text: '文本整理',
+  refund: '退回',
   admin_grant: '管理员分配',
   admin_deduct: '管理员扣减',
 }
@@ -65,21 +75,60 @@ async function saveLimit(next: boolean) {
   }
 }
 
-async function load() {
+async function loadUsers() {
+  const req = ++listReq
   loading.value = true
-  err.value = ''
   try {
-    await loadLimit()
-    const data = await adminApi<{ items: PointUser[] }>('/api/v1/admin/points')
+    const q = query.value.trim()
+    const data = await adminApi<{ items: PointUser[] }>(`/api/v1/admin/points${q ? `?q=${encodeURIComponent(q)}` : ''}`)
+    if (req !== listReq) return
     users.value = data.items
     const ids = new Set(data.items.map((item) => item.id))
     selected.value = selected.value.filter((id) => ids.has(id))
+    err.value = ''
   } catch (e) {
+    if (req !== listReq) return
     err.value = e instanceof Error ? e.message : '加载失败'
   } finally {
-    loading.value = false
+    if (req === listReq) loading.value = false
   }
 }
+
+async function load() {
+  let limitErr = ''
+  try {
+    await loadLimit()
+  } catch (e) {
+    limitErr = e instanceof Error ? e.message : '加载失败'
+  }
+  await loadUsers()
+  if (limitErr) err.value = limitErr
+}
+
+function onQuery() {
+  window.clearTimeout(queryTimer)
+  queryTimer = window.setTimeout(() => { void loadUsers() }, 250)
+}
+
+function clearQuery() {
+  query.value = ''
+  window.clearTimeout(queryTimer)
+  void loadUsers()
+}
+
+const batchReady = computed(() => {
+  const delta = Number(deltaText.value)
+  const text = note.value.trim()
+  return selected.value.length > 0 && Number.isInteger(delta) && delta !== 0 && text.length > 0 && text.length <= 100
+})
+
+const batchLabel = computed(() => {
+  if (busy.value) return '提交中…'
+  const count = selected.value.length
+  const delta = Number(deltaText.value)
+  if (!count || !Number.isInteger(delta) || delta === 0) return '提交变动'
+  return delta > 0 ? `给 ${count} 人加 ${delta}` : `给 ${count} 人扣 ${-delta}`
+})
 
 async function open(user: PointUser) {
   err.value = ''
@@ -105,23 +154,20 @@ function toggle(id: number) {
 }
 
 function toggleAll() {
-  if (selected.value.length === users.value.length) selected.value = []
-  else selected.value = users.value.map((user) => user.id)
+  const visible = users.value.map((user) => user.id)
+  const allVisible = visible.length > 0 && visible.every((id) => selected.value.includes(id))
+  if (allVisible) selected.value = selected.value.filter((id) => !visible.includes(id))
+  else selected.value = [...new Set([...selected.value, ...visible])]
 }
 
 async function submitBatch() {
   if (busy.value) return
-  if (!selected.value.length) {
-    err.value = '请选择用户'
+  if (!batchReady.value) {
+    err.value = !selected.value.length ? '请选择用户' : !note.value.trim() ? '请填写备注' : '积分变动须为非 0 整数'
     msg.value = ''
     return
   }
   const delta = Number(deltaText.value)
-  if (!Number.isInteger(delta) || delta === 0) {
-    err.value = '积分变动须为非 0 整数'
-    msg.value = ''
-    return
-  }
   err.value = ''
   msg.value = ''
   busy.value = true
@@ -156,6 +202,7 @@ function signed(n: number) {
 }
 
 onMounted(load)
+defineExpose({ reload: load })
 </script>
 
 <template>
@@ -165,59 +212,58 @@ onMounted(load)
         <h2>积分分配</h2>
         <p class="muted">只列出微信登录的账号。勾选后按同一变动、同一备注一次分配。正数增加，负数扣减。任何一人不够扣时，这一批都不写入。</p>
       </div>
-      <button class="btn ghost compact" type="button" :disabled="loading" @click="load">{{ loading ? '刷新中…' : '刷新' }}</button>
     </div>
     <p v-if="err" class="err admin-alert">{{ err }}</p>
     <p v-if="msg" class="admin-success">{{ msg }}</p>
-    <section class="admin-panel">
-      <div class="admin-panel-head">
-        <div>
-          <h3>识别限制</h3>
-          <p class="muted">开启后，语音、拍照和文本整理只允许微信登录，并按积分扣费。关闭后，已登录用户都能用，不扣积分。保存后立即生效。</p>
-        </div>
-        <button class="btn compact" type="button" :disabled="limitBusy" @click="saveLimit(!restricted)">
-          {{ limitBusy ? '保存中…' : restricted ? '已开启，点击关闭' : '已关闭，点击开启' }}
-        </button>
+    <section class="admin-panel admin-limit">
+      <div>
+        <h3>识别限制</h3>
+        <p class="muted">开启后，语音、拍照和文本整理只允许微信登录，并按积分扣费。关闭后，已登录用户都能用，不扣积分。保存后立即生效。</p>
       </div>
+      <label class="admin-switch">
+        <input type="checkbox" :checked="restricted" :disabled="limitBusy" aria-label="识别限制" @change="saveLimit(($event.target as HTMLInputElement).checked)" />
+        <span></span>
+      </label>
     </section>
     <section class="admin-panel">
-      <div class="admin-panel-head">
-        <div>
-          <h3>微信用户</h3>
-          <p class="muted">共 {{ users.length }} 位，已选 {{ selected.length }} 位</p>
-        </div>
+      <div class="admin-toolbar">
+        <label class="admin-search">
+          <input v-model="query" placeholder="搜索昵称或账号" aria-label="搜索微信用户" @input="onQuery" />
+          <button v-if="query" class="admin-search-clear" type="button" @click="clearQuery">清除</button>
+        </label>
         <button class="btn ghost compact" type="button" :disabled="!users.length" @click="toggleAll">
-          {{ selected.length === users.length && users.length ? '取消全选' : '全选' }}
+          {{ users.length && users.every((user) => selected.includes(user.id)) ? '取消全选' : '全选当前' }}
         </button>
+        <span class="count">{{ loading ? '查询中' : `当前 ${users.length} 位，已选 ${selected.length} 位` }}</span>
       </div>
-      <form v-if="users.length" class="point-batch" @submit.prevent="submitBatch">
-        <input v-model="deltaText" inputmode="numeric" placeholder="如 10 或 -5" aria-label="积分变动" />
-        <input v-model="note" maxlength="100" placeholder="备注，例如活动补发" aria-label="备注" />
-        <button class="btn compact" type="submit" :disabled="busy || !selected.length">
-          {{ busy ? '提交中…' : `分配给已选 ${selected.length} 人` }}
-        </button>
+      <form class="admin-toolbar point-batch" @submit.prevent="submitBatch">
+        <input v-model="deltaText" inputmode="numeric" placeholder="变动，如 10 或 -5" aria-label="积分变动" />
+        <input v-model="note" class="note" maxlength="100" placeholder="备注，例如活动补发" aria-label="备注" />
+        <button class="btn compact" type="submit" :disabled="busy || !batchReady">{{ batchLabel }}</button>
       </form>
-      <div v-if="!users.length && !loading" class="admin-empty">还没有微信用户</div>
-      <div v-for="u in users" :key="u.id" class="point-user">
-        <div class="admin-list-row">
-          <input class="point-check" type="checkbox" :checked="selected.includes(u.id)" :aria-label="`选择 ${u.nickname || u.username}`" @change="toggle(u.id)" />
-          <div class="admin-avatar">{{ (u.nickname || u.username).slice(0, 1).toUpperCase() }}</div>
-          <div class="admin-row-main">
-            <strong>{{ u.nickname || u.username }}</strong>
-            <span>@{{ u.username }}</span>
+      <div v-if="!users.length && !loading" class="admin-empty">{{ query.trim() ? '没有匹配的微信用户' : '还没有微信用户' }}</div>
+      <div v-else-if="users.length" class="admin-table-wrap">
+        <div class="admin-table points">
+          <div class="admin-table-head"><span></span><span>用户</span><span>状态</span><span>余额</span><span>操作</span></div>
+          <div v-for="u in users" :key="u.id" class="point-user">
+            <div class="admin-table-row">
+              <input class="point-check" type="checkbox" :checked="selected.includes(u.id)" :aria-label="`选择 ${u.nickname || u.username}`" @change="toggle(u.id)" />
+              <div class="admin-person">
+                <div class="admin-avatar">{{ (u.nickname || u.username).slice(0, 1).toUpperCase() }}</div>
+                <div><strong>{{ u.nickname || u.username }}</strong><span>@{{ u.username }}</span></div>
+              </div>
+              <span class="admin-status" :class="u.disabled ? 'off' : 'on'">{{ u.disabled ? '已停用' : '正常' }}</span>
+              <span class="point-balance">{{ u.balance }} 分</span>
+              <button class="admin-row-btn" type="button" @click="open(u)">{{ openId === u.id ? '收起' : '明细' }}</button>
+            </div>
+            <ul v-if="openId === u.id" class="point-entries">
+              <li v-if="!entries.length">还没有明细</li>
+              <li v-for="item in entries" :key="item.id">
+                <span class="admin-time">{{ whenAt(item.created_at) }}</span> · {{ kindLabel[item.kind] || item.kind }} {{ signed(item.delta) }} · 余额 {{ item.balance_after }} · {{ item.note }}
+              </li>
+            </ul>
           </div>
-          <span class="admin-status" :class="u.disabled ? 'off' : 'on'">{{ u.disabled ? '已停用' : '正常' }}</span>
-          <span class="point-balance">{{ u.balance }} 分</span>
-          <button class="btn compact" :class="openId === u.id ? 'ghost' : ''" type="button" @click="open(u)">
-            {{ openId === u.id ? '收起' : '明细' }}
-          </button>
         </div>
-        <ul v-if="openId === u.id" class="point-entries">
-          <li v-if="!entries.length">还没有明细</li>
-          <li v-for="item in entries" :key="item.id">
-            {{ whenAt(item.created_at) }} · {{ kindLabel[item.kind] || item.kind }} {{ signed(item.delta) }} · 余额 {{ item.balance_after }} · {{ item.note }}
-          </li>
-        </ul>
       </div>
     </section>
   </div>
