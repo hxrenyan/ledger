@@ -18,6 +18,7 @@ Page({
     contactId: '',
     name: '',
     relation: '',
+    found: false,
     givenText: '0.00',
     receivedText: '0.00',
     netText: '0.00',
@@ -71,6 +72,7 @@ Page({
         const net = received - given
         this.setData({
           loading: false,
+          found: !!me,
           name: me ? me.name : items.length ? '' : '这位联系人',
           relation: me && me.relation ? me.relation : '',
           givenText: money.formatYuan(given),
@@ -94,6 +96,38 @@ Page({
     if (received > given) return '收到的比送出的多 ' + money.formatYuan(received - given) + '，下次记得还上'
     if (given > received) return '送出的比收到的多 ' + money.formatYuan(given - received)
     return '两边刚好持平'
+  },
+
+  editContact() {
+    if (!this.data.found) return
+    ui.actions(['改姓名', '改关系']).then((idx) => {
+      if (idx === 0) this.editName()
+      if (idx === 1) this.editRelation()
+    })
+  },
+
+  editName() {
+    ui.prompt({ title: '联系人姓名', value: this.data.name, placeholder: '姓名，最多 32 字' }).then((name) => {
+      if (name == null || !name) return
+      this.patchContact({ name: name })
+    })
+  },
+
+  editRelation() {
+    ui.prompt({ title: '关系（可空）', value: this.data.relation, placeholder: '比如：同事 / 亲戚' }).then((relation) => {
+      if (relation == null) return
+      this.patchContact({ relation: relation })
+    })
+  },
+
+  patchContact(body) {
+    const id = this.data.contactId
+    ui.withLoading('保存中', () => request.request({ path: '/api/v1/contacts/' + id, method: 'PATCH', data: body }))
+      .then(() => {
+        ui.ok('已保存')
+        return this.load()
+      })
+      .catch((err) => ui.fail(err, '保存失败'))
   },
 
   addGift() {

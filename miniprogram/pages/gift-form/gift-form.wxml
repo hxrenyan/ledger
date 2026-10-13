@@ -73,6 +73,40 @@
       <view class="label">备注</view>
       <input class="input" value="{{note}}" bindinput="onNote" placeholder="比如：随了 800，回了 1000" placeholder-class="ph" />
     </view>
+    <view class="pair" wx:if="{{!id && !convertTx}}">
+      <view class="pair-item">
+        <text>同时记明细</text>
+        <switch checked="{{alsoTx}}" color="#3b5bdb" bindchange="onAlsoTx" />
+      </view>
+    </view>
+    <view wx:if="{{alsoTx && !id && !convertTx}}">
+      <view class="pick-row also-picks">
+        <view class="pick">
+          <picker mode="selector" range="{{categoryNames}}" value="{{categoryIndex}}" bindchange="pickCategory" disabled="{{!categoryNames.length}}">
+            <view class="pick-box">
+              <text class="pick-k">分类</text>
+              <view class="pick-v">
+                <text class="val {{categoryId ? '' : 'ph'}}">{{categoryName}}</text>
+                <text class="caret">▾</text>
+              </view>
+            </view>
+          </picker>
+        </view>
+        <view class="pick">
+          <picker mode="selector" range="{{accountNames}}" value="{{accountIndex}}" bindchange="pickAccount" disabled="{{!accountNames.length}}">
+            <view class="pick-box">
+              <text class="pick-k">账户</text>
+              <view class="pick-v">
+                <text class="val {{accountId ? '' : 'ph'}}">{{accountName}}</text>
+                <text class="caret">▾</text>
+              </view>
+            </view>
+          </picker>
+        </view>
+      </view>
+      <view class="tip">{{kind === 'receive' ? '收到记成收入' : '送出记成支出'}}，计入所选账户。人情本身仍不进余额。</view>
+      <view class="empty" wx:if="{{!categoryNames.length}}">还没有{{kind === 'receive' ? '收入' : '支出'}}分类</view>
+    </view>
     <view class="pair" wx:if="{{!id}}">
       <view class="pair-item">
         <text>继续下一笔</text>
@@ -85,7 +119,8 @@
 <view class="save-bar">
   <view class="err" wx:if="{{err}}">{{err}}</view>
   <view class="actions">
+    <button class="btn ghost" wx:if="{{id}}" bindtap="toTransaction">转成明细</button>
     <button class="btn danger" wx:if="{{id}}" bindtap="remove">删除</button>
-    <button class="btn" bindtap="save" disabled="{{saving}}">{{saving ? '保存中…' : '保存'}}</button>
+    <button class="btn" bindtap="save" disabled="{{saving}}">{{saving ? '保存中…' : (convertTx ? '转成人情' : '保存')}}</button>
   </view>
 </view>

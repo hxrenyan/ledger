@@ -87,8 +87,20 @@
         </picker>
       </view>
 
+      <view class="imp-switch">
+        <view class="imp-sw {{item.asFavor ? '' : 'on'}}" data-i="{{index}}" data-favor="0" bindtap="setFavor">明细</view>
+        <view class="imp-sw {{item.asFavor ? 'on' : ''}}" data-i="{{index}}" data-favor="1" bindtap="setFavor">人情</view>
+      </view>
       <input class="imp-note" value="{{item.note}}" data-i="{{index}}" bindinput="onNote" placeholder="备注" />
-      <view class="imp-flag" wx:if="{{item.statusText}}">{{item.statusText}}<text wx:if="{{item.counterparty}}"> · 对方 {{item.counterparty}}</text></view>
+      <input
+        wx:if="{{item.asFavor}}"
+        class="imp-note"
+        value="{{item.favorContact}}"
+        data-i="{{index}}"
+        bindinput="onFavorContact"
+        placeholder="对方姓名"
+      />
+      <view class="imp-flag" wx:if="{{item.statusText}}">{{item.statusText}}<text wx:if="{{item.counterparty && !item.asFavor}}"> · 对方 {{item.counterparty}}</text></view>
     </view>
 
     <view class="tip" wx:if="{{hiddenCount}}">还有 {{hiddenCount}} 行没显示（避免卡顿）；提交时它们会按当前规则一并导入，重复的会被跳过。</view>

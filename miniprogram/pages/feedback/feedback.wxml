@@ -10,10 +10,6 @@
         placeholder="说说哪里不好用，或想加什么"
       />
     </view>
-    <view class="field">
-      <view class="label">联系方式（选填）</view>
-      <input class="input" maxlength="40" value="{{contact}}" bindinput="onContact" placeholder="微信号或手机号" />
-    </view>
     <button class="btn" disabled="{{busy}}" bindtap="submit">{{busy ? '提交中…' : '提交'}}</button>
   </view>
   <view class="card muted" wx:if="{{error}}">{{error}}</view>

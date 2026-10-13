@@ -59,6 +59,8 @@ describe('人情往来识别', () => {
       occasion: '',
     })
     expect(detectFavor('美团红包 3.5')).toBeNull()
+    expect(detectFavor('给张三转了500')).toMatchObject({ contactName: '张三', giftKind: 'give' })
+    expect(detectFavor('收到工资8000')).toBeNull()
   })
 
   it('自然语言按句拆开，没金额或没姓名的不入账', () => {
@@ -169,6 +171,39 @@ describe('自然语言入账', () => {
     expect(tables.map((row) => row.name)).not.toContain('import_files')
   })
 
+  it('智能记账的人情行可以不记明细', async () => {
+    const { app, db } = await setup()
+    const { headers } = await wechatSession(app, 'favor-only')
+    const accounts = await json(app, '/api/v1/accounts', { headers })
+    const accountId = (accounts.body as { items: { id: number }[] }).items[0].id
+    const created = await json(app, '/api/v1/imports/commit', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        source: 'utterance',
+        rows: [
+          {
+            date: '2026-10-02',
+            amount_cents: 50000,
+            direction: 'expense',
+            note: '随礼',
+            favor_contact: '张三',
+            favor_kind: 'give',
+            favor_occasion: '结婚',
+            also_tx: false,
+          },
+        ],
+      }),
+    })
+    expect(created.status).toBe(201)
+    expect(created.body).toMatchObject({ imported: 0, gifts: 1 })
+    expect(await db.first(`SELECT COUNT(*) AS n FROM transactions`)).toEqual({ n: 0 })
+    expect(await db.first(`SELECT current_cents AS n FROM accounts WHERE id = ?`, [accountId])).toEqual({ n: 0 })
+    expect(await db.first(`SELECT c.name AS name FROM gifts g JOIN contacts c ON c.id = g.contact_id`)).toEqual({
+      name: '张三',
+    })
+  })
+
   it('配置了 AI 时用模型结果，模型失败则退回规则', async () => {
     const original = globalThis.fetch
     const { app, db } = await setup()
@@ -226,5 +261,129 @@ describe('自然语言入账', () => {
     expect((fallback.body as { items: { favor_contact: string }[] }).items[0].favor_contact).toBe('张三')
     expect((fallback.body as { ai_error: string }).ai_error).toContain('500')
     globalThis.fetch = original
+  })
+})
+
+describe('人情和明细互相转换', () => {
+  it('记人情时可以同时记一笔明细，余额只动明细', async () => {
+    const { app, db } = await setup()
+    const { headers } = await wechatSession(app, 'also-tx')
+    const accounts = await json(app, '/api/v1/accounts', { headers })
+    const categories = await json(app, '/api/v1/categories', { headers })
+    const accountId = (accounts.body as { items: { id: number }[] }).items[0].id
+    const expenseId = (categories.body as { items: { id: number; kind: string }[] }).items.find((c) => c.kind === 'expense')!.id
+    const incomeId = (categories.body as { items: { id: number; kind: string }[] }).items.find((c) => c.kind === 'income')!.id
+    const contact = await json(app, '/api/v1/contacts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: '李四', relation: '' }),
+    })
+    const contactId = (contact.body as { id: number }).id
+    const gift = {
+      contact_id: contactId,
+      kind: 'give',
+      amount_cents: 20000,
+      date: '2026-10-02',
+      occasion: '生日',
+      note: '',
+    }
+
+    const plain = await json(app, '/api/v1/gifts', { method: 'POST', headers, body: JSON.stringify(gift) })
+    expect(plain.status).toBe(201)
+    expect(plain.body).not.toHaveProperty('transaction_id')
+    expect(await db.first(`SELECT COUNT(*) AS n FROM transactions`)).toEqual({ n: 0 })
+    expect(await db.first(`SELECT current_cents AS n FROM accounts WHERE id = ?`, [accountId])).toEqual({ n: 0 })
+
+    const both = await json(app, '/api/v1/gifts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...gift, account_id: accountId, category_id: expenseId }),
+    })
+    expect(both.status).toBe(201)
+    expect(both.body).toMatchObject({ contact_name: '李四', kind: 'give' })
+    expect((both.body as { transaction_id: number }).transaction_id).toEqual(expect.any(Number))
+    expect(await db.first(`SELECT COUNT(*) AS n FROM gifts`)).toEqual({ n: 2 })
+    expect(await db.first(`SELECT kind, amount_cents, note, category_id FROM transactions`)).toEqual({
+      kind: 'expense',
+      amount_cents: 20000,
+      note: '李四',
+      category_id: expenseId,
+    })
+    expect(await db.first(`SELECT current_cents AS n FROM accounts WHERE id = ?`, [accountId])).toEqual({ n: -20000 })
+
+    const mismatch = await json(app, '/api/v1/gifts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...gift, account_id: accountId, category_id: incomeId }),
+    })
+    expect(mismatch.status).toBe(400)
+
+    const half = await json(app, '/api/v1/gifts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...gift, account_id: accountId }),
+    })
+    expect(half.status).toBe(400)
+  })
+
+  it('流水转成人情后可以再转回明细，余额跟着走', async () => {
+    const { app, db } = await setup()
+    const { headers } = await wechatSession(app, 'convert')
+    const accounts = await json(app, '/api/v1/accounts', { headers })
+    const categories = await json(app, '/api/v1/categories', { headers })
+    const accountId = (accounts.body as { items: { id: number; name: string }[] }).items[0].id
+    const categoryId = (categories.body as { items: { id: number; kind: string }[] }).items.find((c) => c.kind === 'expense')!.id
+    const contact = await json(app, '/api/v1/contacts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ name: '张三', relation: '同事' }),
+    })
+    const contactId = (contact.body as { id: number }).id
+    const created = await json(app, '/api/v1/transactions', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        kind: 'expense',
+        amount_cents: 80000,
+        date: '2026-10-01',
+        account_id: accountId,
+        category_id: categoryId,
+        note: '随礼',
+      }),
+    })
+    const txId = (created.body as { id: number }).id
+    expect(await db.first(`SELECT current_cents AS n FROM accounts WHERE id = ?`, [accountId])).toEqual({ n: -80000 })
+
+    const toGift = await json(app, `/api/v1/transactions/${txId}/to-gift`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ contact_id: contactId, kind: 'give', amount_cents: 80000, date: '2026-10-01', occasion: '结婚', note: '随礼' }),
+    })
+    expect(toGift.status).toBe(201)
+    expect(toGift.body).toMatchObject({ contact_name: '张三', kind: 'give', occasion: '结婚' })
+    expect(await db.first(`SELECT COUNT(*) AS n FROM transactions`)).toEqual({ n: 0 })
+    expect(await db.first(`SELECT current_cents AS n FROM accounts WHERE id = ?`, [accountId])).toEqual({ n: 0 })
+    const giftId = (toGift.body as { id: number }).id
+
+    const back = await json(app, `/api/v1/gifts/${giftId}/to-transaction`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        kind: 'expense',
+        amount_cents: 80000,
+        date: '2026-10-01',
+        account_id: accountId,
+        category_id: categoryId,
+        note: '随礼',
+      }),
+    })
+    expect(back.status).toBe(201)
+    expect(await db.first(`SELECT COUNT(*) AS n FROM gifts`)).toEqual({ n: 0 })
+    expect(await db.first(`SELECT kind, amount_cents, note FROM transactions`)).toEqual({
+      kind: 'expense',
+      amount_cents: 80000,
+      note: '随礼',
+    })
+    expect(await db.first(`SELECT current_cents AS n FROM accounts WHERE id = ?`, [accountId])).toEqual({ n: -80000 })
   })
 })

@@ -95,6 +95,15 @@
             </picker>
           </view>
 
+          <view class="ap-switch">
+            <view class="ap-sw {{item.isFavor ? '' : 'on'}}" data-i="{{index}}" data-favor="0" bindtap="setFavor">明细</view>
+            <view class="ap-sw {{item.isFavor ? 'on' : ''}}" data-i="{{index}}" data-favor="1" bindtap="setFavor">人情</view>
+          </view>
+          <view class="ap-also" wx:if="{{item.isFavor}}">
+            <text>同时记明细</text>
+            <switch checked="{{item.alsoTx}}" data-i="{{index}}" color="#3b5bdb" bindchange="onAlsoTx" />
+          </view>
+
           <input
             class="ap-note"
             value="{{item.noteText}}"
@@ -109,7 +118,7 @@
             value="{{item.counterpartyText}}"
             data-i="{{index}}"
             bindinput="onCounterparty"
-            placeholder="对方姓名（记成人情）"
+            placeholder="对方姓名"
           />
 
           <view class="ap-bad-reason" wx:if="{{item.bad}}">{{item.reason || '这一行没解析出来'}}</view>

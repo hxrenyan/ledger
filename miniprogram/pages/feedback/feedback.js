@@ -30,7 +30,6 @@ function failText(err, raw) {
 Page({
   data: {
     content: '',
-    contact: '',
     items: [],
     busy: false,
     loaded: false,
@@ -47,10 +46,6 @@ Page({
 
   onContent(e) {
     this.setData({ content: e.detail.value })
-  },
-
-  onContact(e) {
-    this.setData({ contact: e.detail.value })
   },
 
   load() {
@@ -80,14 +75,14 @@ Page({
     }
     this.setData({ busy: true })
     request
-      .post('/api/v1/feedbacks', { content: content, contact: this.data.contact })
+      .post('/api/v1/feedbacks', { content: content })
       .then((body) => {
         if (!body || body.id == null) {
           this.setData({ busy: false })
           ui.toast('提交失败')
           return
         }
-        this.setData({ content: '', contact: '', busy: false })
+        this.setData({ content: '', busy: false })
         ui.toast('已提交')
         this.load()
       })

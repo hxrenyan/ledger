@@ -1,8 +1,8 @@
 /**
  * 人情往来识别。
  *
- * 随礼 / 礼金 / 份子 / 压岁钱不是普通分类，要落到 gifts。
- * 账单行和自然语言共用这一套判断：认得出对方姓名才算，避免把「美团红包」当成人情。
+ * 随礼、转账给人、红包给人，认得出对方姓名就落到 gifts。
+ * 账单行和自然语言共用这一套判断：对方必须是人名，商家和工资不算。
  */
 
 import { parseAmountCents } from './values.ts'
@@ -17,7 +17,7 @@ export type FavorHit = {
 }
 
 const GIFT_MARK = /随礼|随份子|份子钱|份子|礼金|人情|随了|压岁钱|压岁/
-const NOT_PERSON = /微信|支付宝|美团|饿了么|京东|淘宝|拼多多|银行|转账|商户|收款|付款|红包|余额|零钱/
+const NOT_PERSON = /微信|支付宝|美团|饿了么|京东|淘宝|拼多多|银行|转账|商户|收款|付款|红包|余额|零钱|工资|奖金|报销|退款|利息|理财|餐厅|饭店|超市|商店|公司|酒店|商场|医院|药房|学校|集团|中心|平台|咖啡|奶茶/
 const OCCASIONS: { re: RegExp; name: string }[] = [
   { re: /结婚|婚礼/, name: '结婚' },
   { re: /满月/, name: '满月' },
@@ -37,9 +37,7 @@ export function detectFavor(text: string, direction: 'expense' | 'income' | 'ski
   const raw = text.replace(/\s+/g, '')
   if (!raw) return null
   const person = extractPerson(raw)
-  const marked = GIFT_MARK.test(raw) || (OCCASIONS.some((o) => o.re.test(raw)) && /给|送|收|随/.test(raw))
-  const redPacket = /红包/.test(raw) && !!person
-  if (!marked && !redPacket) return null
+  // 句子里已经点出对方姓名，就优先当人情；没有姓名的消费仍是普通明细。
   if (!person) return null
 
   let giftKind: FavorKind = direction === 'income' ? 'receive' : 'give'
@@ -68,7 +66,8 @@ function extractPerson(raw: string): string {
 function cleanName(name: string): string {
   let out = name
   for (const occasion of OCCASIONS) out = out.replace(occasion.re, '')
-  return out.replace(/随礼|随份子|份子钱|份子|礼金|人情|随了|压岁钱|压岁|红包/g, '')
+  out = out.replace(/随礼|随份子|份子钱|份子|礼金|人情|随了|压岁钱|压岁|红包/g, '')
+  return out.replace(/(转账|转了|买了|付了|支付|给了|送了)$/g, '')
 }
 
 export function extractAmountCents(text: string): number | null {

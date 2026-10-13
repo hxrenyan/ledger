@@ -10,7 +10,8 @@
  *
  * 两个 scope：
  *   tx    普通记账，解析结果按支出/收入正常入账；
- *   favor 人情往来，行里带 counterparty 时提交 favor_contact / favor_kind 落成人情。
+ *   favor 人情往来。认出对方姓名的行默认是人情，核对时可以改回明细。
+ *         人情行可以打开「同时记明细」，再按所选账户和分类写一笔流水。
  *
  * 两个可用性开关（管理员在后台配了对应模型才有）：
  *   canSpeak 语音识别（ASR）    canPhoto 图片识别（OCR）
@@ -525,13 +526,15 @@ Component({
           amountText: r.amount_cents ? money.formatYuan(r.amount_cents) : '',
           date: r.date || time.todayISO(),
           noteText: r.note || '',
-          counterpartyText: r.counterparty || '',
+          counterpartyText: r.favor_contact || '',
+          favorOccasion: r.favor_occasion || '',
           catIndex: catIndex,
           acctIndex: acctIndex,
           catName: names[catIndex] || '未选分类',
           acctName: acctNames[acctIndex] || '未选账户',
           bad: r.status !== 'ok',
-          isFavor: !!(r.favor_contact || r.counterparty) || this.data.scope === 'favor',
+          isFavor: !!r.favor_contact || this.data.scope === 'favor',
+          alsoTx: false,
         })
       })
     },
@@ -546,6 +549,19 @@ Component({
 
     onCounterparty(e) {
       this.patch(e.currentTarget.dataset.i, { counterpartyText: e.detail.value })
+    },
+
+    setFavor(e) {
+      const i = Number(e.currentTarget.dataset.i)
+      const on = String(e.currentTarget.dataset.favor) === '1'
+      const item = this.data.items[i]
+      if (!item || !!item.isFavor === on) return
+      this.patch(i, { isFavor: on })
+    },
+
+    onAlsoTx(e) {
+      const i = Number(e.currentTarget.dataset.i)
+      this.patch(i, { alsoTx: !!e.detail.value })
     },
 
     onDate(e) {
@@ -615,7 +631,7 @@ Component({
       const expenseCats = this.data.expenseCats
       const incomeCats = this.data.incomeCats
       const accounts = this.data.accounts
-      const favorScope = this.data.scope === 'favor'
+      let missingName = false
       this.data.items.forEach((it) => {
         if (it.bad) return
         const cents = money.yuanExprToCents(it.amountText)
@@ -630,24 +646,33 @@ Component({
           category_id: catId,
           account_id: acctId,
           note: it.noteText,
+          favor_contact: '',
         }
-        if (favorScope) {
-          row.favor_contact = it.counterpartyText || it.noteText
+        if (it.isFavor) {
+          const name = String(it.counterpartyText || '').trim()
+          if (!name) missingName = true
+          row.favor_contact = name
           row.favor_kind = it.direction === 'income' ? 'receive' : 'give'
-          row.favor_occasion = it.favor_occasion || ''
+          row.favor_occasion = it.favorOccasion || ''
+          row.also_tx = !!it.alsoTx
         }
         out.push(row)
       })
-      return out
+      return { rows: out, missingName: missingName }
     },
 
     commit() {
-      const rows = this.buildRows()
+      const built = this.buildRows()
+      const rows = built.rows
+      if (built.missingName) {
+        ui.toast('人情要填对方姓名')
+        return
+      }
       if (!rows.length) {
         ui.toast('没有可保存的行')
         return
       }
-      const missing = rows.some((r) => !r.account_id)
+      const missing = rows.some((r) => r.also_tx !== false && !r.account_id)
       if (missing) {
         ui.toast('有行还没选账户')
         return
@@ -672,7 +697,8 @@ Component({
           const dates = rows.map((row) => row.date).filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date))
           const latest = dates.slice().sort().pop()
           const otherMonth = latest && latest.slice(0, 7) !== time.shanghaiMonth()
-          ui.ok(otherMonth ? Number(latest.slice(5, 7)) + '月' + Number(latest.slice(8, 10)) + '日' : gifts ? '记下 ' + n + ' 笔，含 ' + gifts + ' 笔人情' : '记下 ' + n + ' 笔')
+          const summary = !n && gifts ? '记下 ' + gifts + ' 笔人情' : gifts ? '记下 ' + n + ' 笔，含 ' + gifts + ' 笔人情' : '记下 ' + n + ' 笔'
+          ui.ok(otherMonth ? Number(latest.slice(5, 7)) + '月' + Number(latest.slice(8, 10)) + '日' : summary)
           this.triggerEvent('done', { imported: n, gifts: gifts, dates: dates })
           this.triggerEvent('close')
         })

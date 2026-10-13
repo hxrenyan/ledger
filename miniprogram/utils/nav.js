@@ -60,6 +60,57 @@ function openNative(key, query, reopen) {
 }
 
 /** 打开一个功能页。 */
+/**
+ * 跳转时要带的自由文本（比如备注）。
+ * 中文放进页面地址，微信有的机会解成乱码，所以只在内存里交到下一页。
+ */
+let carried = null
+
+function carry(data) {
+  carried = data || null
+}
+
+function takeCarry() {
+  const data = carried
+  carried = null
+  return data
+}
+
+/**
+ * 上一页表单里的备注。页面地址不带这段文字。
+ * onLoad 时当前页已经在栈顶，倒数第二页才是跳转来源。
+ */
+function noteFromPrevPage() {
+  const pages = typeof getCurrentPages === 'function' ? getCurrentPages() : []
+  if (!pages || pages.length < 2) return ''
+  const prev = pages[pages.length - 2]
+  const note = prev && prev.data ? prev.data.note : ''
+  return note == null ? '' : String(note)
+}
+
+/** 把跳转或历史数据里变成乱码的备注还原。正常中文原样返回。 */
+function repairNote(raw) {
+  let text = raw == null ? '' : String(raw)
+  for (let i = 0; i < 2; i++) {
+    if (!/%[0-9A-Fa-f]{2}/.test(text)) break
+    try {
+      const next = decodeURIComponent(text)
+      if (next === text) break
+      text = next
+    } catch (e) {
+      break
+    }
+  }
+  if (!/[\u4e00-\u9fff]/.test(text) && /[\u00c0-\u00ff]/.test(text)) {
+    try {
+      text = decodeURIComponent(escape(text))
+    } catch (e) {
+      /* 还原不了就保持原样 */
+    }
+  }
+  return text
+}
+
 function go(key, query) {
   openNative(key, query)
 }
@@ -69,5 +120,9 @@ module.exports = {
   TAB_PAGES: TAB_PAGES,
   go: go,
   openNative: openNative,
+  carry: carry,
+  takeCarry: takeCarry,
+  noteFromPrevPage: noteFromPrevPage,
+  repairNote: repairNote,
   qs: qs,
 }

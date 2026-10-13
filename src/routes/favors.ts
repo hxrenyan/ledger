@@ -1,9 +1,10 @@
 import type { Context, Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
+import { balanceStmts, type TxMoney } from '../balance.ts'
 import { badRequest, notFound } from '../http.ts'
-import { routeId } from '../id.ts'
+import { parseOptionalId, routeId } from '../id.ts'
 import { assertAmountCents } from '../money.ts'
-import { dateToOccurredAt } from '../time.ts'
+import { dateTimeToOccurredAt, dateToOccurredAt } from '../time.ts'
 
 const OCCASION_MAX = 16
 
@@ -123,6 +124,18 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
     await db.run(`DELETE FROM gifts WHERE id = ?`, [routeId(c.req.param('id'), '往来')])
     return c.json({ ok: true })
   })
+
+  /** 明细改记成人情：冲掉账户余额，删掉流水，写成一条往来。 */
+  app.post('/api/v1/transactions/:id/to-gift', async (c) => {
+    const saved = await transactionToGift(c, routeId(c.req.param('id'), '流水'), await c.req.json().catch(() => ({})))
+    return c.json(saved, 201)
+  })
+
+  /** 人情改记成明细：删掉往来，按所选账户和分类记一笔流水。 */
+  app.post('/api/v1/gifts/:id/to-transaction', async (c) => {
+    const saved = await giftToTransaction(c, routeId(c.req.param('id'), '往来'), await c.req.json().catch(() => ({})))
+    return c.json(saved, 201)
+  })
 }
 
 function shapeGift(row: GiftRow & { contact_name?: string }) {
@@ -205,31 +218,55 @@ async function upsertGift(c: Context<AppEnv>, id: number | null, body: Record<st
         : Date.now()
 
   const contactId = routeId(body.contact_id, '联系人')
-  const contactRow = await db.first(`SELECT id FROM contacts WHERE id = ? AND ledger_id = ?`, [contactId, ledgerId])
-  if (!contactRow) throw badRequest('联系人不存在')
+  const contact = await db.first<{ id: number; name: string }>(
+    `SELECT id, name FROM contacts WHERE id = ? AND ledger_id = ?`,
+    [contactId, ledgerId],
+  )
+  if (!contact) throw badRequest('联系人不存在')
 
   const now = Date.now()
   if (!id) {
-    const created = await db.first<{ id: number }>(
-      `INSERT INTO gifts (ledger_id, contact_id, kind, amount_cents, occasion, occurred_at, note, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      [ledgerId, contactId, kind, amount, occasion, occurredAt, note, c.get('userId'), now, now],
-    )
-    if (!created) throw new Error('往来记录创建失败')
-    const gid = created.id
-    const contact = await db.first<{ name: string }>(`SELECT name FROM contacts WHERE id = ?`, [contactId])
-    return shapeGift({
-      id: gid,
-      contact_id: contactId,
-      contact_name: contact?.name,
-      kind,
-      amount_cents: amount,
-      occasion,
-      occurred_at: occurredAt,
-      note,
-      created_at: now,
-      updated_at: now,
-    })
+    const also = await readAlsoTransaction(db, ledgerId, body, kind === 'receive' ? 'income' : 'expense')
+    const giftSql = `INSERT INTO gifts (ledger_id, contact_id, kind, amount_cents, occasion, occurred_at, note, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    const giftParams = [ledgerId, contactId, kind, amount, occasion, occurredAt, note, c.get('userId'), now, now]
+    let gid: number | null = null
+    let transactionId: number | null = null
+    if (!also) {
+      const created = await db.first<{ id: number }>(`${giftSql} RETURNING id`, giftParams)
+      gid = created?.id ?? null
+    } else {
+      const txNote = note || contact.name
+      const money: TxMoney = { kind: also.kind, amount_cents: amount, account_id: also.accountId, to_account_id: null }
+      const written = await db.batch([
+        { sql: giftSql, params: giftParams },
+        {
+          sql: `INSERT INTO transactions
+            (ledger_id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note, has_receipt, excluded, created_by, created_at, updated_at)
+           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?)`,
+          params: [ledgerId, also.accountId, also.categoryId, also.kind, amount, occurredAt, txNote, c.get('userId'), now, now],
+        },
+        ...balanceStmts(money, 1),
+      ])
+      gid = written[0]?.lastId ?? null
+      transactionId = written[1]?.lastId ?? null
+    }
+    if (gid == null) throw new Error('往来记录创建失败')
+    return {
+      ...shapeGift({
+        id: gid,
+        contact_id: contactId,
+        contact_name: contact.name,
+        kind,
+        amount_cents: amount,
+        occasion,
+        occurred_at: occurredAt,
+        note,
+        created_at: now,
+        updated_at: now,
+      }),
+      ...(transactionId != null ? { transaction_id: transactionId } : {}),
+    }
   }
 
   const existing = await db.first(`SELECT id FROM gifts WHERE id = ? AND ledger_id = ?`, [id, ledgerId])
@@ -240,11 +277,10 @@ async function upsertGift(c: Context<AppEnv>, id: number | null, body: Record<st
      WHERE id = ?`,
     [contactId, kind, amount, occasion, occurredAt, note, now, id],
   )
-  const contact = await db.first<{ name: string }>(`SELECT name FROM contacts WHERE id = ?`, [contactId])
   return shapeGift({
     id,
     contact_id: contactId,
-    contact_name: contact?.name,
+    contact_name: contact.name,
     kind,
     amount_cents: amount,
     occasion,
@@ -253,4 +289,142 @@ async function upsertGift(c: Context<AppEnv>, id: number | null, body: Record<st
     created_at: now,
     updated_at: now,
   })
+}
+
+/** 新建人情时可选：再记一笔同金额的支出或收入。改人情不走这里。 */
+async function readAlsoTransaction(
+  db: AppEnv['Variables']['db'],
+  ledgerId: number,
+  body: Record<string, unknown>,
+  kind: 'expense' | 'income',
+) {
+  const hasAccount = body.account_id != null && body.account_id !== '' && body.account_id !== 0
+  const hasCategory = body.category_id != null && body.category_id !== '' && body.category_id !== 0
+  if (!hasAccount && !hasCategory) return null
+  const accountId = parseOptionalId(body.account_id, '账户')
+  const categoryId = parseOptionalId(body.category_id, '分类')
+  if (!accountId) throw badRequest('请选择账户')
+  if (!categoryId) throw badRequest('请选择分类')
+  const account = await db.first<{ id: number; archived: number }>(
+    `SELECT id, archived FROM accounts WHERE id = ? AND ledger_id = ?`,
+    [accountId, ledgerId],
+  )
+  if (!account || account.archived) throw badRequest('账户不存在')
+  const category = await db.first<{ id: number; kind: string; archived: number }>(
+    `SELECT id, kind, archived FROM categories WHERE id = ? AND ledger_id = ?`,
+    [categoryId, ledgerId],
+  )
+  if (!category || category.archived) throw badRequest('分类不存在')
+  if (category.kind !== kind) throw badRequest('分类类型与收支不一致')
+  return { accountId, categoryId, kind }
+}
+
+async function transactionToGift(c: Context<AppEnv>, txId: number, body: Record<string, unknown>) {
+  const db = c.get('db')
+  const ledgerId = c.get('ledgerId')
+  const tx = await db.first<TxMoney & { note: string; has_receipt: number }>(
+    `SELECT kind, amount_cents, account_id, to_account_id, note, has_receipt
+     FROM transactions WHERE id = ? AND ledger_id = ?`,
+    [txId, ledgerId],
+  )
+  if (!tx) throw notFound('流水不存在')
+  if (tx.kind === 'transfer') throw badRequest('转账不能转成人情')
+
+  const kind = body.kind === 'give' || body.kind === 'receive' ? body.kind : tx.kind === 'income' ? 'receive' : 'give'
+  const amount = body.amount_cents != null ? assertAmountCents(body.amount_cents) : tx.amount_cents
+  const occasion = typeof body.occasion === 'string' ? body.occasion.trim().slice(0, OCCASION_MAX) : ''
+  const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : tx.note
+  const occurredAt = typeof body.date === 'string' ? dateToOccurredAt(body.date) : Date.now()
+  const contactId = routeId(body.contact_id, '联系人')
+  const contact = await db.first<{ id: number; name: string }>(
+    `SELECT id, name FROM contacts WHERE id = ? AND ledger_id = ?`,
+    [contactId, ledgerId],
+  )
+  if (!contact) throw badRequest('联系人不存在')
+
+  const now = Date.now()
+  const written = await db.batch([
+    ...balanceStmts(tx, -1),
+    { sql: `DELETE FROM attachments WHERE transaction_id = ?`, params: [txId] },
+    { sql: `DELETE FROM transactions WHERE id = ? AND ledger_id = ?`, params: [txId, ledgerId] },
+    {
+      sql: `INSERT INTO gifts (ledger_id, contact_id, kind, amount_cents, occasion, occurred_at, note, created_by, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [ledgerId, contactId, kind, amount, occasion, occurredAt, note, c.get('userId'), now, now],
+    },
+  ])
+  const giftId = written[written.length - 1]?.lastId
+  if (giftId == null) throw new Error('转成人情失败')
+  return shapeGift({
+    id: giftId,
+    contact_id: contactId,
+    contact_name: contact.name,
+    kind,
+    amount_cents: amount,
+    occasion,
+    occurred_at: occurredAt,
+    note,
+    created_at: now,
+    updated_at: now,
+  })
+}
+
+async function giftToTransaction(c: Context<AppEnv>, giftId: number, body: Record<string, unknown>) {
+  const db = c.get('db')
+  const ledgerId = c.get('ledgerId')
+  const gift = await db.first(`SELECT id FROM gifts WHERE id = ? AND ledger_id = ?`, [giftId, ledgerId])
+  if (!gift) throw notFound('往来记录不存在')
+
+  const kind = body.kind === 'income' || body.kind === 'expense' ? body.kind : null
+  if (!kind) throw badRequest('类型须为 expense 或 income')
+  const amount = assertAmountCents(body.amount_cents)
+  const accountId = parseOptionalId(body.account_id, '账户')
+  const categoryId = parseOptionalId(body.category_id, '分类')
+  if (!accountId) throw badRequest('请选择账户')
+  if (!categoryId) throw badRequest('请选择分类')
+  const account = await db.first<{ id: number; archived: number }>(
+    `SELECT id, archived FROM accounts WHERE id = ? AND ledger_id = ?`,
+    [accountId, ledgerId],
+  )
+  if (!account || account.archived) throw badRequest('账户不存在')
+  const category = await db.first<{ id: number; kind: string; archived: number }>(
+    `SELECT id, kind, archived FROM categories WHERE id = ? AND ledger_id = ?`,
+    [categoryId, ledgerId],
+  )
+  if (!category || category.archived) throw badRequest('分类不存在')
+  if (category.kind !== kind) throw badRequest('分类类型与收支不一致')
+
+  const occurredAt =
+    typeof body.date === 'string'
+      ? typeof body.time === 'string' && body.time.trim()
+        ? dateTimeToOccurredAt(body.date, body.time.trim())
+        : dateToOccurredAt(body.date)
+      : Date.now()
+  const note = typeof body.note === 'string' ? body.note.trim().slice(0, 200) : ''
+  const excluded = body.excluded ? 1 : 0
+  const now = Date.now()
+  const userId = c.get('userId')
+  const money: TxMoney = { kind, amount_cents: amount, account_id: accountId, to_account_id: null }
+  const written = await db.batch([
+    {
+      sql: `INSERT INTO transactions
+        (ledger_id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note, has_receipt, excluded, created_by, created_at, updated_at)
+       VALUES (?, ?, NULL, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)`,
+      params: [ledgerId, accountId, categoryId, kind, amount, occurredAt, note, excluded, userId, now, now],
+    },
+    ...balanceStmts(money, 1),
+    { sql: `DELETE FROM gifts WHERE id = ? AND ledger_id = ?`, params: [giftId, ledgerId] },
+  ])
+  const txId = written[0]?.lastId
+  if (txId == null) throw new Error('转成明细失败')
+  return {
+    id: txId,
+    account_id: accountId,
+    category_id: categoryId,
+    kind,
+    amount_cents: amount,
+    occurred_at: occurredAt,
+    note,
+    excluded: !!excluded,
+  }
 }

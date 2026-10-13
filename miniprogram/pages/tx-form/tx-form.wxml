@@ -116,7 +116,8 @@
 <view class="save-bar">
   <view class="err" wx:if="{{err}}">{{err}}</view>
   <view class="actions">
+    <button class="btn ghost" wx:if="{{id && kind !== 'transfer'}}" bindtap="toFavor">转成人情</button>
     <button class="btn danger" wx:if="{{id}}" bindtap="remove">删除</button>
-    <button class="btn" bindtap="save" disabled="{{saving}}">{{saving ? '保存中…' : '保存'}}</button>
+    <button class="btn" bindtap="save" disabled="{{saving}}">{{saving ? '保存中…' : (convertGift ? '转成明细' : '保存')}}</button>
   </view>
 </view>

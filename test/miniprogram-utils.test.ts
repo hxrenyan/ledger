@@ -192,3 +192,18 @@ describe('文本解码：UTF-8 与 GBK', () => {
     expect(fileText.fromBytes(gbkBytes(text))).toBe(text)
   })
 })
+
+describe('跳转备注还原', () => {
+  const nav = loadCjs(resolve('miniprogram/utils/nav.js')) as {
+    repairNote: (raw: string) => string
+  }
+
+  it('百分号编码和拉丁乱码还原成中文，正常备注不动', () => {
+    expect(nav.repairNote('随礼')).toBe('随礼')
+    expect(nav.repairNote(encodeURIComponent('随礼'))).toBe('随礼')
+    expect(nav.repairNote(encodeURIComponent(encodeURIComponent('给张三随了800')))).toBe('给张三随了800')
+    const mojibake = Buffer.from('随礼', 'utf8').toString('latin1')
+    expect(nav.repairNote(mojibake)).toBe('随礼')
+    expect(nav.repairNote('')).toBe('')
+  })
+})

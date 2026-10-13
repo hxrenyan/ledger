@@ -11,6 +11,7 @@ const { toId } = require('../../utils/id')
 const request = require('../../utils/request')
 const session = require('../../utils/session')
 const money = require('../../utils/money')
+const nav = require('../../utils/nav')
 const time = require('../../utils/time')
 const ui = require('../../utils/ui')
 
@@ -45,6 +46,7 @@ function shortDate(date) {
 Page({
   data: {
     id: '',
+    convertTx: '',
     kind: 'give', // give 送出 | receive 收入
     amountText: '',
     date: '',
@@ -63,6 +65,17 @@ Page({
     contacts: [],
     contactNames: [],
     keepGoing: false,
+    alsoTx: false,
+    accounts: [],
+    accountNames: [],
+    accountId: '',
+    accountIndex: 0,
+    accountName: '选择账户',
+    cats: [],
+    categoryNames: [],
+    categoryId: '',
+    categoryIndex: 0,
+    categoryName: '无分类',
     saving: false,
     err: '',
   },
@@ -71,15 +84,24 @@ Page({
     if (!session.ensure()) return
     const q = query || {}
     const date = q.date || time.todayISO()
+    const convertTx = toId(q.convert_tx) || ''
+    const carried = convertTx ? nav.takeCarry() : null
+    const carriedNote = carried && carried.note != null ? carried.note : ''
     this.setData({
-      id: toId(q.id) || '',
+      id: convertTx ? '' : toId(q.id) || '',
+      convertTx: convertTx,
       contactId: toId(q.contact_id) || '',
+      kind: q.kind === 'receive' ? 'receive' : 'give',
+      amountText: q.amount || '',
+      note: convertTx ? nav.repairNote(nav.noteFromPrevPage() || carriedNote) : q.note || '',
       date: date,
       dateText: shortDate(date),
     })
-    wx.setNavigationBarTitle({ title: q.id ? '改人情' : '记人情' })
-    this.loadContacts().then(() => {
-      if (q.id) this.loadGift(q.id)
+    wx.setNavigationBarTitle({ title: convertTx ? '转成人情' : q.id ? '改人情' : '记人情' })
+    const jobs = [this.loadContacts()]
+    if (!convertTx && !toId(q.id)) jobs.push(this.loadRefs())
+    Promise.all(jobs).then(() => {
+      if (q.id && !convertTx) this.loadGift(q.id)
       else this.pickDefaultContact()
     })
   },
@@ -96,6 +118,52 @@ Page({
         this.syncContactName()
       })
       .catch((err) => ui.fail(err, '联系人加载失败'))
+  },
+
+  loadRefs() {
+    return Promise.all([request.get('/api/v1/accounts'), request.get('/api/v1/categories')])
+      .then((res) => {
+        const accounts = ((res[0] && res[0].items) || []).filter((a) => !a.archived)
+        const cats = ((res[1] && res[1].items) || []).filter((c) => !c.archived)
+        this.setData({
+          accounts: accounts,
+          accountNames: accounts.map((a) => a.name),
+          accountId: this.data.accountId || (accounts[0] ? accounts[0].id : ''),
+          cats: cats,
+        })
+        this.syncAccountName()
+        this.pickDefaultCategory()
+      })
+      .catch((err) => ui.fail(err, '账户/分类加载失败'))
+  },
+
+  syncAccountName() {
+    const accounts = this.data.accounts || []
+    const index = accounts.findIndex((a) => a.id === this.data.accountId)
+    const hit = accounts[index]
+    this.setData({
+      accountIndex: index < 0 ? 0 : index,
+      accountName: hit ? hit.name : '选择账户',
+    })
+  },
+
+  /** 送出对应支出分类，收到对应收入分类。 */
+  catsForKind() {
+    const kind = this.data.kind === 'receive' ? 'income' : 'expense'
+    return (this.data.cats || []).filter((c) => c.kind === kind)
+  },
+
+  pickDefaultCategory() {
+    const list = this.catsForKind()
+    const keep = list.some((c) => c.id === this.data.categoryId)
+    const categoryId = keep ? this.data.categoryId : list[0] ? list[0].id : ''
+    const index = list.findIndex((c) => c.id === categoryId)
+    this.setData({
+      categoryNames: list.map((c) => c.name),
+      categoryId: categoryId,
+      categoryIndex: index < 0 ? 0 : index,
+      categoryName: index < 0 ? '无分类' : list[index].name,
+    })
   },
 
   pickDefaultContact() {
@@ -129,7 +197,7 @@ Page({
           amountText: money.formatYuan(g.amount_cents),
           date: date,
           dateText: shortDate(date),
-          note: g.note || '',
+          note: nav.repairNote(g.note || ''),
           contactId: g.contact_id,
           contactName: g.contact_name || '',
         }, occasionView(known ? g.occasion : '', known ? '' : g.occasion || '')))
@@ -141,6 +209,7 @@ Page({
 
   setKind(e) {
     this.setData({ kind: e.currentTarget.dataset.kind })
+    this.pickDefaultCategory()
   },
 
   onAmount(e) {
@@ -209,6 +278,24 @@ Page({
     this.setData({ keepGoing: e.detail.value })
   },
 
+  onAlsoTx(e) {
+    this.setData({ alsoTx: !!e.detail.value, err: '' })
+    if (e.detail.value) this.pickDefaultCategory()
+  },
+
+  pickCategory(e) {
+    const cat = this.catsForKind()[Number(e.detail.value)]
+    if (!cat) return
+    this.setData({ categoryId: cat.id, categoryIndex: Number(e.detail.value), categoryName: cat.name })
+  },
+
+  pickAccount(e) {
+    const account = this.data.accounts[Number(e.detail.value)]
+    if (!account) return
+    this.setData({ accountId: account.id })
+    this.syncAccountName()
+  },
+
   // ---- 保存 ----
 
   save() {
@@ -228,6 +315,16 @@ Page({
       return
     }
 
+    const alsoTx = !this.data.id && !this.data.convertTx && this.data.alsoTx
+    if (alsoTx && !this.data.accountId) {
+      this.setData({ err: '请选择账户' })
+      return
+    }
+    if (alsoTx && !this.data.categoryId) {
+      this.setData({ err: '请选择分类' })
+      return
+    }
+
     const payload = {
       contact_id: this.data.contactId,
       kind: this.data.kind,
@@ -236,15 +333,26 @@ Page({
       occasion: occasion,
       note: this.data.note,
     }
+    if (alsoTx) {
+      payload.account_id = this.data.accountId
+      payload.category_id = this.data.categoryId
+    }
 
     this.setData({ saving: true, err: '' })
-    const task = this.data.id
-      ? request.request({ path: '/api/v1/gifts/' + this.data.id, method: 'PATCH', data: payload })
-      : request.post('/api/v1/gifts', payload)
+    const task = this.data.convertTx
+      ? request.request({ path: '/api/v1/transactions/' + this.data.convertTx + '/to-gift', method: 'POST', data: payload })
+      : this.data.id
+        ? request.request({ path: '/api/v1/gifts/' + this.data.id, method: 'PATCH', data: payload })
+        : request.post('/api/v1/gifts', payload)
 
     task
       .then(() => {
         this.setData({ saving: false })
+        if (this.data.convertTx) {
+          ui.ok('已转成人情')
+          setTimeout(() => wx.navigateBack({ delta: 2 }), 600)
+          return
+        }
         if (this.data.id) {
           ui.ok('已保存')
           setTimeout(() => wx.navigateBack(), 600)
@@ -264,13 +372,26 @@ Page({
           wx.showToast({ title: '已记下，继续', icon: 'success', duration: 900 })
           return
         }
-        ui.ok('已记下')
+        ui.ok(this.data.alsoTx ? '人情和明细' : '已记下')
         setTimeout(() => wx.navigateBack(), 600)
       })
       .catch((err) => {
         this.setData({ saving: false })
         ui.fail(err, '保存失败')
       })
+  },
+
+  async toTransaction() {
+    if (!this.data.id) return
+    const yes = await ui.confirm('这条会从人情里拿掉，改记到明细并计入所选账户。', '转成明细')
+    if (!yes) return
+    nav.carry({ note: this.data.note || '' })
+    nav.go('tx-form', {
+      convert_gift: this.data.id,
+      amount: this.data.amountText,
+      date: this.data.date,
+      kind: this.data.kind === 'receive' ? 'income' : 'expense',
+    })
   },
 
   async remove() {

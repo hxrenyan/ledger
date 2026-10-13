@@ -16,6 +16,7 @@ const request = require('../../utils/request')
 const config = require('../../config')
 const image = require('../../utils/image')
 const money = require('../../utils/money')
+const nav = require('../../utils/nav')
 const time = require('../../utils/time')
 const ui = require('../../utils/ui')
 
@@ -33,6 +34,7 @@ const RECEIPT_MIME = { 'image/jpeg': true, 'image/png': true, 'image/webp': true
 Page({
   data: {
     id: '',
+    convertGift: '',
     kind: 'expense',
     amountText: '',
     date: '',
@@ -67,16 +69,22 @@ Page({
     const q = query || {}
     const date = q.date || time.todayISO()
     const kind = q.kind === 'income' ? 'income' : 'expense'
+    const convertGift = toId(q.convert_gift) || ''
+    const carried = convertGift ? nav.takeCarry() : null
+    const carriedNote = carried && carried.note != null ? carried.note : ''
     this.setData({
-      id: toId(q.id) || '',
+      id: convertGift ? '' : toId(q.id) || '',
+      convertGift: convertGift,
       kind: kind,
+      amountText: q.amount || '',
+      note: convertGift ? nav.repairNote(nav.noteFromPrevPage() || carriedNote) : q.note || '',
       date: date,
       dateText: shortDate(date),
       clock: time.shanghaiClock(),
     })
-    wx.setNavigationBarTitle({ title: q.id ? '改一笔' : '记一笔' })
+    wx.setNavigationBarTitle({ title: convertGift ? '转成明细' : q.id ? '改一笔' : '记一笔' })
     this.loadRefs().then(() => {
-      if (q.id) this.loadTx(q.id)
+      if (q.id && !convertGift) this.loadTx(q.id)
     })
   },
 
@@ -149,7 +157,7 @@ Page({
           date: date,
           dateText: shortDate(date),
           clock: time.shanghaiClock(tx.occurred_at),
-          note: tx.note || '',
+          note: nav.repairNote(tx.note || ''),
           excluded: !!tx.excluded,
           accountId: tx.account_id,
           toAccountId: tx.to_account_id || '',
@@ -310,13 +318,20 @@ Page({
     else payload.category_id = this.data.categoryId
 
     this.setData({ saving: true, err: '' })
-    const task = this.data.id
-      ? request.request({ path: '/api/v1/transactions/' + this.data.id, method: 'PATCH', data: payload })
-      : request.post('/api/v1/transactions', payload)
+    const task = this.data.convertGift
+      ? request.request({ path: '/api/v1/gifts/' + this.data.convertGift + '/to-transaction', method: 'POST', data: payload })
+      : this.data.id
+        ? request.request({ path: '/api/v1/transactions/' + this.data.id, method: 'PATCH', data: payload })
+        : request.post('/api/v1/transactions', payload)
 
     task
       .then(() => {
         this.setData({ saving: false })
+        if (this.data.convertGift) {
+          ui.ok('已转成明细')
+          setTimeout(() => wx.navigateBack({ delta: 2 }), 600)
+          return
+        }
         if (this.data.id) {
           ui.ok('已保存')
           setTimeout(() => wx.navigateBack(), 600)
@@ -335,6 +350,19 @@ Page({
         this.setData({ saving: false })
         ui.fail(err, '保存失败')
       })
+  },
+
+  async toFavor() {
+    if (!this.data.id || this.data.kind === 'transfer') return
+    const yes = await ui.confirm('这笔会从明细里拿掉，账户余额回退，改记到人情往来。有收据会一起删除。', '转成人情')
+    if (!yes) return
+    nav.carry({ note: this.data.note || '' })
+    nav.go('gift-form', {
+      convert_tx: this.data.id,
+      amount: this.data.amountText,
+      date: this.data.date,
+      kind: this.data.kind === 'income' ? 'receive' : 'give',
+    })
   },
 
   async remove() {

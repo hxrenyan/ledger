@@ -79,6 +79,10 @@
   margin-top: 16rpx;
 }
 
+.also-picks {
+  margin-top: 16rpx;
+}
+
 .add-contact {
   display: inline-block;
   margin-top: 16rpx;

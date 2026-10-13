@@ -269,6 +269,8 @@ export type CommitRowInput = {
   favor_contact?: string
   favor_kind?: string
   favor_occasion?: string
+  /** 仅在已认出人情时有效。false 只写往来，不写流水、不动余额。不传则人情和流水都写。 */
+  also_tx?: boolean
 }
 
 export type CommitInput = {
@@ -317,6 +319,8 @@ export async function commitImport(db: Db, ledgerId: number, userId: number, inp
     categoryId: number
     note: string
     favor: { contact: string; kind: 'give' | 'receive'; occasion: string } | null
+    /** 只记人情，不写流水。 */
+    giftOnly: boolean
   }
   const prepared: Prepared[] = []
   let skipped = 0
@@ -338,6 +342,24 @@ export async function commitImport(db: Db, ledgerId: number, userId: number, inp
       assertAmountCents(row.amount_cents)
     } catch {
       failed.push({ row: rowNo, reason: '金额无效' })
+      return
+    }
+    const note = (row.note ?? '').toString().trim().slice(0, 200)
+    const favor = readFavor(row, direction)
+    // 人情行显式关掉「同时记明细」时，不要求账户和分类，也不写流水。
+    if (favor && row.also_tx === false) {
+      prepared.push({
+        row: rowNo,
+        date: row.date as string,
+        occurredAt,
+        amountCents: row.amount_cents as number,
+        direction,
+        accountId: 0,
+        categoryId: 0,
+        note,
+        favor,
+        giftOnly: true,
+      })
       return
     }
     const accountId = parseId(row.account_id)
@@ -372,8 +394,9 @@ export async function commitImport(db: Db, ledgerId: number, userId: number, inp
       direction,
       accountId: account.id,
       categoryId: category.id,
-      note: (row.note ?? '').toString().trim().slice(0, 200),
-      favor: readFavor(row, direction),
+      note,
+      favor,
+      giftOnly: false,
     })
   })
 
@@ -383,6 +406,10 @@ export async function commitImport(db: Db, ledgerId: number, userId: number, inp
     const existing = await loadExistingSignatures(db, ledgerId, prepared.map((p) => p.occurredAt))
     toInsert = []
     for (const p of prepared) {
+      if (p.giftOnly) {
+        toInsert.push(p)
+        continue
+      }
       if (existing.has(signature(p.accountId, p.amountCents, p.occurredAt, p.note))) {
         duplicates++
         continue
@@ -391,6 +418,8 @@ export async function commitImport(db: Db, ledgerId: number, userId: number, inp
     }
   }
 
+  const txCount = toInsert.filter((p) => !p.giftOnly).length
+
   const now = Date.now()
   const source = normalizeSource(input.source)
   const filename = (input.filename ?? '').toString().slice(0, 200)
@@ -398,7 +427,7 @@ export async function commitImport(db: Db, ledgerId: number, userId: number, inp
   const batch = await db.first<{ id: number }>(
     `INSERT INTO import_batches (ledger_id, source, filename, parsed_rows, imported_rows, skipped_rows, duplicate_rows, ai_used, status, created_by, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'done', ?, ?) RETURNING id`,
-    [ledgerId, source, filename, rawRows.length, toInsert.length, skipped, duplicates, input.ai_used ? 1 : 0, userId, now],
+    [ledgerId, source, filename, rawRows.length, txCount, skipped, duplicates, input.ai_used ? 1 : 0, userId, now],
   )
   if (!batch) throw new Error('导入批次创建失败')
   const batchId = batch.id
@@ -408,6 +437,7 @@ export async function commitImport(db: Db, ledgerId: number, userId: number, inp
       const chunk = toInsert.slice(offset, offset + COMMIT_CHUNK)
       const stmts: Stmt[] = []
       for (const p of chunk) {
+        if (p.giftOnly) continue
         stmts.push({
           sql: `INSERT INTO transactions
             (ledger_id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note, has_receipt, excluded, import_batch_id, created_by, created_at, updated_at)
@@ -417,10 +447,10 @@ export async function commitImport(db: Db, ledgerId: number, userId: number, inp
         const money: TxMoney = { kind: p.direction, amount_cents: p.amountCents, account_id: p.accountId, to_account_id: null }
         stmts.push(...balanceStmts(money, 1))
       }
-      await db.batch(stmts)
+      if (stmts.length) await db.batch(stmts)
     }
     const gifts = await writeBatchGifts(db, ledgerId, userId, batchId, now, toInsert)
-    return { batch_id: batchId, imported: toInsert.length, duplicates, skipped, failed, gifts }
+    return { batch_id: batchId, imported: txCount, duplicates, skipped, failed, gifts }
   } catch (e) {
     // 写库中途失败：流水、余额、这次带上的人情一起回滚。原始文件本身没有入库。
     await rollbackInserted(db, ledgerId, batchId)
@@ -800,9 +830,10 @@ export async function previewUtterances(
       'utterance',
     )
     const fromText = detectFavor([item.source, item.note].filter(Boolean).join(' '), item.direction)
-    if (isPersonName(item.favor_contact) && item.favor_kind) {
-      row.favor_contact = item.favor_contact
-      row.favor_kind = item.favor_kind
+    const named = isPersonName(item.favor_contact) ? item.favor_contact : ''
+    if (named) {
+      row.favor_contact = named
+      row.favor_kind = item.favor_kind || (item.direction === 'income' ? 'receive' : 'give')
       row.favor_occasion = item.favor_occasion
     } else if (fromText) {
       row.favor_contact = fromText.contactName
@@ -840,9 +871,18 @@ function attachFavor(row: PreviewRow) {
     [row.note, row.counterparty, row.category_name].filter(Boolean).join(' '),
     row.direction === 'income' ? 'income' : 'expense',
   )
-  row.favor_contact = favor?.contactName ?? ''
-  row.favor_kind = favor?.giftKind ?? ''
-  row.favor_occasion = favor?.occasion ?? ''
+  if (favor) {
+    row.favor_contact = favor.contactName
+    row.favor_kind = favor.giftKind
+    row.favor_occasion = favor.occasion
+    return
+  }
+  // 表格里的「对方」是人名时，默认当人情；餐厅、超市这类商家名留在明细。
+  const name = row.counterparty.trim()
+  if ((row.direction !== 'expense' && row.direction !== 'income') || !isPersonName(name)) return
+  row.favor_contact = name
+  row.favor_kind = row.direction === 'income' ? 'receive' : 'give'
+  row.favor_occasion = ''
 }
 
 function readFavor(

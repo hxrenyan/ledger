@@ -153,6 +153,7 @@ Page({
       favorContact: r.favor_contact || '',
       favorKind: r.favor_kind || '',
       favorOccasion: r.favor_occasion || '',
+      asFavor: !!r.favor_contact,
       catIndex: catIndex,
       acctIndex: acctIndex,
       catName: cats[catIndex] ? cats[catIndex].name : '未匹配',
@@ -187,6 +188,21 @@ Page({
 
   onNote(e) {
     this.patchRow(Number(e.currentTarget.dataset.i), { note: e.detail.value })
+  },
+
+  onFavorContact(e) {
+    this.patchRow(Number(e.currentTarget.dataset.i), { favorContact: e.detail.value })
+  },
+
+  setFavor(e) {
+    const i = Number(e.currentTarget.dataset.i)
+    const row = this.data.rows[i]
+    if (!row) return
+    const on = String(e.currentTarget.dataset.favor) === '1'
+    if (!!row.asFavor === on) return
+    const patch = { asFavor: on }
+    if (on && !row.favorContact && row.counterparty) patch.favorContact = row.counterparty
+    this.patchRow(i, patch)
   },
 
   onDate(e) {
@@ -247,8 +263,9 @@ Page({
 
   commit() {
     const rows = []
+    let missingName = false
     ;(this.allRows || []).forEach((r) => {
-      if (!r.include) return
+      if (!r.include || missingName) return
       const cents = money.yuanExprToCents(r.amountText)
       if (!cents) return
       const cats = this.catsFor(r.direction)
@@ -263,14 +280,25 @@ Page({
         note: r.note,
       }
       if (cat) row.category_id = cat.id
-      if (r.favorContact || r.counterparty) {
-        row.favor_contact = r.favorContact || r.counterparty
+      if (r.asFavor) {
+        const name = String(r.favorContact || '').trim()
+        if (!name) {
+          missingName = true
+          return
+        }
+        row.favor_contact = name
         row.favor_kind = r.favorKind || (r.direction === 'income' ? 'receive' : 'give')
-        row.favor_occasion = r.favorOccasion
+        row.favor_occasion = r.favorOccasion || ''
+      } else {
+        row.favor_contact = ''
       }
       rows.push(row)
     })
 
+    if (missingName) {
+      ui.toast('人情要填对方姓名')
+      return
+    }
     if (!rows.length) {
       ui.toast('没有勾选任何行')
       return

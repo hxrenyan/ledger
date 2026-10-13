@@ -7,5 +7,7 @@
 | [../sql/README.md](../sql/README.md) | 建表权威、迁移命令 |
 | [../src/README.md](../src/README.md) | 后端模块结构 |
 | [import.md](import.md) | 账单导入：格式、接口、AI 配置、限制 |
+| [favors.md](favors.md) | 人情往来：人名识别、导入默认、明细互转、改联系人 |
 | [points.md](points.md) | 微信用户积分：进入发放、识别扣费、管理后台手动分配。看广告未做 |
-| [../AGENTS.md](../AGENTS.md) | 数据库与启动协作约定 |
+| [moderation.md](moderation.md) | 本地违禁词检查：规则、打分、配置、词库格式、性能。尚未接入业务 |
+| [../AGENTS.md](../AGENTS.md) | 数据库、文档与启动协作约定 |
