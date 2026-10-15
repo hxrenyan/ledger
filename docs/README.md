@@ -12,4 +12,5 @@
 | [dicts.md](dicts.md) | 账本字典：可复用的标签和选项，目前用于联系人日子 |
 | [points.md](points.md) | 微信用户积分：进入发放、识别扣费、管理后台手动分配。看广告未做 |
 | [moderation.md](moderation.md) | 本地违禁词检查：规则、打分、配置、词库格式、性能。尚未接入业务 |
+| [review-checklist.md](review-checklist.md) | 提审前自查：会驳回的项、隐私声明、域名与云函数开关 |
 | [../AGENTS.md](../AGENTS.md) | 数据库、文档与启动协作约定 |

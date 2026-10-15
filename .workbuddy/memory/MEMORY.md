@@ -196,6 +196,21 @@ npm run typecheck && npm run typecheck:web && npm test && npm run check:miniprog
 编译开关），随各人环境产生噪音 diff，惯例是忽略。当前**已入库**，要收干净就
 `.gitignore` + `git rm --cached`（文件留本地）。
 
+## 提审前（微信审核，与「部署」是两条线）
+
+完整清单在 `docs/review-checklist.md`。要点：
+
+- **审核跑在真机 + 真实客户端上**。`urlCheck:false` 只免「开发者工具 + 真机调试」两条
+  通道；体验版 / 审核版一律走服务器域名白名单。**「工具里好好的」证明不了审核能用。**
+- **本项目是个人主体**（`docs/tools.md` 自己写明），业务域名配不了 → `pages/tools`
+  （tabBar 一栏）那个 web-view 在真机必白屏，带着提审必拒。改原生或从 tabBar 摘掉。
+- **有账号体系就必须有注销入口**：目前后端连删除账号的接口都没有，`pages/me` 只有退出登录。
+- **触发隐私校验的只有两处**：`utils/image.js` 的 `wx.chooseMedia`（摄像头/相册）、
+  `ai-panel` 的 `wx.getRecorderManager`（麦克风）。后台指引里还要声明图像/语音会传给
+  第三方模型（硅基流动、讯飞）；指引没配时真机上这两个接口直接调不起来。
+- **`CLOUD_ENV` 为空 → transport 降级直连**，体验版可能全部请求失败（域名要备案才进得了白名单）。
+- `src/moderation/` 已实现违禁词检查但**未接入业务**；昵称在成员间可见、反馈内容都算 UGC。
+
 ## 数据库
 
 表之间不定义外键，只留 `*_id` 逻辑关联；多语句写入走 `db.batch`（SQLite 事务）。
