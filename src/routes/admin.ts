@@ -31,18 +31,21 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
       ledgers: number
       transactions: number
       disabled_users: number
+      open_feedbacks: number
     }>(
       `SELECT
          (SELECT COUNT(*) FROM users) AS users,
          (SELECT COUNT(*) FROM ledgers) AS ledgers,
          (SELECT COUNT(*) FROM transactions) AS transactions,
-         (SELECT COUNT(*) FROM users WHERE disabled = 1) AS disabled_users`,
+         (SELECT COUNT(*) FROM users WHERE disabled = 1) AS disabled_users,
+         (SELECT COUNT(*) FROM feedbacks WHERE status = 'open') AS open_feedbacks`,
     )
     return c.json({
       users: Number(row?.users ?? 0),
       ledgers: Number(row?.ledgers ?? 0),
       transactions: Number(row?.transactions ?? 0),
       disabled_users: Number(row?.disabled_users ?? 0),
+      open_feedbacks: Number(row?.open_feedbacks ?? 0),
     })
   })
 

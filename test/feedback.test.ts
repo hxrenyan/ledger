@@ -80,6 +80,8 @@ describe('用户反馈', () => {
     const open = await json(app, '/api/v1/admin/feedbacks?status=open', { headers: adminHeaders })
     expect(open.body.items).toHaveLength(1)
     expect(open.body.items[0].username).toBe('author')
+    const pending = await json(app, '/api/v1/admin/overview', { headers: adminHeaders })
+    expect(pending.body.open_feedbacks).toBe(1)
     const statusPlan = await db.all<{ detail: string }>(
       `EXPLAIN QUERY PLAN SELECT id FROM feedbacks WHERE status = 'open' ORDER BY created_at DESC, id DESC LIMIT 100`,
     )
@@ -105,6 +107,8 @@ describe('用户反馈', () => {
     })
     const stillOpen = await json(app, '/api/v1/admin/feedbacks?status=open', { headers: adminHeaders })
     expect(stillOpen.body.items).toEqual([])
+    const cleared = await json(app, '/api/v1/admin/overview', { headers: adminHeaders })
+    expect(cleared.body.open_feedbacks).toBe(0)
   })
 
   it('同一天超过 10 条会被拒绝', async () => {

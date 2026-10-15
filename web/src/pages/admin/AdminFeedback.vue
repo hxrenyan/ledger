@@ -5,6 +5,9 @@
 import { onMounted, ref } from 'vue'
 import { adminApi } from '../../adminApi.ts'
 
+const props = defineProps<{ pending: number }>()
+const emit = defineEmits<{ updated: [] }>()
+
 type Status = 'open' | 'done' | 'all'
 type Item = {
   id: number
@@ -85,6 +88,7 @@ async function save(item: Item, next: 'open' | 'done') {
     })
     msg.value = next === 'done' ? '已标成已处理' : '已重新打开'
     await load()
+    emit('updated')
   } catch (e) {
     err.value = e instanceof Error ? e.message : '保存失败'
   } finally {
@@ -114,21 +118,21 @@ defineExpose({ reload: load })
         <button v-if="query" class="admin-search-clear" type="button" @click="clearQuery">清除</button>
       </label>
       <div class="admin-seg">
-        <button v-for="item in filters" :key="item.key" type="button" :class="{ on: status === item.key }" @click="pick(item.key)">{{ item.label }}</button>
+        <button v-for="item in filters" :key="item.key" type="button" :class="{ on: status === item.key }" @click="pick(item.key)">{{ item.key === 'open' && props.pending > 0 ? `${item.label} ${props.pending > 99 ? '99+' : props.pending}` : item.label }}</button>
       </div>
       <span class="count">{{ loading ? '查询中' : `${items.length} 条` }}</span>
     </div>
     <p v-if="err" class="err admin-alert">{{ err }}</p>
     <p v-if="msg" class="admin-success">{{ msg }}</p>
     <div v-if="!items.length && !loading" class="admin-empty">{{ query.trim() ? '没有匹配的反馈' : '没有反馈' }}</div>
-    <article v-for="item in items" :key="item.id" class="feedback-item">
+    <article v-for="item in items" :key="item.id" class="feedback-item" :class="{ open: item.status === 'open' }">
       <div class="feedback-head">
         <div class="admin-avatar">{{ (item.nickname || item.username || '?').slice(0, 1) }}</div>
         <div class="feedback-who">
           <strong>{{ item.nickname || item.username || '已删除用户' }}</strong>
           <span>@{{ item.username || '—' }}</span>
         </div>
-        <span class="admin-status" :class="item.status === 'done' ? 'on' : 'off'">{{ item.status_label }}</span>
+        <span class="admin-status" :class="item.status === 'done' ? 'on' : 'wait'">{{ item.status_label }}</span>
       </div>
       <p class="feedback-content">{{ item.content }}</p>
       <div class="feedback-meta">
@@ -163,7 +167,16 @@ defineExpose({ reload: load })
   padding: 18px 0;
   border-top: 1px solid #eef0f5;
 }
+.feedback-item.open {
+  margin: 10px 0;
+  padding: 14px 14px 14px 16px;
+  border: 1px solid #f3d19a;
+  border-left: 3px solid #e08a12;
+  border-radius: 10px;
+  background: #fffaf3;
+}
 .feedback-item:first-of-type { border-top: 0; padding-top: 4px; }
+.feedback-item.open:first-of-type { padding-top: 14px; border-top: 1px solid #f3d19a; }
 .feedback-item:last-of-type { padding-bottom: 2px; }
 .feedback-head { display: flex; align-items: center; gap: 12px; }
 .feedback-who { min-width: 0; flex: 1; }

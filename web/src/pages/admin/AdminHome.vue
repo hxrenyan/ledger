@@ -14,14 +14,14 @@ type Tab = 'users' | 'ledgers' | 'points' | 'feedback' | 'ai' | 'asr' | 'ocr' | 
 type UserStatus = 'all' | 'active' | 'disabled'
 type TimeSort = 'created' | 'seen'
 type TimeOrder = 'asc' | 'desc'
-type Overview = { users: number; ledgers: number; transactions: number; disabled_users: number }
+type Overview = { users: number; ledgers: number; transactions: number; disabled_users: number; open_feedbacks: number }
 type UserRow = { id: number; username: string; nickname: string; disabled: boolean; created_at: number; last_seen_at: number | null; ledger_count: number }
 type LedgerRow = { id: number; name: string; owner_username: string; member_count: number; tx_count: number; created_at: number; last_seen_at: number | null }
 type Reloadable = { reload: () => Promise<void> | void }
 
 const router = useRouter()
 const tab = ref<Tab>('users')
-const overview = ref<Overview>({ users: 0, ledgers: 0, transactions: 0, disabled_users: 0 })
+const overview = ref<Overview>({ users: 0, ledgers: 0, transactions: 0, disabled_users: 0, open_feedbacks: 0 })
 const users = ref<UserRow[]>([])
 const ledgers = ref<LedgerRow[]>([])
 const err = ref('')
@@ -63,6 +63,7 @@ const userFilters: { key: UserStatus; label: string }[] = [
   { key: 'active', label: '正常' },
   { key: 'disabled', label: '已停用' },
 ]
+const feedbackBadge = computed(() => (overview.value.open_feedbacks > 99 ? '99+' : String(overview.value.open_feedbacks)))
 const page = computed(() => {
   for (const group of navGroups) {
     const item = group.items.find((entry) => entry.key === tab.value)
@@ -216,7 +217,7 @@ async function refresh() {
   try {
     if (tab.value === 'users') await Promise.all([loadOverview(), loadUsers()])
     else if (tab.value === 'ledgers') await Promise.all([loadOverview(), loadLedgers()])
-    else await currentPanel()?.reload()
+    else await Promise.all([loadOverview(), currentPanel()?.reload()])
   } catch (e) {
     err.value = e instanceof Error ? e.message : '刷新失败'
   } finally {
@@ -243,6 +244,10 @@ async function toggle(u: UserRow) {
   } finally {
     busyId.value = ''
   }
+}
+
+function onFeedbackUpdated() {
+  void loadOverview().catch(() => {})
 }
 
 function logout() { setAdminToken(''); router.replace('/admin/login') }
@@ -272,7 +277,10 @@ onMounted(() => {
       <nav class="admin-nav">
         <div v-for="group in navGroups" :key="group.title" class="admin-nav-group">
           <div class="admin-nav-title">{{ group.title }}</div>
-          <button v-for="item in group.items" :key="item.key" type="button" :class="{ on: tab === item.key }" @click="tab = item.key">{{ item.label }}</button>
+          <button v-for="item in group.items" :key="item.key" type="button" :class="{ on: tab === item.key }" @click="tab = item.key">
+            {{ item.label }}
+            <span v-if="item.key === 'feedback' && overview.open_feedbacks > 0" class="admin-nav-badge">{{ feedbackBadge }}</span>
+          </button>
         </div>
       </nav>
       <button class="admin-logout" type="button" @click="logout">退出管理后台</button>
@@ -296,9 +304,13 @@ onMounted(() => {
           type="button"
           :class="{ on: tab === item.key }"
           @click="tab = item.key"
-        >{{ item.label }}</button>
+        >{{ item.label }}<span v-if="item.key === 'feedback' && overview.open_feedbacks > 0" class="admin-nav-badge">{{ feedbackBadge }}</span></button>
       </div>
       <section class="admin-content">
+        <div v-if="overview.open_feedbacks > 0" class="admin-pending" role="status">
+          <strong>有 {{ feedbackBadge }} 条用户反馈待处理</strong>
+          <button v-if="tab !== 'feedback'" class="btn compact" type="button" @click="tab = 'feedback'">去处理</button>
+        </div>
         <p v-if="err && tab !== 'points' && tab !== 'feedback' && tab !== 'ai' && tab !== 'asr' && tab !== 'ocr' && tab !== 'wechat'" class="err admin-alert">{{ err }}</p>
 
         <template v-if="tab === 'users' || tab === 'ledgers'">
@@ -393,7 +405,7 @@ onMounted(() => {
         </section>
 
         <AdminPoints v-else-if="tab === 'points'" ref="pointsPanel" />
-        <AdminFeedback v-else-if="tab === 'feedback'" ref="feedbackPanel" />
+        <AdminFeedback v-else-if="tab === 'feedback'" ref="feedbackPanel" :pending="overview.open_feedbacks" @updated="onFeedbackUpdated" />
         <AdminAi v-else-if="tab === 'ai'" ref="aiPanel" />
         <AdminAsr v-else-if="tab === 'asr'" ref="asrPanel" />
         <AdminOcr v-else-if="tab === 'ocr'" ref="ocrPanel" />

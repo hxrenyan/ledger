@@ -600,6 +600,35 @@ input.bare {
 }
 .admin-status.on { background: var(--admin-success-soft); color: var(--admin-success); }
 .admin-status.off { background: #f1f3f7; color: var(--admin-muted); }
+.admin-status.wait { background: #fff4e5; color: #b45309; }
+.admin-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: 8px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #dc3545;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.admin-pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border: 1px solid #f3d19a;
+  border-radius: 10px;
+  background: #fff8eb;
+  color: #8a4b08;
+}
+.admin-pending strong { font-size: 14px; font-weight: 650; }
 .admin-row-metrics { display: flex; gap: 12px; flex: none; }
 .admin-empty {
   border-top: 1px solid var(--admin-border-soft);
@@ -987,6 +1016,7 @@ input.bare {
   .admin-fields .span-2 { grid-column: auto; }
   .admin-config-title { align-items: flex-start; }
   .admin-page-row select { width: 112px; }
+  .admin-pending { align-items: flex-start; }
   .admin-savebar { align-items: stretch; flex-direction: column; bottom: 10px; padding: 12px 14px; }
   .admin-savebar .admin-actions-inline { width: 100%; }
   .admin-savebar .admin-actions-inline .btn, .admin-savebar > .btn { flex: 1; width: 100%; }
