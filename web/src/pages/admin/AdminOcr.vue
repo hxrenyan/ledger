@@ -141,9 +141,14 @@ defineExpose({ reload: load })
       注意：这一步只把图上的字读出来。要变成可入账的流水，还要在「AI 配置」里配一套文本模型做整理；两套都配上，
       拍照才能一路走到记账。图片只在当次请求里识别，不保存。
     </p></div></div>
+    <div v-if="!items.length" class="admin-config-block admin-empty">暂未配置图片识别服务，点击下方「添加一套」开始配置。</div>
     <div v-for="(item, index) in items" :key="item.id || index" class="admin-config-block">
       <div class="admin-block-heading">
-        <strong>第 {{ index + 1 }} 套{{ item.name ? ` · ${item.name}` : '' }}</strong>
+        <div class="admin-block-title">
+          <span class="admin-step-badge">#{{ index + 1 }}</span>
+          <strong>{{ item.name || `第 ${index + 1} 套配置` }}</strong>
+          <span class="admin-status" :class="item.enabled ? 'on' : 'off'">{{ item.enabled ? '参与接力' : '已暂停' }}</span>
+        </div>
         <div class="admin-actions-inline">
           <button class="admin-row-btn" type="button" :disabled="index === 0" @click="move(index, -1)">上移</button>
           <button class="admin-row-btn" type="button" :disabled="index === items.length - 1" @click="move(index, 1)">下移</button>
@@ -172,10 +177,12 @@ defineExpose({ reload: load })
           <input v-model="item.api_key" type="password" autocomplete="off" :placeholder="item.key_hint ? '留空则不修改' : 'sk-...'" />
         </label>
       </div>
-      <p v-if="item.endpoint" class="muted">实际请求：{{ item.endpoint }}</p>
-      <div class="admin-card-actions">
-        <button class="btn ghost compact" type="button" :disabled="busy" @click="openFile">用一张图测试这一套</button>
-        <input class="file-hidden" type="file" accept="image/*" @change="test(item, $event)" />
+      <div class="admin-card-foot">
+        <p class="admin-endpoint">{{ item.endpoint ? `实际请求：${item.endpoint}` : '填写 base_url 后自动拼接请求地址' }}</p>
+        <div class="admin-card-actions">
+          <button class="btn ghost compact" type="button" :disabled="busy" @click="openFile">用一张图测试这一套</button>
+          <input class="file-hidden" type="file" accept="image/*" @change="test(item, $event)" />
+        </div>
       </div>
     </div>
     <p v-if="err" class="err admin-alert">{{ err }}</p>

@@ -175,6 +175,7 @@ H5 热更新可另开：`npm run dev:web`（代理 `/api` 到 3000）。
 
 用户：`Authorization: Bearer <jwt>` + `X-Ledger-Id`  
 管理员：`POST /api/v1/admin/login`  
+用户和账本列表：`GET /api/v1/admin/users`、`GET /api/v1/admin/ledgers`。不传 `sort` 时按最后使用时间倒序。`sort` 为 `seen`（最后使用时间）或 `created`（注册 / 创建时间），`order` 为 `desc` 或 `asc`。没有最后使用时间的排在倒序末尾。  
 健康检查：`GET /api/health`  
 金额：整数分  
 时间：UTC 毫秒，月份 `Asia/Shanghai`

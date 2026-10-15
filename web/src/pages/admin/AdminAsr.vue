@@ -135,9 +135,14 @@ defineExpose({ reload: load })
       可配置多套，按顺序接力，不是只启用其中一套。上一套超时或失败才换下一套。协议目前是 OpenAI 兼容的
       <code>/audio/transcriptions</code>（硅基流动 XingChenASR 走这条）。录音只在当次请求里转写，不保存。
     </p></div></div>
+    <div v-if="!items.length" class="admin-config-block admin-empty">暂未配置语音识别服务，点击下方「添加一套」开始配置。</div>
     <div v-for="(item, index) in items" :key="item.id || index" class="admin-config-block">
       <div class="admin-block-heading">
-        <strong>第 {{ index + 1 }} 套{{ item.name ? ` · ${item.name}` : '' }}</strong>
+        <div class="admin-block-title">
+          <span class="admin-step-badge">#{{ index + 1 }}</span>
+          <strong>{{ item.name || `第 ${index + 1} 套配置` }}</strong>
+          <span class="admin-status" :class="item.enabled ? 'on' : 'off'">{{ item.enabled ? '参与接力' : '已暂停' }}</span>
+        </div>
         <div class="admin-actions-inline">
           <button class="admin-row-btn" type="button" :disabled="index === 0" @click="move(index, -1)">上移</button>
           <button class="admin-row-btn" type="button" :disabled="index === items.length - 1" @click="move(index, 1)">下移</button>
@@ -166,10 +171,12 @@ defineExpose({ reload: load })
           <input v-model="item.api_key" type="password" autocomplete="off" :placeholder="item.key_hint ? '留空则不修改' : 'sk-...'" />
         </label>
       </div>
-      <p v-if="item.endpoint" class="muted">实际请求：{{ item.endpoint }}</p>
-      <div class="admin-card-actions">
-        <button class="btn ghost compact" type="button" :disabled="busy" @click="openFile">用音频测试这一套</button>
-        <input class="file-hidden" type="file" accept="audio/*,video/webm" @change="test(item, $event)" />
+      <div class="admin-card-foot">
+        <p class="admin-endpoint">{{ item.endpoint ? `实际请求：${item.endpoint}` : '填写 base_url 后自动拼接请求地址' }}</p>
+        <div class="admin-card-actions">
+          <button class="btn ghost compact" type="button" :disabled="busy" @click="openFile">用音频测试这一套</button>
+          <input class="file-hidden" type="file" accept="audio/*,video/webm" @change="test(item, $event)" />
+        </div>
       </div>
     </div>
     <p v-if="err" class="err admin-alert">{{ err }}</p>

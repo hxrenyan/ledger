@@ -55,12 +55,15 @@ defineExpose({ reload: load })
       </div>
       <span class="admin-status" :class="mode === 'h5' ? 'on' : 'off'">{{ mode === 'h5' ? 'H5' : '原生' }}</span>
     </div>
-    <div class="admin-config-block">
-      <div class="admin-seg" aria-label="工具页模式">
-        <button type="button" :class="{ on: mode === 'native' }" :disabled="busy" @click="save('native')">原生</button>
-        <button type="button" :class="{ on: mode === 'h5' }" :disabled="busy" @click="save('h5')">H5</button>
+    <div class="admin-config-block admin-limit">
+      <div>
+        <h3>入口渲染模式</h3>
+        <p class="admin-hint">提审时保持原生。切到 H5 后，这一栏加载网页版工具；个人主体若没配业务域名，体验版上网页可能是空白，空白会退回原生。</p>
       </div>
-      <p class="admin-hint">提审时保持原生。切到 H5 后，这一栏加载网页版工具；个人主体若没配业务域名，体验版上网页可能是空白，空白会退回原生。</p>
+      <div class="admin-seg" aria-label="工具页模式">
+        <button type="button" :class="{ on: mode === 'native' }" :disabled="busy" @click="save('native')">原生页面</button>
+        <button type="button" :class="{ on: mode === 'h5' }" :disabled="busy" @click="save('h5')">H5 网页</button>
+      </div>
     </div>
     <p v-if="err" class="err admin-alert">{{ err }}</p>
     <p v-if="msg" class="admin-success">{{ msg }}</p>

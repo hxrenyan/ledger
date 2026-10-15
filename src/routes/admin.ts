@@ -355,8 +355,8 @@ type TimeSort = 'created' | 'seen'
 type TimeOrder = 'asc' | 'desc'
 
 function timeSort(raw: string | undefined): TimeSort {
-  if (raw == null || raw === '' || raw === 'created') return 'created'
-  if (raw === 'seen') return 'seen'
+  if (raw == null || raw === '' || raw === 'seen') return 'seen'
+  if (raw === 'created') return 'created'
   throw badRequest('排序只能是 created 或 seen')
 }
 

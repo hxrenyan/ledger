@@ -236,17 +236,27 @@ defineExpose({ reload: load })
         <button class="btn ghost compact" type="button" :disabled="!users.length" @click="toggleAll">
           {{ users.length && users.every((user) => selected.includes(user.id)) ? '取消全选' : '全选当前' }}
         </button>
+        <button v-if="selected.length" class="admin-row-btn" type="button" @click="selected = []">清空已选</button>
         <span class="count">{{ loading ? '查询中' : `当前 ${users.length} 位，已选 ${selected.length} 位` }}</span>
       </div>
       <form class="admin-toolbar point-batch" @submit.prevent="submitBatch">
-        <input v-model="deltaText" inputmode="numeric" placeholder="变动，如 10 或 -5" aria-label="积分变动" />
-        <input v-model="note" class="note" maxlength="100" placeholder="备注，例如活动补发" aria-label="备注" />
+        <input v-model="deltaText" inputmode="numeric" placeholder="变动分值，如 10 或 -5" aria-label="积分变动" />
+        <input v-model="note" class="note" maxlength="100" placeholder="变动原因备注（必填），例如活动补发" aria-label="备注" />
         <button class="btn compact" type="submit" :disabled="busy || !batchReady">{{ batchLabel }}</button>
       </form>
       <div v-if="!users.length && !loading" class="admin-empty">{{ query.trim() ? '没有匹配的微信用户' : '还没有微信用户' }}</div>
       <div v-else-if="users.length" class="admin-table-wrap">
         <div class="admin-table points">
-          <div class="admin-table-head"><span></span><span>用户</span><span>状态</span><span>余额</span><span>修改时间</span><span>操作</span></div>
+          <div class="admin-table-head">
+            <input
+              class="point-check"
+              type="checkbox"
+              :checked="users.length > 0 && users.every((user) => selected.includes(user.id))"
+              aria-label="全选当前列表"
+              @change="toggleAll"
+            />
+            <span>用户</span><span>状态</span><span>余额</span><span>修改时间</span><span>操作</span>
+          </div>
           <div v-for="u in users" :key="u.id" class="point-user">
             <div class="admin-table-row">
               <input class="point-check" type="checkbox" :checked="selected.includes(u.id)" :aria-label="`选择 ${u.nickname || u.username}`" @change="toggle(u.id)" />

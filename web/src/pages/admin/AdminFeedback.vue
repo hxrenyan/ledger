@@ -152,7 +152,7 @@ defineExpose({ reload: load })
           :disabled="busyId === item.id"
           @click="save(item, 'done')"
         >{{ busyId === item.id ? '保存中…' : '标记已处理' }}</button>
-        <button v-else class="admin-row-btn" type="button" :disabled="busyId === item.id" @click="save(item, 'open')">{{ busyId === item.id ? '保存中' : '重新打开' }}</button>
+        <button v-else class="btn ghost compact" type="button" :disabled="busyId === item.id" @click="save(item, 'open')">{{ busyId === item.id ? '保存中…' : '重新打开' }}</button>
       </div>
     </article>
   </section>
@@ -160,30 +160,42 @@ defineExpose({ reload: load })
 
 <style scoped>
 .feedback-item {
-  padding: 16px 0;
-  border-top: 1px solid #ececef;
+  padding: 18px 0;
+  border-top: 1px solid #eef0f5;
 }
-.feedback-item:first-of-type { border-top: 0; padding-top: 0; }
+.feedback-item:first-of-type { border-top: 0; padding-top: 4px; }
+.feedback-item:last-of-type { padding-bottom: 2px; }
 .feedback-head { display: flex; align-items: center; gap: 12px; }
 .feedback-who { min-width: 0; flex: 1; }
 .feedback-who strong, .feedback-who span { display: block; }
 .feedback-who strong { font-size: 14px; }
-.feedback-who span { color: #89909d; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.feedback-who span { color: #6c7382; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 1px; }
 .feedback-content {
-  margin: 10px 0 8px;
+  margin: 12px 0 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  background: #f8f9fc;
+  border: 1px solid #eef0f5;
   white-space: pre-wrap;
   word-break: break-word;
-  line-height: 1.55;
+  line-height: 1.6;
+  font-size: 13.5px;
 }
-.feedback-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 12px; color: #89909d; font-size: 12px; }
+.feedback-meta { display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0 0 12px; color: #6c7382; font-size: 12px; }
 .feedback-field { margin-bottom: 0; }
-.feedback-locked span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 13px; }
-.feedback-locked p { margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.55; }
-.feedback-locked p.empty { color: #89909d; }
+.feedback-locked {
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #f8f9fc;
+  border: 1px solid #eef0f5;
+}
+.feedback-locked span { display: block; margin-bottom: 4px; color: #6c7382; font-size: 12px; font-weight: 600; }
+.feedback-locked p { margin: 0; white-space: pre-wrap; word-break: break-word; line-height: 1.55; font-size: 13px; }
+.feedback-locked p.empty { color: #949ba9; }
 .feedback-reply {
   width: 100%;
-  height: 72px;
-  min-height: 72px;
+  height: 76px;
+  min-height: 76px;
   box-sizing: border-box;
   resize: vertical;
 }
