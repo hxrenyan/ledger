@@ -27,6 +27,7 @@ Component({
     month: { type: String, value: '' },
     max: { type: String, value: '' },
     compact: { type: Boolean, value: false },
+    hideBack: { type: Boolean, value: false },
   },
 
   data: {

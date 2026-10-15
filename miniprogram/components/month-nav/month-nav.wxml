@@ -14,5 +14,5 @@
     </picker>
     <button class="nav" bindtap="next" disabled="{{!canNext}}"><view class="ico ico-next"></view></button>
   </view>
-  <view class="back" wx:if="{{showBack}}" bindtap="back">回到本月</view>
+  <view class="back" wx:if="{{showBack && !hideBack}}" bindtap="back">{{compact ? '本月' : '回到本月'}}</view>
 </view>

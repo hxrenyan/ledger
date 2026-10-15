@@ -12,7 +12,9 @@ src/
   speech/                  # 语音识别
   moderation/              # 本地违禁词检查（工具类，尚未接入业务），见 docs/moderation.md
   profiles.ts              # llm / asr 共用的模型配置读写
-  routes/                  # 登录、账本、流水、预算、人情、导入、管理后台。人情规则见 docs/favors.md
+  calendar/                # 联系人阳历/农历、即将到来、年龄。见 docs/favors.md
+  dicts.ts                 # 账本字典。日子标签和以后的同类配置都放这里
+  routes/                  # 登录、账本、流水、预算、人情、导入、工具页交接、管理后台。人情规则见 docs/favors.md
   seed.ts                  # 注册时默认账户与分类
 ```
 

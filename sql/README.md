@@ -40,7 +40,8 @@ npm run db:migrate
 | `transactions` | 自增整数 | 流水；金额整数分；`import_batch_id` 归属导入批次（手工录入为空） |
 | `budgets` | 自增整数 | 月预算。`category_id = 0` 表示不限分类的总预算 |
 | `attachments` | `transaction_id` | 收据图，一笔流水一张。主键即流水自增 id |
-| `contacts` | 自增整数 | 人情联系人 |
+| `dict_items` | 自增整数 | 可复用配置。`kind`、`name` 是字符串。`ledger_id` 为空是公共字典，有值则只属于该账本。同名不重复，见 `idx_dict_items_ledger_name` / `idx_dict_items_public_name` |
+| `contacts` | 自增整数 | 人情联系人。`date_item_id` 指向日子标签，0 表示没记；再记阳历/农历、月日、可选年份、农历闰月 |
 | `gifts` | 自增整数 | 人情往来 |
 | `recurrences` | 自增整数 | 周期记账（只支持收入 / 支出） |
 | `import_batches` | 自增整数 | 账单导入批次台账（回溯 / 撤销） |

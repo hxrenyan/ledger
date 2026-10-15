@@ -1,66 +1,155 @@
 <view class="page">
-  <view class="card user" wx:if="{{!guest}}">
-    <view class="avatar-lg">{{initial}}</view>
-    <view class="user-main">
-      <view class="nick">{{nickname}}</view>
-      <view class="muted">
-        {{username ? '账号 ' + username : '微信登录' }}
-        <text wx:if="{{wechatBound}}"> · 已绑微信</text>
+  <!-- 顶部个人信息卡 -->
+  <view class="card profile-card" wx:if="{{!guest}}">
+    <view class="profile-top">
+      <view class="avatar-lg">{{initial}}</view>
+      <view class="user-main">
+        <view class="nick-row" bindtap="editNickname">
+          <text class="nick">{{nickname}}</text>
+          <text class="edit-pill">改昵称</text>
+        </view>
+        <view class="user-tags">
+          <text class="u-tag">{{username ? '账号 ' + username : '微信登录'}}</text>
+          <text class="u-tag ok" wx:if="{{wechatBound}}">已绑微信</text>
+        </view>
+      </view>
+      <view class="points-pill" wx:if="{{wechatBound}}" bindtap="openPoints">
+        <text class="p-label">积分</text>
+        <text class="p-val">{{pointBalance === '' ? '—' : pointBalance}}</text>
+        <text class="p-arrow">›</text>
       </view>
     </view>
-    <view class="nickname-edit" bindtap="editNickname">修改</view>
+
+    <!-- 当前账本与多账本一键切换 -->
+    <view class="ledger-strip">
+      <view class="ls-head" data-key="ledger" bindtap="go">
+        <view class="ls-current">
+          <text class="ls-label">当前账本</text>
+          <text class="ls-name">{{ledgerName}}</text>
+          <text class="ls-badge" wx:if="{{ledgerRoleText}}">{{ledgerRoleText}}</text>
+        </view>
+        <view class="ls-manage">成员与邀请码 ({{ledgerCount}}) ›</view>
+      </view>
+      <view class="ls-chips" wx:if="{{ledgers.length > 1}}">
+        <view
+          class="ls-chip {{lg.on ? 'on' : ''}}"
+          wx:for="{{ledgers}}"
+          wx:for-item="lg"
+          wx:key="id"
+          data-id="{{lg.id}}"
+          bindtap="switchLedger"
+        >
+          <text>{{lg.name}}</text>
+          <text class="ls-role">{{lg.roleText}}</text>
+        </view>
+      </view>
+    </view>
   </view>
 
+  <!-- 游客登录引导卡 -->
+  <view class="card guest-card" wx:else>
+    <view class="avatar-lg">记</view>
+    <view class="user-main">
+      <view class="nick">欢迎使用记账</view>
+      <view class="muted" style="margin-top: 6rpx">登录后可同步账本、管理资产与人情往来</view>
+    </view>
+    <button class="btn compact" bindtap="goLogin">去登录</button>
+  </view>
+
+  <!-- 净资产与月预算双卡概览 -->
+  <view class="overview-grid" wx:if="{{!guest}}">
+    <view class="ov-card" data-key="assets" bindtap="go">
+      <view class="ov-top">
+        <text class="ov-label">净资产</text>
+        <text class="ov-sub">{{accountCount}} 个账户 ›</text>
+      </view>
+      <view class="ov-val {{netClass}}">¥{{netText}}</view>
+    </view>
+    <view class="ov-card" data-key="budgets" bindtap="go">
+      <view class="ov-top">
+        <text class="ov-label">本月预算</text>
+        <text class="ov-sub">设置 ›</text>
+      </view>
+      <view class="ov-val brand-text">{{budgetHint || '未设预算'}}</view>
+    </view>
+  </view>
+
+  <!-- 核心功能宫格 -->
+  <view class="card">
+    <view class="sec-title">账本管理与记账工具</view>
+    <view class="nav-grid">
+      <view class="nav-item" data-key="categories" bindtap="go">
+        <view class="nav-ico blue">类</view>
+        <view class="nav-main">
+          <view class="nav-name">分类管理</view>
+          <view class="nav-desc">{{categoryCount ? categoryCount + ' 个可用分类' : '收支分类设置'}}</view>
+        </view>
+      </view>
+      <view class="nav-item" data-key="recurring" bindtap="go">
+        <view class="nav-ico purple">周</view>
+        <view class="nav-main">
+          <view class="nav-name">周期记账</view>
+          <view class="nav-desc">房租固定收支</view>
+        </view>
+      </view>
+      <view class="nav-item" data-key="speak" bindtap="go">
+        <view class="nav-ico green">智</view>
+        <view class="nav-main">
+          <view class="nav-name">智能记账</view>
+          <view class="nav-desc">语音 / 拍照识别</view>
+        </view>
+      </view>
+      <view class="nav-item" data-key="import" bindtap="go">
+        <view class="nav-ico orange">导</view>
+        <view class="nav-main">
+          <view class="nav-name">账单导入</view>
+          <view class="nav-desc">表格批量导入</view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <!-- 数据与账号服务列表 -->
   <view class="card">
     <view class="link-row" data-key="ledger" bindtap="go">
-      <view>账本与成员</view>
-      <view class="arrow">{{ledgerName}}（{{ledgerCount}}）›</view>
+      <view class="row-left">
+        <view class="row-title">账本与家庭成员</view>
+        <view class="row-sub">新建账本、邀请家人协同记账</view>
+      </view>
+      <view class="arrow">{{ledgerName}} ›</view>
     </view>
-    <view class="link-row" data-key="budgets" bindtap="go">
-      <view>月预算</view>
-      <view class="arrow">›</view>
-    </view>
-    <view class="link-row" data-key="categories" bindtap="go">
-      <view>分类管理</view>
-      <view class="arrow">›</view>
-    </view>
-    <view class="link-row" data-key="recurring" bindtap="go">
-      <view>周期记账</view>
-      <view class="arrow">›</view>
-    </view>
-    <view class="link-row" data-key="import" bindtap="go">
-      <view>账单导入</view>
-      <view class="arrow">›</view>
-    </view>
-    <view class="link-row" data-key="speak" bindtap="go">
-      <view>语音记账</view>
-      <view class="arrow">›</view>
-    </view>
-    <view class="link-row" wx:if="{{wechatBound}}" bindtap="openPoints">
-      <view>积分</view>
-      <view class="arrow">{{pointBalance === '' ? '' : pointBalance + ' 分'}} ›</view>
-    </view>
-  </view>
 
-  <view class="card">
     <view class="link-row" bindtap="exportBook">
-      <view>导出账单</view>
-      <view class="arrow">›</view>
+      <view class="row-left">
+        <view class="row-title">导出账单备份</view>
+        <view class="row-sub">复制或转发 JSON 账单与人情数据</view>
+      </view>
+      <view class="arrow">导出 ›</view>
     </view>
+
     <view class="link-row" wx:if="{{wechatBound && !hasPassword}}" bindtap="bindAccount">
-      <view>绑定已有账号</view>
-      <view class="arrow">把老账号并进来 ›</view>
+      <view class="row-left">
+        <view class="row-title">绑定已有账号</view>
+        <view class="row-sub">将原密码账号的账本合并到当前微信</view>
+      </view>
+      <view class="arrow">去合并 ›</view>
     </view>
+
     <view class="link-row" wx:if="{{!guest}}" bindtap="openFeedback">
-      <view>用户反馈</view>
+      <view class="row-left">
+        <view class="row-title">意见反馈</view>
+        <view class="row-sub">遇到问题或有功能建议告诉我们</view>
+      </view>
       <view class="arrow">›</view>
     </view>
+
     <view class="link-row" bindtap="about">
-      <view>关于</view>
+      <view class="row-left">
+        <view class="row-title">关于记账</view>
+      </view>
       <view class="arrow">›</view>
     </view>
   </view>
 
-  <button wx:if="{{guest}}" class="btn" bindtap="goLogin">登录</button>
-  <button wx:else class="btn ghost" bindtap="logout">退出登录</button>
+  <button wx:if="{{!guest}}" class="btn ghost logout-btn" bindtap="logout">退出登录</button>
 </view>

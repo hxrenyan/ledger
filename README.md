@@ -9,7 +9,8 @@
 - **多账本 / 家庭成员**（邀请码）
 - 账户、分类、收支、转账
 - 月预算、收据图
-- **人情往来**（按人记送出/收入、事由、差额；认得出人名就记人情，记的时候可以同时记明细，明细和人情也可以互转。见 [docs/favors.md](docs/favors.md)）
+- **人情往来**（按人记送出/收入、事由、差额；认得出人名就记人情，记的时候可以同时记明细，明细和人情也可以互转。联系人可以记阳历或农历的日子，名称自己写。见 [docs/favors.md](docs/favors.md)）
+- **工具**（小程序底部一栏，页面是 H5。里面先有联系人管理，再加东西不用发小程序。见 [docs/tools.md](docs/tools.md)）
 - **账单导入**：微信 / 支付宝 / 银行 / 通用 CSV、Excel、JSON，可选 AI 兜底解析（见 [docs/import.md](docs/import.md)）
 - **拍照记账**：拍小票 / 发票 / 支付截图 / 手写本，OCR 认字再由模型整理成流水，逐行核对后入库（见 [docs/photo.md](docs/photo.md)）
 - CSV 导出
@@ -65,7 +66,7 @@ ledger/
 └── docs/
 ```
 
-模块说明见 `src/README.md`；SQL 说明见 `sql/README.md`；账单导入见 `docs/import.md`；人情往来见 `docs/favors.md`；拍照记账见 `docs/photo.md`；小程序与 web-view 混合架构见 `docs/webview-hybrid.md`。
+模块说明见 `src/README.md`；SQL 说明见 `sql/README.md`；账单导入见 `docs/import.md`；人情往来见 `docs/favors.md`；工具页见 `docs/tools.md`；拍照记账见 `docs/photo.md`；小程序与 web-view 混合架构见 `docs/webview-hybrid.md`。
 
 ---
 
@@ -186,7 +187,7 @@ H5 热更新可另开：`npm run dev:web`（代理 `/api` 到 3000）。
 
 web-view 会话交接：
 
-- `POST /api/v1/webview/handoff`：小程序原生侧调用，Bearer 鉴权，账本可选（带了就校验成员身份并回传）。返回 `{ code, expires_in: 300 }`。
+- `POST /api/v1/webview/handoff`：小程序「工具」进入网页时调用。要登录，并带上当前账本（`X-Ledger-Id`）。返回 `{ code, expires_in: 300 }`。
 - `POST /api/v1/auth/webview-session`：网页侧调用，body `{ code }`，无需 Bearer（交接码即凭据）。返回完整会话，并多一个 `ledger_id`（小程序当时的账本），网页据此对齐首屏账本。码过期 / 已用过返回 401，形状不对返回 400。
 - 库里只存 SHA-256，兑换用 `UPDATE ... RETURNING` 原子抢占，防并发重放。
 

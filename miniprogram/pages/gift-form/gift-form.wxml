@@ -1,11 +1,13 @@
 <view class="page entry">
+  <!-- 送出 / 收到切换 -->
   <view class="kind">
-    <view class="k {{kind === 'give' ? 'on expense' : ''}}" data-kind="give" bindtap="setKind">送出</view>
-    <view class="k {{kind === 'receive' ? 'on income' : ''}}" data-kind="receive" bindtap="setKind">收到</view>
+    <view class="k {{kind === 'give' ? 'on expense' : ''}}" data-kind="give" bindtap="setKind">送出（随礼）</view>
+    <view class="k {{kind === 'receive' ? 'on income' : ''}}" data-kind="receive" bindtap="setKind">收到（收礼）</view>
   </view>
 
-  <view class="card">
-    <view class="amount-wrap">
+  <!-- 金额输入 + 常用礼金快捷胶囊 -->
+  <view class="card amount-card">
+    <view class="amount-wrap {{kind === 'receive' ? 'income' : 'expense'}}">
       <text class="cny">¥</text>
       <input
         class="input amount-input"
@@ -16,101 +18,173 @@
         placeholder-class="ph"
         focus="{{!id}}"
       />
+      <view class="amount-clear" wx:if="{{amountText}}" bindtap="clearAmount">×</view>
     </view>
-    <view class="tip">支持算式，例如 800、1000+200</view>
+    <view class="amount-foot">
+      <text class="expr-preview" wx:if="{{amountPreview}}">{{amountPreview}}</text>
+      <text class="tip-inline" wx:else>点选常用礼金，或直接输入算式（如 1000+200）</text>
+    </view>
+    <view class="quick-amounts">
+      <view
+        class="amt-pill {{amountText === item ? (kind === 'receive' ? 'on income' : 'on expense') : ''}}"
+        wx:for="{{quickAmounts}}"
+        wx:key="*this"
+        data-amount="{{item}}"
+        bindtap="tapQuickAmount"
+      >
+        ¥{{item}}
+      </view>
+    </view>
   </view>
 
+  <!-- 对方与事由（直点胶囊，告别拥挤三列滚轮） -->
   <view class="card">
-    <view class="pick-row">
-      <view class="pick">
-        <picker mode="selector" range="{{contactNames}}" value="{{contactIndex}}" bindchange="pickContact" disabled="{{!contactNames.length}}">
-          <view class="pick-box">
-            <text class="pick-k">对方</text>
-            <view class="pick-v">
-              <text class="val {{contactName ? '' : 'ph'}}">{{contactName || '选择'}}</text>
-              <text class="caret">▾</text>
-            </view>
-          </view>
-        </picker>
+    <view class="sec-head">
+      <view class="sec-title-wrap">
+        <text class="sec-title">对方</text>
+        <text class="sec-picked" wx:if="{{contactName}}">已选：{{contactName}}</text>
       </view>
-      <view class="pick">
+      <view class="sec-actions">
+        <picker
+          wx:if="{{contactNames.length > 8}}"
+          mode="selector"
+          range="{{contactNames}}"
+          value="{{contactIndex}}"
+          bindchange="pickContact"
+        >
+          <view class="sec-more">全部({{contactNames.length}}) ▾</view>
+        </picker>
+        <view class="add-pill" bindtap="addContact">＋ 新增联系人</view>
+      </view>
+    </view>
+
+    <view class="empty compact-empty" wx:if="{{!contacts.length}}">还没有联系人，点右上角「＋ 新增联系人」添加</view>
+    <view class="chip-grid" wx:else>
+      <view
+        class="item-chip {{ct.id === contactId ? 'on brand' : ''}}"
+        wx:for="{{contacts}}"
+        wx:for-item="ct"
+        wx:key="id"
+        data-id="{{ct.id}}"
+        bindtap="selectContact"
+      >
+        <text>{{ct.name}}</text>
+        <text class="chip-rel" wx:if="{{ct.relation}}"> · {{ct.relation}}</text>
+      </view>
+    </view>
+
+    <view class="sec-divider"></view>
+
+    <view class="sec-head">
+      <text class="sec-title">事由</text>
+      <text class="sec-sub">{{occasion || customOccasion ? '再点一次已选标签可取消' : '选填'}}</text>
+    </view>
+    <view class="chip-grid">
+      <view
+        class="item-chip {{!writing && occasion === occ ? (kind === 'receive' ? 'on income' : 'on expense') : ''}}"
+        wx:for="{{occasions}}"
+        wx:for-item="occ"
+        wx:key="*this"
+        data-occ="{{occ}}"
+        bindtap="selectOccasion"
+      >
+        {{occ}}
+      </view>
+      <view class="item-chip {{writing ? 'on brand' : 'add'}}" bindtap="tapCustomOccasion">
+        {{writing && customOccasion ? customOccasion : '＋ 自己写'}}
+      </view>
+    </view>
+    <view class="custom-occ-box" wx:if="{{writing}}">
+      <input
+        class="custom-occ-input"
+        value="{{customOccasion}}"
+        bindinput="onCustomOccasion"
+        maxlength="16"
+        placeholder="输入自定义事由（最多 16 字）"
+        placeholder-class="ph"
+      />
+      <view class="note-clear" wx:if="{{customOccasion}}" bindtap="clearCustomOccasion">×</view>
+    </view>
+  </view>
+
+  <!-- 日期、备注与同步选项 -->
+  <view class="card">
+    <view class="date-row">
+      <view class="date-Quick">
+        <view class="q-pill {{datePreset === 'today' ? 'on' : ''}}" data-preset="today" bindtap="tapQuickDate">今天</view>
+        <view class="q-pill {{datePreset === 'yesterday' ? 'on' : ''}}" data-preset="yesterday" bindtap="tapQuickDate">昨天</view>
+        <view class="q-pill {{datePreset === 'beforeYesterday' ? 'on' : ''}}" data-preset="beforeYesterday" bindtap="tapQuickDate">前天</view>
+      </view>
+      <view class="date-pickers">
         <picker mode="date" value="{{date}}" bindchange="onDate">
-          <view class="pick-box">
-            <text class="pick-k">日期</text>
-            <view class="pick-v">
-              <text class="val">{{dateText}}</text>
-              <text class="caret">▾</text>
-            </view>
-          </view>
-        </picker>
-      </view>
-      <view class="pick">
-        <picker mode="selector" range="{{occasionNames}}" value="{{occasionIndex}}" bindchange="pickOccasion">
-          <view class="pick-box">
-            <text class="pick-k">事由</text>
-            <view class="pick-v">
-              <text class="val {{occasion || customOccasion ? '' : 'ph'}}">{{occasionName}}</text>
-              <text class="caret">▾</text>
-            </view>
-          </view>
+          <view class="dt-pill">{{dateText}} ▾</view>
         </picker>
       </view>
     </view>
-    <input
-      class="input occasion-input"
-      wx:if="{{writing}}"
-      value="{{customOccasion}}"
-      bindinput="onCustomOccasion"
-      placeholder="自己写事由，最多 16 字"
-      placeholder-class="ph"
-    />
-    <view class="empty" wx:if="{{!contactNames.length}}">还没有联系人</view>
-    <view class="text-btn add-contact" bindtap="addContact">＋ 新增联系人</view>
-  </view>
 
-  <view class="card">
-    <view class="field" style="margin-bottom: 0">
-      <view class="label">备注</view>
-      <input class="input" value="{{note}}" bindinput="onNote" placeholder="比如：随了 800，回了 1000" placeholder-class="ph" />
+    <view class="sec-divider"></view>
+
+    <view class="note-row">
+      <text class="note-label">备注</text>
+      <input
+        class="note-input"
+        value="{{note}}"
+        bindinput="onNote"
+        placeholder="比如：随了 800，回礼或伴手礼说明"
+        placeholder-class="ph"
+      />
+      <view class="note-clear" wx:if="{{note}}" bindtap="clearNote">×</view>
     </view>
-    <view class="pair" wx:if="{{!id && !convertTx}}">
-      <view class="pair-item">
-        <text>同时记明细</text>
-        <switch checked="{{alsoTx}}" color="#3b5bdb" bindchange="onAlsoTx" />
-      </view>
-    </view>
-    <view wx:if="{{alsoTx && !id && !convertTx}}">
-      <view class="pick-row also-picks">
-        <view class="pick">
-          <picker mode="selector" range="{{categoryNames}}" value="{{categoryIndex}}" bindchange="pickCategory" disabled="{{!categoryNames.length}}">
-            <view class="pick-box">
-              <text class="pick-k">分类</text>
-              <view class="pick-v">
-                <text class="val {{categoryId ? '' : 'ph'}}">{{categoryName}}</text>
-                <text class="caret">▾</text>
-              </view>
-            </view>
-          </picker>
+
+    <block wx:if="{{!id}}">
+      <view class="sec-divider"></view>
+      <view class="pair">
+        <view class="pair-item" wx:if="{{!convertTx}}">
+          <text>同时记入明细</text>
+          <switch checked="{{alsoTx}}" color="#3b5bdb" bindchange="onAlsoTx" />
         </view>
-        <view class="pick">
-          <picker mode="selector" range="{{accountNames}}" value="{{accountIndex}}" bindchange="pickAccount" disabled="{{!accountNames.length}}">
-            <view class="pick-box">
-              <text class="pick-k">账户</text>
-              <view class="pick-v">
-                <text class="val {{accountId ? '' : 'ph'}}">{{accountName}}</text>
-                <text class="caret">▾</text>
-              </view>
-            </view>
-          </picker>
+        <view class="pair-item">
+          <text>继续记下一笔</text>
+          <switch checked="{{keepGoing}}" color="#3b5bdb" bindchange="onKeepGoing" />
         </view>
       </view>
-      <view class="tip">{{kind === 'receive' ? '收到记成收入' : '送出记成支出'}}，计入所选账户。人情本身仍不进余额。</view>
-      <view class="empty" wx:if="{{!categoryNames.length}}">还没有{{kind === 'receive' ? '收入' : '支出'}}分类</view>
-    </view>
-    <view class="pair" wx:if="{{!id}}">
-      <view class="pair-item">
-        <text>继续下一笔</text>
-        <switch checked="{{keepGoing}}" color="#3b5bdb" bindchange="onKeepGoing" />
+    </block>
+
+    <view class="also-box" wx:if="{{alsoTx && !id && !convertTx}}">
+      <view class="sec-head">
+        <text class="sec-title">{{kind === 'receive' ? '收入分类' : '支出分类'}}</text>
+      </view>
+      <view class="chip-grid">
+        <view
+          class="item-chip {{cat.id === categoryId ? (kind === 'receive' ? 'on income' : 'on expense') : ''}}"
+          wx:for="{{currentCats}}"
+          wx:for-item="cat"
+          wx:key="id"
+          data-id="{{cat.id}}"
+          bindtap="selectCategory"
+        >
+          {{cat.name}}
+        </view>
+        <view class="item-chip add" bindtap="addCategory">＋ 新增</view>
+      </view>
+
+      <view class="sec-head" style="margin-top: 20rpx">
+        <text class="sec-title">记入账户</text>
+      </view>
+      <view class="chip-grid">
+        <view
+          class="item-chip {{acc.id === accountId ? 'on brand' : ''}}"
+          wx:for="{{accounts}}"
+          wx:for-item="acc"
+          wx:key="id"
+          data-id="{{acc.id}}"
+          bindtap="selectAccount"
+        >
+          {{acc.name}}
+        </view>
+      </view>
+      <view class="tip" style="margin-bottom: 0">
+        {{kind === 'receive' ? '收到将同步生成一笔收入流水' : '送出将同步生成一笔支出流水'}}，计入所选账户余额。
       </view>
     </view>
   </view>

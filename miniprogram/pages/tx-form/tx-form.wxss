@@ -1,42 +1,178 @@
+.amount-card {
+  padding: 24rpx 28rpx 20rpx;
+}
+
 .amount-wrap {
   display: flex;
   align-items: center;
-  gap: 8rpx;
+  gap: 10rpx;
+  border-bottom: 2rpx solid var(--line);
+  padding-bottom: 8rpx;
 }
 
 .cny {
-  font-size: 44rpx;
+  font-size: 48rpx;
   font-weight: 600;
-  color: #8e8e93;
+  color: var(--muted);
+}
+
+.amount-wrap.expense .cny,
+.amount-wrap.expense .amount-input {
+  color: var(--expense);
+}
+
+.amount-wrap.income .cny,
+.amount-wrap.income .amount-input {
+  color: var(--income);
+}
+
+.amount-wrap.transfer .cny,
+.amount-wrap.transfer .amount-input {
+  color: var(--brand);
 }
 
 .amount-wrap .amount-input {
   flex: 1;
   border: 0;
   padding-left: 0;
+  height: 112rpx;
+  font-size: 60rpx;
+}
+
+.amount-clear {
+  width: 56rpx;
+  height: 56rpx;
+  line-height: 52rpx;
+  text-align: center;
+  border-radius: 999rpx;
+  background: #eceef5;
+  color: var(--muted);
+  font-size: 36rpx;
+  flex: none;
+}
+
+.amount-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 14rpx;
+  min-height: 36rpx;
+}
+
+.tip-inline {
+  font-size: 24rpx;
+  color: var(--muted);
+}
+
+.expr-preview {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
 }
 
 .ph {
   color: #b8b8bd;
 }
 
-.pick-row {
+.sec-head {
   display: flex;
-  align-items: stretch;
-  gap: 12rpx;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
 }
 
-.pick {
+.sec-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.sec-more {
+  font-size: 24rpx;
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.sec-divider {
+  height: 1rpx;
+  background: var(--line);
+  margin: 24rpx 0;
+}
+
+.chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14rpx;
+}
+
+.item-chip {
+  padding: 14rpx 26rpx;
+  border-radius: 999rpx;
+  background: #f4f5f8;
+  color: var(--text);
+  font-size: 26rpx;
+  line-height: 1.3;
+  border: 2rpx solid transparent;
+}
+
+.item-chip.on.expense {
+  background: #ffe9e8;
+  color: var(--expense);
+  border-color: rgba(229, 72, 77, 0.25);
+  font-weight: 600;
+}
+
+.item-chip.on.income {
+  background: #e6f6ec;
+  color: var(--income);
+  border-color: rgba(31, 157, 85, 0.25);
+  font-weight: 600;
+}
+
+.item-chip.on.brand {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-color: rgba(59, 91, 219, 0.25);
+  font-weight: 600;
+}
+
+.item-chip.add {
+  background: #fff;
+  border: 2rpx dashed #c8ccd8;
+  color: var(--brand);
+  font-weight: 600;
+}
+
+/* 转账双框 + 对调 */
+.transfer-bar {
+  display: flex;
+  align-items: center;
+  gap: 14rpx;
+}
+
+.transfer-side {
   flex: 1;
   min-width: 0;
 }
 
-.pick-box {
-  height: 100%;
-  box-sizing: border-box;
-  padding: 14rpx 16rpx;
-  border-radius: 20rpx;
+.transfer-box {
+  padding: 18rpx 20rpx;
+  border-radius: 22rpx;
   background: #f4f5f8;
+}
+
+.swap-btn {
+  width: 68rpx;
+  height: 68rpx;
+  line-height: 68rpx;
+  text-align: center;
+  border-radius: 999rpx;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 32rpx;
+  font-weight: 600;
+  flex: none;
 }
 
 .pick-k {
@@ -50,6 +186,7 @@
 .pick-v {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8rpx;
   min-width: 0;
 }
@@ -59,14 +196,9 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  font-size: 26rpx;
+  font-size: 28rpx;
   font-weight: 600;
   line-height: 1.3;
-}
-
-.pick-v .val.clock {
-  flex: none;
-  color: #3b5bdb;
 }
 
 .pick-v .caret {
@@ -75,10 +207,96 @@
   font-size: 22rpx;
 }
 
-.pair {
+/* 日期与时间行 */
+.date-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.date-Quick {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+}
+
+.q-pill {
+  height: 56rpx;
+  line-height: 56rpx;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  background: #f4f5f8;
+  color: var(--muted);
+  font-size: 24rpx;
+}
+
+.q-pill.on {
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.date-pickers {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  margin-left: auto;
+}
+
+.dt-pill {
+  height: 56rpx;
+  line-height: 56rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  background: #f4f5f8;
+  color: var(--text);
+  font-size: 25rpx;
+  font-weight: 600;
+}
+
+.dt-pill.clock {
+  color: var(--brand);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 备注行 */
+.note-row {
   display: flex;
   align-items: center;
   gap: 16rpx;
+}
+
+.note-label {
+  font-size: 28rpx;
+  color: var(--muted);
+  flex: none;
+}
+
+.note-input {
+  flex: 1;
+  min-width: 0;
+  height: 64rpx;
+  font-size: 28rpx;
+}
+
+.note-clear {
+  width: 48rpx;
+  height: 48rpx;
+  line-height: 44rpx;
+  text-align: center;
+  border-radius: 999rpx;
+  background: #eceef5;
+  color: var(--muted);
+  font-size: 32rpx;
+  flex: none;
+}
+
+.pair {
+  display: flex;
+  align-items: center;
+  gap: 24rpx;
 }
 
 .pair-item {

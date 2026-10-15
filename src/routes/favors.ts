@@ -1,6 +1,17 @@
 import type { Context, Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { balanceStmts, type TxMoney } from '../balance.ts'
+import {
+  buildReminder,
+  dateKindLabel,
+  dateLabel,
+  normalizeDateKind,
+  parseContactDate,
+  todayYmd,
+  type ContactDate,
+  type Ymd,
+} from '../calendar/contactDate.ts'
+import { CONTACT_DATE_KIND, ensureDictItem } from '../dicts.ts'
 import { badRequest, notFound } from '../http.ts'
 import { parseOptionalId, routeId } from '../id.ts'
 import { assertAmountCents } from '../money.ts'
@@ -13,6 +24,13 @@ type ContactRow = {
   name: string
   relation: string
   archived: number
+  date_item_id: number
+  date_name: string | null
+  date_calendar: string
+  date_month: number | null
+  date_day: number | null
+  date_year: number | null
+  date_leap: number
 }
 
 type GiftRow = {
@@ -35,25 +53,31 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
       ContactRow & { given_cents: number; received_cents: number }
     >(
       `SELECT c.id, c.name, c.relation, c.archived,
+              c.date_item_id, c.date_calendar, c.date_month, c.date_day, c.date_year, c.date_leap,
+              d.name AS date_name,
               COALESCE(SUM(CASE WHEN g.kind = 'give' THEN g.amount_cents ELSE 0 END), 0) AS given_cents,
               COALESCE(SUM(CASE WHEN g.kind = 'receive' THEN g.amount_cents ELSE 0 END), 0) AS received_cents
        FROM contacts c
+       LEFT JOIN dict_items d ON d.id = c.date_item_id AND d.kind = ?
+         AND (d.ledger_id IS NULL OR d.ledger_id = c.ledger_id)
        LEFT JOIN gifts g ON g.contact_id = c.id
        WHERE c.ledger_id = ?
        GROUP BY c.id
        ORDER BY c.archived ASC, c.name COLLATE NOCASE ASC`,
-      [ledgerId],
+      [CONTACT_DATE_KIND, ledgerId],
     )
+    const today = todayYmd()
     return c.json({
-      items: rows.map((r) => ({
-        id: r.id,
-        name: r.name,
-        relation: r.relation,
-        archived: !!r.archived,
-        given_cents: Number(r.given_cents) || 0,
-        received_cents: Number(r.received_cents) || 0,
-        net_cents: (Number(r.received_cents) || 0) - (Number(r.given_cents) || 0),
-      })),
+      items: rows.map((r) => {
+        const given = Number(r.given_cents) || 0
+        const received = Number(r.received_cents) || 0
+        return {
+          ...shapeContact(r, today),
+          given_cents: given,
+          received_cents: received,
+          net_cents: received - given,
+        }
+      }),
     })
   })
 
@@ -153,11 +177,72 @@ function shapeGift(row: GiftRow & { contact_name?: string }) {
   }
 }
 
+const CONTACT_SQL = `SELECT c.id, c.name, c.relation, c.archived,
+            c.date_item_id, c.date_calendar, c.date_month, c.date_day, c.date_year, c.date_leap,
+            d.name AS date_name
+     FROM contacts c
+     LEFT JOIN dict_items d ON d.id = c.date_item_id AND d.kind = ?
+       AND (d.ledger_id IS NULL OR d.ledger_id = c.ledger_id)`
+
 function assertName(raw: unknown, label: string): string {
   if (typeof raw !== 'string' || !raw.trim() || raw.trim().length > 32) {
     throw badRequest(`${label}须为 1–32 字`)
   }
   return raw.trim()
+}
+
+function shapeContact(row: ContactRow, today: Ymd) {
+  const date = contactDateOf(row)
+  return {
+    id: row.id,
+    name: row.name,
+    relation: row.relation,
+    archived: !!row.archived,
+    date: date
+      ? { ...date, item_id: row.date_item_id, label: dateLabel(date), kind_label: dateKindLabel(date.kind) }
+      : null,
+    reminder: buildReminder(date, today),
+  }
+}
+
+function contactDateOf(row: ContactRow): ContactDate | null {
+  const kind = normalizeDateKind(row.date_name || '')
+  if (!kind || !row.date_item_id) return null
+  if (row.date_calendar !== 'solar' && row.date_calendar !== 'lunar') return null
+  if (row.date_month == null || row.date_day == null) return null
+  return {
+    kind,
+    calendar: row.date_calendar,
+    month: Number(row.date_month),
+    day: Number(row.date_day),
+    year: row.date_year == null ? null : Number(row.date_year),
+    leap: !!row.date_leap,
+  }
+}
+
+/** body 没带 date 就保持原样；null 表示清掉。 */
+function readDatePatch(body: Record<string, unknown>, today: Ymd): ContactDate | null | undefined {
+  if (!Object.prototype.hasOwnProperty.call(body, 'date')) return undefined
+  if (body.date == null) return null
+  try {
+    return parseContactDate(body.date, today)
+  } catch (e) {
+    throw badRequest(e instanceof Error ? e.message : '日期无效')
+  }
+}
+
+async function dateFields(db: AppEnv['Variables']['db'], ledgerId: number, date: ContactDate | null) {
+  if (!date) return { itemId: 0, name: '', calendar: '', month: null as number | null, day: null as number | null, year: null as number | null, leap: 0 }
+  const item = await ensureDictItem(db, ledgerId, CONTACT_DATE_KIND, date.kind)
+  return {
+    itemId: item.id,
+    name: item.name,
+    calendar: date.calendar,
+    month: date.month,
+    day: date.day,
+    year: date.year,
+    leap: date.leap ? 1 : 0,
+  }
 }
 
 async function upsertContact(
@@ -168,38 +253,99 @@ async function upsertContact(
 ) {
   const name = body.name != null ? assertName(body.name, '姓名') : ''
   const relation = typeof body.relation === 'string' ? body.relation.trim().slice(0, 16) : ''
+  const today = todayYmd()
+  const datePatch = readDatePatch(body, today)
   if (!id) {
     if (!name) throw badRequest('姓名须为 1–32 字')
     const existing = await db.first<ContactRow>(
-      `SELECT id, name, relation, archived FROM contacts
-       WHERE ledger_id = ? AND name = ? AND archived = 0`,
-      [ledgerId, name],
+      `${CONTACT_SQL}
+       WHERE c.ledger_id = ? AND c.name = ? AND c.archived = 0`,
+      [CONTACT_DATE_KIND, ledgerId, name],
     )
     if (existing) {
-      return { ...existing, archived: !!existing.archived }
+      if (datePatch === undefined) return shapeContact(existing, today)
+      const cols = await dateFields(db, ledgerId, datePatch)
+      const nextRel = body.relation != null ? relation : existing.relation
+      await db.run(
+        `UPDATE contacts
+         SET relation = ?, date_item_id = ?, date_calendar = ?, date_month = ?, date_day = ?, date_year = ?, date_leap = ?
+         WHERE id = ?`,
+        [nextRel, cols.itemId, cols.calendar, cols.month, cols.day, cols.year, cols.leap, existing.id],
+      )
+      return shapeContact({ ...existing, relation: nextRel, ...dateRow(cols) }, today)
     }
     const now = Date.now()
+    const cols = await dateFields(db, ledgerId, datePatch ?? null)
     const created = await db.first<{ id: number }>(
-      `INSERT INTO contacts (ledger_id, name, relation, archived, created_at)
-       VALUES (?, ?, ?, 0, ?) RETURNING id`,
-      [ledgerId, name, relation, now],
+      `INSERT INTO contacts
+        (ledger_id, name, relation, archived, created_at, date_item_id, date_calendar, date_month, date_day, date_year, date_leap)
+       VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+      [ledgerId, name, relation, now, cols.itemId, cols.calendar, cols.month, cols.day, cols.year, cols.leap],
     )
     if (!created) throw new Error('联系人创建失败')
-    return { id: created.id, name, relation, archived: false }
+    return shapeContact(
+      {
+        id: created.id,
+        name,
+        relation,
+        archived: 0,
+        ...dateRow(cols),
+      },
+      today,
+    )
   }
   const row = await db.first<ContactRow>(
-    `SELECT id, name, relation, archived FROM contacts WHERE id = ? AND ledger_id = ?`,
-    [id, ledgerId],
+    `${CONTACT_SQL} WHERE c.id = ? AND c.ledger_id = ?`,
+    [CONTACT_DATE_KIND, id, ledgerId],
   )
   if (!row) throw notFound('联系人不存在')
   const nextName = name || row.name
   const nextRel = body.relation != null ? relation : row.relation
   const archived = body.archived != null ? (body.archived ? 1 : 0) : row.archived
+  const cols = datePatch === undefined ? fieldsOf(row) : await dateFields(db, ledgerId, datePatch)
   await db.run(
-    `UPDATE contacts SET name = ?, relation = ?, archived = ? WHERE id = ?`,
-    [nextName, nextRel, archived, id],
+    `UPDATE contacts
+     SET name = ?, relation = ?, archived = ?, date_item_id = ?, date_calendar = ?, date_month = ?, date_day = ?, date_year = ?, date_leap = ?
+     WHERE id = ?`,
+    [nextName, nextRel, archived, cols.itemId, cols.calendar, cols.month, cols.day, cols.year, cols.leap, id],
   )
-  return { id, name: nextName, relation: nextRel, archived: !!archived }
+  return shapeContact(
+    {
+      id,
+      name: nextName,
+      relation: nextRel,
+      archived,
+      ...dateRow(cols),
+    },
+    today,
+  )
+}
+
+function fieldsOf(row: ContactRow) {
+  return {
+    itemId: row.date_item_id,
+    name: row.date_name || '',
+    calendar: row.date_calendar,
+    month: row.date_month,
+    day: row.date_day,
+    year: row.date_year,
+    leap: row.date_leap,
+  }
+}
+
+function dateRow(cols: ReturnType<typeof fieldsOf>): Pick<
+  ContactRow,
+  'date_item_id' | 'date_name' | 'date_calendar' | 'date_month' | 'date_day' | 'date_year' | 'date_leap'
+> {
+  return {
+    date_item_id: cols.itemId,
+    date_name: cols.name,
+    date_calendar: cols.calendar,
+    date_month: cols.month,
+    date_day: cols.day,
+    date_year: cols.year,
+    date_leap: cols.leap,
+  }
 }
 
 async function upsertGift(c: Context<AppEnv>, id: number | null, body: Record<string, unknown>) {

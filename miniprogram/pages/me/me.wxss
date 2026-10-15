@@ -1,18 +1,28 @@
-.card.user {
+.profile-card {
+  padding: 28rpx;
+}
+
+.profile-top {
   display: flex;
   align-items: center;
-  gap: 24rpx;
+  gap: 22rpx;
+}
+
+.guest-card {
+  display: flex;
+  align-items: center;
+  gap: 22rpx;
 }
 
 .avatar-lg {
-  width: 112rpx;
-  height: 112rpx;
-  border-radius: 56rpx;
-  background: #eef0ff;
-  color: #3b5bdb;
-  font-size: 44rpx;
+  width: 108rpx;
+  height: 108rpx;
+  border-radius: 54rpx;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 42rpx;
   font-weight: 600;
-  line-height: 112rpx;
+  line-height: 108rpx;
   text-align: center;
   flex: none;
 }
@@ -22,16 +32,299 @@
   min-width: 0;
 }
 
-.nickname-edit {
-  flex: none;
-  padding: 14rpx 4rpx 14rpx 16rpx;
-  color: #3b5bdb;
-  font-size: 25rpx;
+.nick-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
 }
 
 .nick {
   font-size: 36rpx;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edit-pill {
+  flex: none;
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  background: #f4f5f8;
+  color: var(--muted);
+  font-size: 22rpx;
+}
+
+.user-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-top: 10rpx;
+}
+
+.u-tag {
+  padding: 4rpx 14rpx;
+  border-radius: 999rpx;
+  background: #f4f5f8;
+  color: var(--muted);
+  font-size: 22rpx;
+}
+
+.u-tag.ok {
+  background: #e6f6ec;
+  color: var(--income);
+}
+
+.points-pill {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 12rpx 20rpx;
+  border-radius: 999rpx;
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.p-label {
+  font-size: 22rpx;
+}
+
+.p-val {
+  font-size: 28rpx;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.p-arrow {
+  font-size: 24rpx;
+  opacity: 0.7;
+}
+
+/* 当前账本条与快速切换 */
+.ledger-strip {
+  margin-top: 24rpx;
+  padding-top: 22rpx;
+  border-top: 1rpx solid var(--line);
+}
+
+.ls-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+}
+
+.ls-current {
+  display: flex;
+  align-items: center;
+  gap: 10rpx;
+  min-width: 0;
+}
+
+.ls-label {
+  font-size: 24rpx;
+  color: var(--muted);
+  flex: none;
+}
+
+.ls-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ls-badge {
+  flex: none;
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 20rpx;
+  font-weight: 600;
+}
+
+.ls-manage {
+  flex: none;
+  font-size: 24rpx;
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.ls-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.ls-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8rpx;
+  padding: 10rpx 22rpx;
+  border-radius: 999rpx;
+  background: #f4f5f8;
+  color: var(--text);
+  font-size: 24rpx;
+  border: 2rpx solid transparent;
+}
+
+.ls-chip.on {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-color: rgba(59, 91, 219, 0.25);
+  font-weight: 600;
+}
+
+.ls-role {
+  font-size: 20rpx;
+  opacity: 0.75;
+}
+
+/* 净资产与预算双卡 */
+.overview-grid {
+  display: flex;
+  gap: 20rpx;
+  margin-top: 24rpx;
+}
+
+.ov-card {
+  flex: 1;
+  min-width: 0;
+  background: #fff;
+  border-radius: 28rpx;
+  padding: 24rpx;
+  box-shadow: 0 8rpx 32rpx rgba(20, 20, 40, 0.05);
+}
+
+.ov-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8rpx;
+}
+
+.ov-label {
+  font-size: 24rpx;
+  color: var(--muted);
+}
+
+.ov-sub {
+  font-size: 22rpx;
+  color: var(--muted);
+}
+
+.ov-val {
+  margin-top: 12rpx;
+  font-size: 36rpx;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.brand-text {
+  color: var(--brand);
+}
+
+/* 2x2 功能宫格 */
+.sec-title {
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 20rpx;
+}
+
+.nav-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16rpx;
+}
+
+.nav-item {
+  width: calc(50% - 8rpx);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 18rpx;
+  padding: 20rpx;
+  border-radius: 24rpx;
+  background: #f7f8fb;
+}
+
+.nav-ico {
+  width: 68rpx;
+  height: 68rpx;
+  line-height: 68rpx;
+  text-align: center;
+  border-radius: 20rpx;
+  font-size: 28rpx;
+  font-weight: 600;
+  flex: none;
+}
+
+.nav-ico.blue {
+  background: #eef0ff;
+  color: #3b5bdb;
+}
+
+.nav-ico.purple {
+  background: #f3ecff;
+  color: #7048e8;
+}
+
+.nav-ico.green {
+  background: #e6f6ec;
+  color: #1f9d55;
+}
+
+.nav-ico.orange {
+  background: #fff4e6;
+  color: #e8590c;
+}
+
+.nav-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.nav-name {
+  font-size: 28rpx;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.nav-desc {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 列表项带副标题 */
+.row-left {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-title {
+  font-size: 28rpx;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.row-sub {
+  margin-top: 4rpx;
+  font-size: 22rpx;
+  color: var(--muted);
 }
 
 .arrow {
@@ -40,5 +333,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 60%;
+  max-width: 45%;
+  flex: none;
+}
+
+.logout-btn {
+  margin-top: 28rpx;
 }

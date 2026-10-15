@@ -91,6 +91,7 @@ async function foldLedgerStmts(
   const categories = await mergeCategories(db, sourceLedgerId, destLedgerId, guard, guardParams)
   stmts.push(...categories.stmts)
   stmts.push(...(await mergeBudgets(db, sourceLedgerId, destLedgerId, categories.map, guard, guardParams)))
+  stmts.push(...(await mergeDictItems(db, sourceLedgerId, destLedgerId, guard, guardParams)))
   const contacts = await mergeContacts(db, sourceLedgerId, destLedgerId, guard, guardParams)
   stmts.push(...contacts)
 
@@ -280,6 +281,48 @@ async function mergeBudgets(
     for (const id of rest) {
       stmts.push({ sql: `DELETE FROM budgets WHERE id = ? AND ${guard}`, params: [id, ...guardParams] })
     }
+  }
+  return stmts
+}
+
+async function mergeDictItems(
+  db: Db,
+  sourceLedgerId: number,
+  destLedgerId: number,
+  guard: string,
+  guardParams: unknown[],
+): Promise<Stmt[]> {
+  const source = await db.all<{ id: number; kind: string; name: string }>(
+    `SELECT id, kind, name FROM dict_items WHERE ledger_id = ? ORDER BY id ASC`,
+    [sourceLedgerId],
+  )
+  const dest = await db.all<{ id: number; kind: string; name: string }>(
+    `SELECT id, kind, name FROM dict_items WHERE ledger_id = ?`,
+    [destLedgerId],
+  )
+  const byKey = new Map(dest.map((row) => [`${row.kind}\n${row.name}`, row.id]))
+  const stmts: Stmt[] = []
+  for (const row of source) {
+    const key = `${row.kind}\n${row.name}`
+    const hit = byKey.get(key)
+    if (hit) {
+      stmts.push(
+        {
+          sql: `UPDATE contacts SET date_item_id = ? WHERE ledger_id = ? AND date_item_id = ? AND ${guard}`,
+          params: [hit, sourceLedgerId, row.id, ...guardParams],
+        },
+        {
+          sql: `DELETE FROM dict_items WHERE id = ? AND ledger_id = ? AND ${guard}`,
+          params: [row.id, sourceLedgerId, ...guardParams],
+        },
+      )
+      continue
+    }
+    stmts.push({
+      sql: `UPDATE dict_items SET ledger_id = ? WHERE id = ? AND ledger_id = ? AND ${guard}`,
+      params: [destLedgerId, row.id, sourceLedgerId, ...guardParams],
+    })
+    byKey.set(key, row.id)
   }
   return stmts
 }

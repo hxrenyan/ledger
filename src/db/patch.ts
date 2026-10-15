@@ -8,6 +8,12 @@ export async function patchSchema(db: Db) {
   await ensureColumn(db, 'transactions', 'has_receipt', 'INTEGER NOT NULL DEFAULT 0')
   await ensureColumn(db, 'transactions', 'import_batch_id', 'INTEGER')
   await ensureColumn(db, 'gifts', 'import_batch_id', 'INTEGER')
+  await ensureColumn(db, 'contacts', 'date_calendar', `TEXT NOT NULL DEFAULT ''`)
+  await ensureColumn(db, 'contacts', 'date_month', 'INTEGER')
+  await ensureColumn(db, 'contacts', 'date_day', 'INTEGER')
+  await ensureColumn(db, 'contacts', 'date_year', 'INTEGER')
+  await ensureColumn(db, 'contacts', 'date_leap', 'INTEGER NOT NULL DEFAULT 0')
+  await ensureColumn(db, 'contacts', 'date_item_id', 'INTEGER NOT NULL DEFAULT 0')
   await db.run(
     `CREATE TABLE IF NOT EXISTS recurrences (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

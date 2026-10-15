@@ -177,6 +177,10 @@ describe('migrate old sqlite', () => {
 
     const contactCols = (await db.all<{ name: string }>(`PRAGMA table_info(contacts)`)).map((col) => col.name)
     expect(contactCols).not.toContain('note')
+    expect(contactCols).not.toContain('date_kind')
+    expect(contactCols).toContain('date_item_id')
+    expect(contactCols).toContain('date_year')
+    expect(contactCols).toContain('date_leap')
     expect(await db.first(`SELECT name, relation FROM contacts WHERE id = 'c1'`)).toEqual({
       name: '张三',
       relation: '同事',

@@ -46,6 +46,25 @@ function flag(v: unknown): boolean {
   return v === true || v === 1 || v === '1' || v === 1n
 }
 
+/** 给网页交接会话用。ledgerId > 0 时带回小程序当时的账本。 */
+export async function buildSession(
+  db: AppEnv['Variables']['db'],
+  jwtSecret: string,
+  userId: number,
+  ledgerId = 0,
+) {
+  const user = await db.first<UserRow>(
+    `SELECT id, username, nickname, password_hash, disabled FROM users WHERE id = ?`,
+    [userId],
+  )
+  if (!user) throw unauthorized()
+  if (user.disabled) throw unauthorized('账号已停用')
+  const token = await signToken(jwtSecret, user.id)
+  const session = await sessionPayload(db, user, token)
+  if (ledgerId > 0) return { ...session, ledger_id: ledgerId }
+  return session
+}
+
 export function registerAuthRoutes(app: Hono<AppEnv>) {
   app.post('/api/v1/auth/register', async (c) => {
     const body = await c.req.json().catch(() => ({}))

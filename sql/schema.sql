@@ -155,6 +155,22 @@ CREATE TABLE IF NOT EXISTS attachments (
 );
 
 -- ---------------------------------------------------------------------------
+-- dict_items（可复用的配置项）
+-- kind、name 都是字符串。ledger_id 为空表示公共字典，所有账本都能用；
+-- 有值则只属于该账本。目前 contact_date 是联系人日子标签。
+-- 不建外键。联系人用 date_item_id 指向本表 id，0 表示没记。
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS dict_items (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id INTEGER,
+  kind TEXT NOT NULL,
+  name TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  archived INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
 -- contacts / gifts（人情往来）
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS contacts (
@@ -163,7 +179,15 @@ CREATE TABLE IF NOT EXISTS contacts (
   name TEXT NOT NULL,
   relation TEXT NOT NULL DEFAULT '',
   archived INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  -- 日子在 dict_items（kind=contact_date）。0 表示没记。阳历/农历只存月日，年份可空。
+  -- 名称是「生日」时用来算岁数，其它名称算周年。date_leap 只对农历闰月有意义。
+  date_item_id INTEGER NOT NULL DEFAULT 0,
+  date_calendar TEXT NOT NULL DEFAULT '',
+  date_month INTEGER,
+  date_day INTEGER,
+  date_year INTEGER,
+  date_leap INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS gifts (
@@ -321,6 +345,9 @@ CREATE INDEX IF NOT EXISTS idx_tx_ledger_occurred ON transactions (ledger_id, oc
 CREATE INDEX IF NOT EXISTS idx_members_user ON members (user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ledgers_invite ON ledgers (invite_code) WHERE invite_code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_contacts_ledger ON contacts (ledger_id, archived, name COLLATE NOCASE);
+-- 账本内同名不重复。SQLite 的 UNIQUE 对 NULL 不去重，公共项另建一条部分索引。
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_items_ledger_name ON dict_items (ledger_id, kind, name) WHERE ledger_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_items_public_name ON dict_items (kind, name) WHERE ledger_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_gifts_contact ON gifts (contact_id, ledger_id, occurred_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_gifts_ledger_occurred ON gifts (ledger_id, occurred_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_recurrences_next ON recurrences (ledger_id, enabled, next_at);

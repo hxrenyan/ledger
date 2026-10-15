@@ -2,10 +2,10 @@
  * 人情往来（tab）。
  *
  * 两段数据：
- *   汇总 —— GET /gifts 全量算出「送出 / 收入 / 差额」，并支持按姓名搜索；
- *   联系人 —— GET /contacts 带每人 given/received，点进去看他的往来明细。
+ *   往来记录 —— GET /gifts 支持按月份或全量查看、按方向（送出/收到）与关键词（姓名/事由/备注）筛选；
+ *   联系人 —— GET /contacts 带每人 given/received 与日子提醒，支持搜索联系人、一键给某人记一笔、点进看往来明细。
  *
- * 人情不参与收支统计（后端口径如此），所以这里只按「送出 / 收入」两个方向看。
+ * 人情不参与收支统计（后端口径如此），所以这里只按「送出 / 收到」两个方向看。
  */
 
 const request = require('../../utils/request')
@@ -15,32 +15,81 @@ const money = require('../../utils/money')
 const time = require('../../utils/time')
 const ui = require('../../utils/ui')
 
+/** 顶部提醒：即将到来在前，已经过去的按过了几天从少到多排在后面。 */
+function comingSoon(contacts) {
+  const items = []
+  ;(contacts || []).forEach((c) => {
+    if (!c || c.archived || !c.reminder) return
+    items.push({
+      id: c.id,
+      name: c.name || '',
+      relation: c.relation || '',
+      kindText: (c.date && c.date.kind_label) || '',
+      whenText: c.reminder.text || '',
+      ageText: c.reminder.age_text || '',
+      state: c.reminder.state === 'past' ? 'past' : 'upcoming',
+      days: Number(c.reminder.days) || 0,
+    })
+  })
+  items.sort((a, b) => {
+    if (a.state !== b.state) return a.state === 'upcoming' ? -1 : 1
+    return a.days - b.days
+  })
+  return items
+}
+
+function giftDaySumLabel(givenCents, receivedCents) {
+  const parts = []
+  if (givenCents > 0) parts.push('送 ' + money.formatYuan(givenCents))
+  if (receivedCents > 0) parts.push('收 ' + money.formatYuan(receivedCents))
+  return parts.join(' · ')
+}
+
+function contactDateLine(c) {
+  if (!c || !c.date) return ''
+  const kind = c.date.kind_label || c.date.kind || ''
+  const label = c.date.label || ''
+  const when = c.reminder && c.reminder.text ? ' · ' + c.reminder.text : ''
+  return (kind ? kind + ' · ' : '') + label + when
+}
+
 Page({
   data: {
     loading: true,
     tab: 'gifts', // gifts | contacts
-    // 月份（往来记录与汇总都按它算；联系人那一栏不受影响）
+    // 范围：month 按月看 | all 全部时间
+    scope: 'month',
     month: '',
+    summaryScopeText: '',
     // 汇总
     givenText: '0.00',
     receivedText: '0.00',
     netText: '0.00',
     netClass: 'income',
-    // 往来
+    // 往来筛选
     q: '',
+    kindFilter: 'all', // all | give | receive
+    hasGiftFilter: false,
     groups: [],
     empty: false,
     emptyText: '',
-    // 联系人
+    // 联系人与筛选
+    contactQ: '',
     contacts: [],
     contactEmpty: false,
+    contactNoMatch: false,
+    soon: [],
     guest: false,
   },
 
   onLoad() {
     this.gifts = []
     this.contacts = []
-    this.setData({ month: time.shanghaiMonth() })
+    const month = time.shanghaiMonth()
+    this.setData({
+      month: month,
+      summaryScopeText: time.monthLabel(month),
+    })
   },
 
   onShow() {
@@ -51,7 +100,9 @@ Page({
         empty: true,
         emptyText: '这个月还没有人情记录，点右下角 + 记一笔',
         contactEmpty: true,
+        contactNoMatch: false,
         contacts: [],
+        soon: [],
         groups: [],
       })
       return
@@ -75,26 +126,31 @@ Page({
         const gifts = (res[0] && res[0].items) || []
         const contacts = (res[1] && res[1].items) || []
         this.gifts = gifts.map((g) => this.decorate(g))
-        this.contacts = contacts.map((c) => ({
-          id: c.id,
-          name: c.name,
-          initial: c.name.slice(0, 1),
-          relation: c.relation || '',
-          archived: !!c.archived,
-          givenText: money.formatYuan(c.given_cents),
-          receivedText: money.formatYuan(c.received_cents),
-          netText: money.formatYuan(c.net_cents),
-          netClass: c.net_cents >= 0 ? 'income' : 'expense',
-          summary: '送出 ' + money.formatYuan(c.given_cents) + ' · 收入 ' + money.formatYuan(c.received_cents),
-        }))
+        this.contacts = contacts
+          .filter((c) => !c.archived)
+          .map((c) => {
+            const net = Number(c.net_cents) || 0
+            return {
+              id: c.id,
+              name: c.name,
+              initial: c.name.slice(0, 1),
+              relation: c.relation || '',
+              archived: !!c.archived,
+              givenText: money.formatYuan(c.given_cents),
+              receivedText: money.formatYuan(c.received_cents),
+              netText: (net > 0 ? '+' : '') + money.formatYuan(net),
+              netClass: net >= 0 ? 'income' : 'expense',
+              summary: '送出 ' + money.formatYuan(c.given_cents) + ' · 收到 ' + money.formatYuan(c.received_cents),
+              dateLine: contactDateLine(c),
+            }
+          })
 
         this.setData({
           loading: false,
-          contacts: this.contacts.filter((c) => !c.archived),
-          contactEmpty: !contacts.length,
+          contactEmpty: !this.contacts.length,
+          soon: comingSoon(contacts),
         })
-        // 汇总跟着所选月份走，所以放在 applyFilter 里一起算，
-        // 否则切月份时汇总数字会停在旧月份上。
+        this.applyContactFilter()
         this.applyFilter()
       })
       .catch((err) => {
@@ -104,13 +160,14 @@ Page({
   },
 
   decorate(g) {
+    const name = g.contact_name || ''
     return {
       id: g.id,
       contactId: g.contact_id,
-      contact: g.contact_name || '',
+      contact: name,
+      initial: name ? name.slice(0, 1) : '友',
       kind: g.kind,
-      kindText: g.kind === 'give' ? '送出' : '收入',
-      // 汇总要按月份重算，所以留一份分值在手里（amountText 是给人看的）
+      kindText: g.kind === 'give' ? '送出' : '收到',
       amountCents: Number(g.amount_cents) || 0,
       date: time.occurredAtToDate(g.occurred_at),
       amountText: (g.kind === 'give' ? '-' : '+') + money.formatYuan(g.amount_cents),
@@ -122,49 +179,83 @@ Page({
   /**
    * 筛选 + 汇总 + 分组。
    *
-   * 顺序是「先按月份圈定范围 → 在这个范围里算汇总 → 再按关键词筛 → 分组」。
-   * 三件事放一起是因为它们必须用同一份数据：以前汇总在 load() 里算的是全量，
-   * 加了月份之后如果还留在那儿，切月份时列表变了、汇总不动。
-   *
-   * 接口给的是全量往来（GET /gifts 没有 month 参数），所以月份在本地筛，
-   * 切月份不必再发一次请求 —— 按「送出/收到的总账」看，这个体量完全够。
+   * 往来记录支持「按月」或「全部时间」查看；切到联系人 tab 时汇总固定展示全部累计。
    */
   applyFilter() {
+    const useMonth = this.data.tab === 'gifts' && this.data.scope === 'month' && this.data.month
     const month = this.data.month
-    const inMonth = month ? this.gifts.filter((g) => g.date.slice(0, 7) === month) : this.gifts
+    const inScope = useMonth ? this.gifts.filter((g) => g.date.slice(0, 7) === month) : this.gifts
 
     let given = 0
     let received = 0
-    inMonth.forEach((g) => {
+    inScope.forEach((g) => {
       if (g.kind === 'give') given += g.amountCents
       else received += g.amountCents
     })
 
+    const kindFilter = this.data.kindFilter || 'all'
     const q = (this.data.q || '').trim()
-    const list = q
-      ? inMonth.filter((g) => g.contact.indexOf(q) >= 0 || g.note.indexOf(q) >= 0 || g.occasion.indexOf(q) >= 0)
-      : inMonth
+    const hasGiftFilter = Boolean(q || kindFilter !== 'all')
+    const list = inScope.filter((g) => {
+      if (kindFilter !== 'all' && g.kind !== kindFilter) return false
+      if (!q) return true
+      return g.contact.indexOf(q) >= 0 || g.note.indexOf(q) >= 0 || g.occasion.indexOf(q) >= 0
+    })
+
     const groups = []
     const byKey = {}
     list.forEach((g) => {
       let row = byKey[g.date]
       if (!row) {
-        row = { key: g.date, label: time.dayLabel(g.date), items: [] }
+        row = { key: g.date, label: time.dayLabel(g.date), items: [], givenCents: 0, receivedCents: 0 }
         byKey[g.date] = row
         groups.push(row)
       }
       row.items.push(g)
+      if (g.kind === 'give') row.givenCents += g.amountCents
+      else row.receivedCents += g.amountCents
     })
+
+    const shapedGroups = groups.map((row) => ({
+      key: row.key,
+      label: row.label,
+      items: row.items,
+      sumText: giftDaySumLabel(row.givenCents, row.receivedCents),
+    }))
+
+    const net = received - given
     this.setData({
-      groups: groups,
+      groups: shapedGroups,
       empty: !list.length,
-      // 区分「这个月本来就没有」和「搜索没搜到」——后者说「还没有记录」会让人以为数据丢了
-      emptyText:
-        inMonth.length > 0 ? '没有匹配的记录' : '这个月还没有人情记录，点右下角 + 记一笔',
+      hasGiftFilter: hasGiftFilter,
+      summaryScopeText: useMonth ? time.monthLabel(month) : '累计往来',
+      emptyText: hasGiftFilter
+        ? '没有匹配的往来记录'
+        : useMonth
+          ? '这个月还没有人情记录'
+          : '还没有人情记录',
       givenText: money.formatYuan(given),
       receivedText: money.formatYuan(received),
-      netText: money.formatYuan(received - given),
-      netClass: received - given >= 0 ? 'income' : 'expense',
+      netText: (net > 0 ? '+' : '') + money.formatYuan(net),
+      netClass: net >= 0 ? 'income' : 'expense',
+    })
+  },
+
+  applyContactFilter() {
+    const all = this.contacts || []
+    const q = (this.data.contactQ || '').trim()
+    const filtered = q
+      ? all.filter(
+          (c) =>
+            c.name.indexOf(q) >= 0 ||
+            c.relation.indexOf(q) >= 0 ||
+            (c.dateLine && c.dateLine.indexOf(q) >= 0),
+        )
+      : all
+    this.setData({
+      contacts: filtered,
+      contactEmpty: !all.length,
+      contactNoMatch: all.length > 0 && !filtered.length,
     })
   },
 
@@ -175,8 +266,19 @@ Page({
       return
     }
     const month = e.detail.month
-    if (!month || month === this.data.month) return
-    this.setData({ month: month })
+    if (!month) return
+    this.setData({ month: month, scope: 'month' })
+    this.applyFilter()
+  },
+
+  toggleScope(e) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    const next = e.currentTarget.dataset.scope || (this.data.scope === 'all' ? 'month' : 'all')
+    if (next === this.data.scope) return
+    this.setData({ scope: next })
     this.applyFilter()
   },
 
@@ -189,17 +291,64 @@ Page({
     this.applyFilter()
   },
 
+  clearSearch() {
+    if (!this.data.q) return
+    this.setData({ q: '' })
+    this.applyFilter()
+  },
+
+  setKindFilter(e) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    const kind = e.currentTarget.dataset.kind || 'all'
+    if (kind === this.data.kindFilter) return
+    this.setData({ kindFilter: kind })
+    this.applyFilter()
+  },
+
+  resetGiftFilter() {
+    this.setData({ q: '', kindFilter: 'all', hasGiftFilter: false })
+    this.applyFilter()
+  },
+
+  onContactSearch(e) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    this.setData({ contactQ: e.detail.value })
+    this.applyContactFilter()
+  },
+
+  clearContactSearch() {
+    if (!this.data.contactQ) return
+    this.setData({ contactQ: '' })
+    this.applyContactFilter()
+  },
+
   switchTab(e) {
     const tab = e.currentTarget.dataset.t
     if (!session.getToken()) {
       if (tab !== 'gifts') session.goLogin()
       return
     }
+    if (tab === this.data.tab) return
     this.setData({ tab: tab })
+    this.applyFilter()
   },
 
   openPerson(e) {
     nav.go('favor-person', { id: e.currentTarget.dataset.id })
+  },
+
+  openTools() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    wx.switchTab({ url: '/pages/tools/tools' })
   },
 
   editGift(e) {
@@ -230,6 +379,14 @@ Page({
           .catch((err) => ui.fail(err, '保存失败'))
       })
     })
+  },
+
+  addGiftForContact(e) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    nav.go('gift-form', { contact_id: e.currentTarget.dataset.id })
   },
 
   addGift() {

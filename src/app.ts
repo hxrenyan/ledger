@@ -13,6 +13,7 @@ import { registerStatsRoutes } from './routes/stats.ts'
 import { registerLedgerRoutes } from './routes/ledgers.ts'
 import { registerBudgetRoutes } from './routes/budgets.ts'
 import { registerAdminRoutes } from './routes/admin.ts'
+import { registerDictRoutes } from './routes/dicts.ts'
 import { registerFavorRoutes } from './routes/favors.ts'
 import { registerRecurrenceRoutes } from './routes/recurrences.ts'
 import { registerImportRoutes } from './routes/imports.ts'
@@ -20,6 +21,7 @@ import { registerSpeechRoutes } from './routes/speech.ts'
 import { registerOcrRoutes } from './routes/ocr.ts'
 import { registerPointRoutes } from './routes/points.ts'
 import { registerFeedbackRoutes } from './routes/feedback.ts'
+import { registerWebviewRoutes } from './routes/webview.ts'
 import type { WechatCodeExchange } from './auth/wechat.ts'
 
 export type AppEnv = {
@@ -202,6 +204,7 @@ export function createApp(cfg: AppConfig) {
   registerTransactionRoutes(app)
   registerStatsRoutes(app)
   registerBudgetRoutes(app)
+  registerDictRoutes(app)
   registerFavorRoutes(app)
   registerRecurrenceRoutes(app)
   registerImportRoutes(app)
@@ -209,6 +212,7 @@ export function createApp(cfg: AppConfig) {
   registerOcrRoutes(app)
   registerPointRoutes(app)
   registerFeedbackRoutes(app)
+  registerWebviewRoutes(app)
   registerAdminRoutes(app)
 
   return app

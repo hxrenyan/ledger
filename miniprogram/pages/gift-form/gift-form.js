@@ -1,10 +1,10 @@
 /**
  * 记人情 / 改人情。
  *
- * 对方、日期、事由放在一行下拉里。事由选「自己写」时再出现输入框。
+ * 对方、事由、常用礼金金额均支持一键点选胶囊；事由选「＋ 自己写」时展开输入框。
  * 事由上限 16 字，由后端截断，这里先拦一下提示更清楚。
  *
- * 传 contact_id 进来就是「给某人记一笔」（从某人明细页过来）。
+ * 传 contact_id 进来就是「给某人记一笔」（从某人明细页或联系人列表过来）。
  */
 
 const { toId } = require('../../utils/id')
@@ -17,6 +17,7 @@ const ui = require('../../utils/ui')
 
 const OCCASIONS = ['婚礼', '满月', '乔迁', '生日', '探病', '升学', '白事', '节日']
 const OCCASION_NAMES = OCCASIONS.concat(['自己写'])
+const QUICK_AMOUNTS = ['200', '500', '600', '800', '1000', '2000']
 
 function occasionView(occasion, custom) {
   const known = OCCASIONS.indexOf(occasion)
@@ -36,21 +37,44 @@ function occasionView(occasion, custom) {
   return { occasion: '', customOccasion: '', occasionIndex: 0, occasionName: '选事由', writing: false }
 }
 
-function shortDate(date) {
-  if (!date) return '日期'
-  const parts = String(date).split('-')
-  if (parts.length < 3) return '日期'
-  return Number(parts[1]) + '/' + Number(parts[2])
+function formatFullDate(date) {
+  if (!date) return '选择日期'
+  const thisYear = time.todayISO().slice(0, 4)
+  if (date.slice(0, 4) !== thisYear) {
+    const p = String(date).split('-')
+    if (p.length >= 3) return p[0] + '年' + Number(p[1]) + '月' + Number(p[2]) + '日'
+  }
+  return time.dateLabel(date)
+}
+
+function calcDatePreset(date) {
+  const today = time.todayISO()
+  if (date === today) return 'today'
+  if (date === time.addDays(today, -1)) return 'yesterday'
+  if (date === time.addDays(today, -2)) return 'beforeYesterday'
+  return ''
+}
+
+function calcAmountPreview(raw) {
+  const s = String(raw == null ? '' : raw).trim()
+  if (!s || !/[+\-*/＋－×÷]/.test(s)) return ''
+  const cents = money.yuanExprToCents(s)
+  if (cents) return '= ¥' + money.formatYuanGrouped(cents)
+  return '算式待完成…'
 }
 
 Page({
   data: {
     id: '',
     convertTx: '',
-    kind: 'give', // give 送出 | receive 收入
+    kind: 'give', // give 送出 | receive 收到
     amountText: '',
+    amountPreview: '',
+    quickAmounts: QUICK_AMOUNTS,
     date: '',
     dateText: '',
+    datePreset: 'today',
+    occasions: OCCASIONS,
     occasion: '',
     customOccasion: '',
     occasionIndex: 0,
@@ -72,6 +96,7 @@ Page({
     accountIndex: 0,
     accountName: '选择账户',
     cats: [],
+    currentCats: [],
     categoryNames: [],
     categoryId: '',
     categoryIndex: 0,
@@ -87,15 +112,18 @@ Page({
     const convertTx = toId(q.convert_tx) || ''
     const carried = convertTx ? nav.takeCarry() : null
     const carriedNote = carried && carried.note != null ? carried.note : ''
+    const amountText = q.amount || ''
     this.setData({
       id: convertTx ? '' : toId(q.id) || '',
       convertTx: convertTx,
       contactId: toId(q.contact_id) || '',
       kind: q.kind === 'receive' ? 'receive' : 'give',
-      amountText: q.amount || '',
+      amountText: amountText,
+      amountPreview: calcAmountPreview(amountText),
       note: convertTx ? nav.repairNote(nav.noteFromPrevPage() || carriedNote) : q.note || '',
       date: date,
-      dateText: shortDate(date),
+      dateText: formatFullDate(date),
+      datePreset: calcDatePreset(date),
     })
     wx.setNavigationBarTitle({ title: convertTx ? '转成人情' : q.id ? '改人情' : '记人情' })
     const jobs = [this.loadContacts()]
@@ -159,6 +187,7 @@ Page({
     const categoryId = keep ? this.data.categoryId : list[0] ? list[0].id : ''
     const index = list.findIndex((c) => c.id === categoryId)
     this.setData({
+      currentCats: list,
       categoryNames: list.map((c) => c.name),
       categoryId: categoryId,
       categoryIndex: index < 0 ? 0 : index,
@@ -192,15 +221,24 @@ Page({
       .then((g) => {
         const date = time.occurredAtToDate(g.occurred_at)
         const known = OCCASIONS.indexOf(g.occasion) >= 0
-        this.setData(Object.assign({
-          kind: g.kind,
-          amountText: money.formatYuan(g.amount_cents),
-          date: date,
-          dateText: shortDate(date),
-          note: nav.repairNote(g.note || ''),
-          contactId: g.contact_id,
-          contactName: g.contact_name || '',
-        }, occasionView(known ? g.occasion : '', known ? '' : g.occasion || '')))
+        const amountText = money.formatYuan(g.amount_cents)
+        this.setData(
+          Object.assign(
+            {
+              kind: g.kind,
+              amountText: amountText,
+              amountPreview: calcAmountPreview(amountText),
+              date: date,
+              dateText: formatFullDate(date),
+              datePreset: calcDatePreset(date),
+              note: nav.repairNote(g.note || ''),
+              contactId: g.contact_id,
+              contactName: g.contact_name || '',
+            },
+            occasionView(known ? g.occasion : '', known ? '' : g.occasion || '')
+          )
+        )
+        this.syncContactName()
       })
       .catch((err) => ui.fail(err, '记录加载失败'))
   },
@@ -208,16 +246,69 @@ Page({
   // ---- 表单 ----
 
   setKind(e) {
-    this.setData({ kind: e.currentTarget.dataset.kind })
+    const kind = e.currentTarget.dataset.kind
+    if (!kind || kind === this.data.kind) return
+    this.setData({ kind: kind, err: '' })
     this.pickDefaultCategory()
   },
 
   onAmount(e) {
-    this.setData({ amountText: e.detail.value, err: '' })
+    const val = e.detail.value
+    this.setData({
+      amountText: val,
+      amountPreview: calcAmountPreview(val),
+      err: '',
+    })
+  },
+
+  tapQuickAmount(e) {
+    const val = String(e.currentTarget.dataset.amount || '')
+    if (!val) return
+    this.setData({
+      amountText: val,
+      amountPreview: '',
+      err: '',
+    })
+  },
+
+  clearAmount() {
+    this.setData({ amountText: '', amountPreview: '', err: '' })
   },
 
   onNote(e) {
     this.setData({ note: e.detail.value })
+  },
+
+  clearNote() {
+    this.setData({ note: '' })
+  },
+
+  selectOccasion(e) {
+    const occ = e.currentTarget.dataset.occ
+    if (!occ) return
+    if (this.data.occasion === occ && !this.data.writing) {
+      this.setData(occasionView('', ''))
+      return
+    }
+    this.setData(occasionView(occ, ''))
+  },
+
+  tapCustomOccasion() {
+    if (this.data.writing) {
+      this.setData(occasionView('', ''))
+      return
+    }
+    const text = String(this.data.customOccasion || '').trim()
+    this.setData({
+      occasion: '',
+      occasionIndex: OCCASIONS.length,
+      occasionName: text || '自己写',
+      writing: true,
+    })
+  },
+
+  clearCustomOccasion() {
+    this.setData(occasionView('', ''))
   },
 
   onCustomOccasion(e) {
@@ -249,24 +340,54 @@ Page({
 
   onDate(e) {
     const date = e.detail.value
-    this.setData({ date: date, dateText: shortDate(date) })
+    this.setData({
+      date: date,
+      dateText: formatFullDate(date),
+      datePreset: calcDatePreset(date),
+    })
+  },
+
+  tapQuickDate(e) {
+    const preset = e.currentTarget.dataset.preset
+    const today = time.todayISO()
+    let date = today
+    if (preset === 'yesterday') date = time.addDays(today, -1)
+    else if (preset === 'beforeYesterday') date = time.addDays(today, -2)
+    this.setData({
+      date: date,
+      dateText: formatFullDate(date),
+      datePreset: preset,
+    })
+  },
+
+  selectContact(e) {
+    const id = toId(e.currentTarget.dataset.id)
+    const index = this.data.contacts.findIndex((c) => c.id === id)
+    if (index < 0) return
+    const contact = this.data.contacts[index]
+    this.setData({
+      contactId: contact.id,
+      contactName: contact.name,
+      contactIndex: index,
+      err: '',
+    })
   },
 
   pickContact(e) {
     const index = Number(e.detail.value)
     const contact = this.data.contacts[index]
     if (!contact) return
-    this.setData({ contactId: contact.id, contactName: contact.name, contactIndex: index })
+    this.setData({ contactId: contact.id, contactName: contact.name, contactIndex: index, err: '' })
   },
 
   addContact() {
-    ui.prompt({ title: '新增联系人', placeholder: '姓名' }).then((name) => {
-      if (name == null || !name) return
-      ui.withLoading('保存中', () => request.post('/api/v1/contacts', { name: name }))
+    ui.prompt({ title: '新增联系人', placeholder: '输入对方姓名' }).then((name) => {
+      if (name == null || !name.trim()) return
+      ui.withLoading('保存中', () => request.post('/api/v1/contacts', { name: name.trim() }))
         .then((c) => {
           // 接口对同名联系人是「返回已有的那个」，所以这里直接采信返回的 id。
           return this.loadContacts().then(() => {
-            this.setData({ contactId: c.id, contactName: c.name })
+            this.setData({ contactId: c.id, contactName: c.name, err: '' })
             this.syncContactName()
           })
         })
@@ -283,16 +404,56 @@ Page({
     if (e.detail.value) this.pickDefaultCategory()
   },
 
+  selectCategory(e) {
+    const id = toId(e.currentTarget.dataset.id)
+    const list = this.data.currentCats || []
+    const index = list.findIndex((c) => c.id === id)
+    if (index < 0) return
+    this.setData({
+      categoryId: id,
+      categoryIndex: index,
+      categoryName: list[index].name,
+      err: '',
+    })
+  },
+
   pickCategory(e) {
     const cat = this.catsForKind()[Number(e.detail.value)]
     if (!cat) return
-    this.setData({ categoryId: cat.id, categoryIndex: Number(e.detail.value), categoryName: cat.name })
+    this.setData({ categoryId: cat.id, categoryIndex: Number(e.detail.value), categoryName: cat.name, err: '' })
+  },
+
+  addCategory() {
+    const kind = this.data.kind === 'receive' ? 'income' : 'expense'
+    ui.prompt({
+      title: kind === 'income' ? '新增收入分类' : '新增支出分类',
+      placeholder: '分类名称，最多 32 字',
+    }).then((name) => {
+      if (!name || !name.trim()) return
+      ui.withLoading('保存中', () => request.post('/api/v1/categories', { name: name.trim(), kind: kind }))
+        .then((created) => {
+          return this.loadRefs().then(() => {
+            if (created && created.id) {
+              this.setData({ categoryId: created.id })
+              this.pickDefaultCategory()
+            }
+          })
+        })
+        .catch((err) => ui.fail(err, '新增分类失败'))
+    })
+  },
+
+  selectAccount(e) {
+    const id = toId(e.currentTarget.dataset.id)
+    if (!id) return
+    this.setData({ accountId: id, err: '' })
+    this.syncAccountName()
   },
 
   pickAccount(e) {
     const account = this.data.accounts[Number(e.detail.value)]
     if (!account) return
-    this.setData({ accountId: account.id })
+    this.setData({ accountId: account.id, err: '' })
     this.syncAccountName()
   },
 
@@ -362,6 +523,7 @@ Page({
           const picked = this.data.occasion ? occasionView(this.data.occasion, '') : occasionView('', '')
           this.setData({
             amountText: '',
+            amountPreview: '',
             note: '',
             occasion: picked.occasion,
             customOccasion: picked.customOccasion,

@@ -20,11 +20,30 @@ const nav = require('../../utils/nav')
 const time = require('../../utils/time')
 const ui = require('../../utils/ui')
 
-function shortDate(date) {
-  if (!date) return '日期'
-  const parts = String(date).split('-')
-  if (parts.length < 3) return '日期'
-  return Number(parts[1]) + '/' + Number(parts[2])
+function formatFullDate(date) {
+  if (!date) return '选择日期'
+  const thisYear = time.todayISO().slice(0, 4)
+  if (date.slice(0, 4) !== thisYear) {
+    const p = String(date).split('-')
+    if (p.length >= 3) return p[0] + '年' + Number(p[1]) + '月' + Number(p[2]) + '日'
+  }
+  return time.dateLabel(date)
+}
+
+function calcDatePreset(date) {
+  const today = time.todayISO()
+  if (date === today) return 'today'
+  if (date === time.addDays(today, -1)) return 'yesterday'
+  if (date === time.addDays(today, -2)) return 'beforeYesterday'
+  return ''
+}
+
+function calcAmountPreview(raw) {
+  const s = String(raw == null ? '' : raw).trim()
+  if (!s || !/[+\-*/＋－×÷]/.test(s)) return ''
+  const cents = money.yuanExprToCents(s)
+  if (cents) return '= ¥' + money.formatYuanGrouped(cents)
+  return '算式待完成…'
 }
 
 const RECEIPT_MAX = 512 * 1024
@@ -37,9 +56,12 @@ Page({
     convertGift: '',
     kind: 'expense',
     amountText: '',
+    amountPreview: '',
     date: '',
     dateText: '',
+    datePreset: 'today',
     clock: '',
+    currentCats: [],
     categoryName: '',
     categoryNames: [],
     categoryIndex: 0,
@@ -68,18 +90,21 @@ Page({
     if (!require('../../utils/session').ensure()) return
     const q = query || {}
     const date = q.date || time.todayISO()
-    const kind = q.kind === 'income' ? 'income' : 'expense'
+    const kind = q.kind === 'income' ? 'income' : q.kind === 'transfer' ? 'transfer' : 'expense'
     const convertGift = toId(q.convert_gift) || ''
     const carried = convertGift ? nav.takeCarry() : null
     const carriedNote = carried && carried.note != null ? carried.note : ''
+    const amountText = q.amount || ''
     this.setData({
       id: convertGift ? '' : toId(q.id) || '',
       convertGift: convertGift,
       kind: kind,
-      amountText: q.amount || '',
+      amountText: amountText,
+      amountPreview: calcAmountPreview(amountText),
       note: convertGift ? nav.repairNote(nav.noteFromPrevPage() || carriedNote) : q.note || '',
       date: date,
-      dateText: shortDate(date),
+      dateText: formatFullDate(date),
+      datePreset: calcDatePreset(date),
       clock: time.shanghaiClock(),
     })
     wx.setNavigationBarTitle({ title: convertGift ? '转成明细' : q.id ? '改一笔' : '记一笔' })
@@ -98,11 +123,16 @@ Page({
         // 它的账户可能已经归档，那时仍要显示原名，而不是「选择账户」。
         this.accountLabel = {}
         all.forEach((a) => { this.accountLabel[a.id] = a.name })
+        const defaultAccountId = this.data.accountId || (accounts[0] ? accounts[0].id : '')
+        const defaultToAccountId =
+          this.data.toAccountId ||
+          (accounts.length > 1 ? (accounts[0].id === defaultAccountId ? accounts[1].id : accounts[0].id) : '')
         this.setData({
           accounts: accounts,
           accountNames: accounts.map((a) => a.name),
           cats: cats,
-          accountId: this.data.accountId || (accounts[0] ? accounts[0].id : ''),
+          accountId: defaultAccountId,
+          toAccountId: defaultToAccountId,
         })
         this.pickDefaultCategory()
         this.syncAccountNames()
@@ -136,6 +166,7 @@ Page({
     const categoryId = keep ? this.data.categoryId : (list[0] ? list[0].id : '')
     const index = list.findIndex((c) => c.id === categoryId)
     this.setData({
+      currentCats: list,
       categoryNames: list.map((c) => c.name),
       categoryId: categoryId,
       categoryIndex: index < 0 ? 0 : index,
@@ -151,11 +182,14 @@ Page({
     ui.withLoading('加载中', () => request.get('/api/v1/transactions/' + id))
       .then((tx) => {
         const date = time.occurredAtToDate(tx.occurred_at)
+        const amountText = money.formatYuan(tx.amount_cents)
         this.setData({
           kind: tx.kind,
-          amountText: money.formatYuan(tx.amount_cents),
+          amountText: amountText,
+          amountPreview: calcAmountPreview(amountText),
           date: date,
-          dateText: shortDate(date),
+          dateText: formatFullDate(date),
+          datePreset: calcDatePreset(date),
           clock: time.shanghaiClock(tx.occurred_at),
           note: nav.repairNote(tx.note || ''),
           excluded: !!tx.excluded,
@@ -173,45 +207,135 @@ Page({
   // ---- 表单 ----
 
   setKind(e) {
-    this.setData({ kind: e.currentTarget.dataset.kind })
+    const kind = e.currentTarget.dataset.kind
+    if (!kind || kind === this.data.kind) return
+    this.setData({ kind: kind, err: '' })
     this.pickDefaultCategory()
   },
 
   onAmount(e) {
-    this.setData({ amountText: e.detail.value, err: '' })
+    const val = e.detail.value
+    this.setData({
+      amountText: val,
+      amountPreview: calcAmountPreview(val),
+      err: '',
+    })
+  },
+
+  clearAmount() {
+    this.setData({ amountText: '', amountPreview: '', err: '' })
   },
 
   onNote(e) {
     this.setData({ note: e.detail.value })
   },
 
+  clearNote() {
+    this.setData({ note: '' })
+  },
+
   onDate(e) {
     const date = e.detail.value
-    this.setData({ date: date, dateText: shortDate(date) })
+    this.setData({
+      date: date,
+      dateText: formatFullDate(date),
+      datePreset: calcDatePreset(date),
+    })
+  },
+
+  tapQuickDate(e) {
+    const preset = e.currentTarget.dataset.preset
+    const today = time.todayISO()
+    let date = today
+    if (preset === 'yesterday') date = time.addDays(today, -1)
+    else if (preset === 'beforeYesterday') date = time.addDays(today, -2)
+    this.setData({
+      date: date,
+      dateText: formatFullDate(date),
+      datePreset: preset,
+    })
   },
 
   onClock(e) {
     this.setData({ clock: e.detail.value })
   },
 
+  selectCategory(e) {
+    const id = toId(e.currentTarget.dataset.id)
+    const list = this.data.currentCats || []
+    const index = list.findIndex((c) => c.id === id)
+    if (index < 0) return
+    this.setData({
+      categoryId: id,
+      categoryIndex: index,
+      categoryName: list[index].name,
+      err: '',
+    })
+  },
+
   pickCategory(e) {
     const index = Number(e.detail.value)
-    const cat = this.catsFor(this.data.kind)[index]
+    const cat = (this.data.currentCats || [])[index]
     if (!cat) return
-    this.setData({ categoryId: cat.id, categoryIndex: index, categoryName: cat.name })
+    this.setData({ categoryId: cat.id, categoryIndex: index, categoryName: cat.name, err: '' })
+  },
+
+  addCategory() {
+    const kind = this.data.kind === 'income' ? 'income' : 'expense'
+    ui.prompt({
+      title: kind === 'income' ? '新增收入分类' : '新增支出分类',
+      placeholder: '分类名称，最多 32 字',
+    }).then((name) => {
+      if (!name || !name.trim()) return
+      ui.withLoading('保存中', () => request.post('/api/v1/categories', { name: name.trim(), kind: kind }))
+        .then((created) => {
+          return this.loadRefs().then(() => {
+            if (created && created.id) {
+              this.setData({ categoryId: created.id })
+              this.pickDefaultCategory()
+            }
+          })
+        })
+        .catch((err) => ui.fail(err, '新增分类失败'))
+    })
+  },
+
+  selectAccount(e) {
+    const id = toId(e.currentTarget.dataset.id)
+    if (!id) return
+    this.setData({ accountId: id, err: '' })
+    this.syncAccountNames()
+  },
+
+  selectToAccount(e) {
+    const id = toId(e.currentTarget.dataset.id)
+    if (!id) return
+    this.setData({ toAccountId: id, err: '' })
+    this.syncAccountNames()
   },
 
   pickAccount(e) {
     const account = this.data.accounts[Number(e.detail.value)]
     if (!account) return
-    this.setData({ accountId: account.id })
+    this.setData({ accountId: account.id, err: '' })
     this.syncAccountNames()
   },
 
   pickToAccount(e) {
     const account = this.data.accounts[Number(e.detail.value)]
     if (!account) return
-    this.setData({ toAccountId: account.id })
+    this.setData({ toAccountId: account.id, err: '' })
+    this.syncAccountNames()
+  },
+
+  swapAccounts() {
+    const fromId = this.data.accountId
+    const toIdVal = this.data.toAccountId
+    this.setData({
+      accountId: toIdVal,
+      toAccountId: fromId,
+      err: '',
+    })
     this.syncAccountNames()
   },
 
@@ -223,7 +347,7 @@ Page({
     this.setData({ keepGoing: e.detail.value })
   },
 
-  // ---- 收据 ----
+  // ---- 收据（入口暂隐藏，方法保留） ----
 
   pickReceipt() {
     if (!this.data.id) {
@@ -232,7 +356,6 @@ Page({
     }
     image
       .pick()
-      // 收据接口硬上限 512KB，直接按它当目标体积压（比后端打回再重试省一个来回）。
       .then((picked) => image.prepare(picked, RECEIPT_MAX))
       .then((ready) => {
         if (!RECEIPT_MIME[ready.mime]) {
@@ -245,7 +368,6 @@ Page({
         this.setData({ hasReceipt: true })
       })
       .catch((err) => {
-        // 选图面板点取消不算失败。
         if (err && err.code === 'cancelled') return
         ui.fail(err, '收据上传失败')
       })
@@ -339,7 +461,7 @@ Page({
         }
         if (this.data.keepGoing) {
           // 再记一笔：日期、账户、分类、收支类型都留着，只清金额和备注。
-          this.setData({ amountText: '', note: '', err: '' })
+          this.setData({ amountText: '', amountPreview: '', note: '', err: '' })
           wx.showToast({ title: '已记下，继续', icon: 'success', duration: 900 })
           return
         }

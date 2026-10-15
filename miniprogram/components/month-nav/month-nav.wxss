@@ -106,7 +106,7 @@
 }
 
 /*
- * 紧凑模式：和别的控件并排一行时用（人情页的月份条 + 搜索框）。
+ * 紧凑模式：和别的控件并排一行时用（明细页顶栏、人情页顶栏）。
  * 收成内容宽度、去掉外边距（间距交给外部那一行控制）；
  * 「回到本月」不能再绝对定位到行右缘 —— 会压住旁边的控件，改挂药丸旁边。
  */
@@ -116,7 +116,26 @@
   margin: 0;
 }
 
+.month-nav.compact .pill {
+  padding: 0 6rpx;
+}
+
+.month-nav.compact .nav {
+  width: 64rpx;
+  height: 68rpx;
+}
+
+.month-nav.compact .label {
+  min-width: 184rpx;
+  font-size: 28rpx;
+  padding: 10rpx 0;
+}
+
 .month-nav.compact .back {
   position: static;
   margin-left: 12rpx;
+  padding: 8rpx 18rpx;
+  font-size: 22rpx;
+  font-weight: 600;
+  white-space: nowrap;
 }

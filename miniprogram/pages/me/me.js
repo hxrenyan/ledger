@@ -2,12 +2,15 @@
  * 我的。
  *
  * 这一页承担三件事：
- *   1. 入口导航（账本、预算、分类、周期、导入）；
- *   2. 账号：微信绑定已有账号（POST /me/wechat/bind，会返回**新 token**，必须替换）、退出登录。
+ *   1. 个人资料、当前账本快速切换、净资产与预算概览；
+ *   2. 入口导航（资产、账本、预算、分类、周期、智能记账、导入导出）；
+ *   3. 账号：微信绑定已有账号（POST /me/wechat/bind，会返回**新 token**，必须替换）、退出登录。
  */
 
 const request = require('../../utils/request')
 const session = require('../../utils/session')
+const money = require('../../utils/money')
+const time = require('../../utils/time')
 const nav = require('../../utils/nav')
 const ui = require('../../utils/ui')
 
@@ -112,9 +115,16 @@ Page({
     wechatBound: false,
     hasPassword: false,
     ledgerName: '',
+    ledgerRoleText: '',
     ledgerCount: 0,
+    ledgers: [],
     guest: false,
     pointBalance: '',
+    netText: '0.00',
+    netClass: 'income',
+    accountCount: 0,
+    categoryCount: 0,
+    budgetHint: '',
   },
 
   onShow() {
@@ -127,13 +137,28 @@ Page({
         wechatBound: false,
         hasPassword: false,
         ledgerName: '登录后查看',
+        ledgerRoleText: '',
         ledgerCount: 0,
+        ledgers: [],
         pointBalance: '',
+        netText: '0.00',
+        netClass: 'income',
+        accountCount: 0,
+        categoryCount: 0,
+        budgetHint: '',
       })
       return
     }
     this.setData({ guest: false })
     this.render()
+  },
+
+  onPullDownRefresh() {
+    if (!session.getToken()) {
+      wx.stopPullDownRefresh()
+      return
+    }
+    this.refreshMe().then(() => wx.stopPullDownRefresh())
   },
 
   goLogin() {
@@ -143,6 +168,8 @@ Page({
   render() {
     const user = session.getUser() || {}
     const ledger = session.currentLedger()
+    const currentId = session.getLedgerId()
+    const allLedgers = session.getLedgers() || []
     const nickname = user.nickname || user.username || '未登录'
     this.setData({
       nickname: nickname,
@@ -151,9 +178,18 @@ Page({
       wechatBound: !!user.wechat_bound,
       hasPassword: !!user.has_password,
       ledgerName: ledger ? ledger.name : '未选择',
-      ledgerCount: session.getLedgers().length,
-      pointBalance: '',
+      ledgerRoleText: ledger ? (ledger.role === 'owner' ? '我的账本' : '共享账本') : '',
+      ledgerCount: allLedgers.length,
+      ledgers: allLedgers.map((l) => ({
+        id: l.id,
+        name: l.name,
+        roleText: l.role === 'owner' ? '我的' : '共享',
+        on: l.id === currentId,
+      })),
     })
+
+    this.loadOverview()
+
     if (!user.wechat_bound) return
     request
       .get('/api/v1/points', null, { withLedger: false })
@@ -163,6 +199,50 @@ Page({
         this.setData({ pointBalance: String(body.balance) })
       })
       .catch(() => {})
+  },
+
+  loadOverview() {
+    const month = time.shanghaiMonth()
+    Promise.all([
+      request.get('/api/v1/accounts').catch(() => null),
+      request.get('/api/v1/categories').catch(() => null),
+      request.get('/api/v1/budgets', { month: month }).catch(() => null),
+    ]).then((res) => {
+      const accRes = res[0]
+      const catRes = res[1]
+      const budRes = res[2]
+      const patch = {}
+      if (accRes) {
+        const activeAccs = ((accRes && accRes.items) || []).filter((a) => !a.archived)
+        const net = Number(accRes.net_cents) || 0
+        patch.accountCount = activeAccs.length
+        patch.netText = money.formatYuanGrouped(net)
+        patch.netClass = net < 0 ? 'expense' : 'income'
+      }
+      if (catRes) {
+        const activeCats = ((catRes && catRes.items) || []).filter((c) => !c.archived)
+        patch.categoryCount = activeCats.length
+      }
+      if (budRes && budRes.total_budget_cents > 0) {
+        const pct = Math.round((Number(budRes.total_spent_cents || 0) / budRes.total_budget_cents) * 100)
+        patch.budgetHint = '已用 ' + pct + '%'
+      } else {
+        patch.budgetHint = '未设预算'
+      }
+      if (Object.keys(patch).length) this.setData(patch)
+    })
+  },
+
+  switchLedger(e) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    const id = require('../../utils/id').toId(e.currentTarget.dataset.id)
+    if (!id || id === session.getLedgerId()) return
+    session.setLedger(id)
+    this.render()
+    ui.toast('已切换账本')
   },
 
   openFeedback() {
@@ -243,7 +323,7 @@ Page({
       ui.toast('请先选择账本')
       return
     }
-    ui.actions(['复制', '下载 JSON 文件']).then((index) => {
+    ui.actions(['复制 JSON', '转发 JSON 文件']).then((index) => {
       if (index === 0) this.copyExport()
       else if (index === 1) this.downloadExport()
     })

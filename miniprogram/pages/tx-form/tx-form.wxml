@@ -1,12 +1,14 @@
 <view class="page entry">
+  <!-- 收支 / 转账切换 -->
   <view class="kind">
     <view class="k {{kind === 'expense' ? 'on expense' : ''}}" data-kind="expense" bindtap="setKind">支出</view>
     <view class="k {{kind === 'income' ? 'on income' : ''}}" data-kind="income" bindtap="setKind">收入</view>
     <view class="k {{kind === 'transfer' ? 'on plain' : ''}}" data-kind="transfer" bindtap="setKind">转账</view>
   </view>
 
-  <view class="card">
-    <view class="amount-wrap">
+  <!-- 金额输入：随类型变色 + 算式实时求值预览 -->
+  <view class="card amount-card">
+    <view class="amount-wrap {{kind}}">
       <text class="cny">¥</text>
       <input
         class="input amount-input"
@@ -17,98 +19,173 @@
         placeholder-class="ph"
         focus="{{!id}}"
       />
+      <view class="amount-clear" wx:if="{{amountText}}" bindtap="clearAmount">×</view>
     </view>
-    <view class="tip">支持算式，例如 12+8、3*4</view>
+    <view class="amount-foot">
+      <text class="expr-preview" wx:if="{{amountPreview}}">{{amountPreview}}</text>
+      <text class="tip-inline" wx:else>支持算式，例如 12+8、3*4</text>
+    </view>
   </view>
 
-  <view class="card">
-    <view class="pick-row">
-      <view class="pick" wx:if="{{kind !== 'transfer'}}">
-        <picker mode="selector" range="{{categoryNames}}" value="{{categoryIndex}}" bindchange="pickCategory" disabled="{{!categoryNames.length}}">
-          <view class="pick-box">
-            <text class="pick-k">分类</text>
-            <view class="pick-v">
-              <text class="val">{{categoryName}}</text>
-              <text class="caret">▾</text>
-            </view>
-          </view>
-        </picker>
+  <!-- 分类与账户（支出 / 收入模式：直点胶囊 + 快捷新建） -->
+  <view class="card" wx:if="{{kind !== 'transfer'}}">
+    <view class="sec-head">
+      <text class="sec-title">分类</text>
+      <picker
+        wx:if="{{categoryNames.length > 8}}"
+        mode="selector"
+        range="{{categoryNames}}"
+        value="{{categoryIndex}}"
+        bindchange="pickCategory"
+      >
+        <view class="sec-more">{{categoryName}} · 全部({{categoryNames.length}}) ▾</view>
+      </picker>
+    </view>
+    <view class="chip-grid">
+      <view
+        class="item-chip {{cat.id === categoryId ? (kind === 'income' ? 'on income' : 'on expense') : ''}}"
+        wx:for="{{currentCats}}"
+        wx:for-item="cat"
+        wx:key="id"
+        data-id="{{cat.id}}"
+        bindtap="selectCategory"
+      >
+        {{cat.name}}
       </view>
-      <view class="pick" wx:else>
-        <picker mode="selector" range="{{accountNames}}" value="{{accountIndex}}" bindchange="pickAccount">
-          <view class="pick-box">
-            <text class="pick-k">转出</text>
-            <view class="pick-v">
-              <text class="val">{{accountName}}</text>
-              <text class="caret">▾</text>
-            </view>
-          </view>
-        </picker>
-      </view>
+      <view class="item-chip add" bindtap="addCategory">＋ 新增</view>
+    </view>
 
-      <view class="pick">
-        <view class="pick-box">
-          <text class="pick-k">日期</text>
+    <view class="sec-divider"></view>
+
+    <view class="sec-head">
+      <text class="sec-title">账户</text>
+      <picker
+        wx:if="{{accountNames.length > 6}}"
+        mode="selector"
+        range="{{accountNames}}"
+        value="{{accountIndex}}"
+        bindchange="pickAccount"
+      >
+        <view class="sec-more">{{accountName}} · 全部 ▾</view>
+      </picker>
+    </view>
+    <view class="chip-grid">
+      <view
+        class="item-chip {{acc.id === accountId ? 'on brand' : ''}}"
+        wx:for="{{accounts}}"
+        wx:for-item="acc"
+        wx:key="id"
+        data-id="{{acc.id}}"
+        bindtap="selectAccount"
+      >
+        {{acc.name}}
+      </view>
+    </view>
+  </view>
+
+  <!-- 转账模式：转出 ⇄ 转入 双卡片 + 一键对调 + 直点胶囊 -->
+  <view class="card" wx:else>
+    <view class="transfer-bar">
+      <picker class="transfer-side" mode="selector" range="{{accountNames}}" value="{{accountIndex}}" bindchange="pickAccount">
+        <view class="transfer-box">
+          <text class="pick-k">转出账户</text>
           <view class="pick-v">
-            <picker mode="date" value="{{date}}" bindchange="onDate">
-              <text class="val">{{dateText}}</text>
-            </picker>
-            <picker mode="time" value="{{clock}}" bindchange="onClock">
-              <text class="val clock">{{clock}}</text>
-            </picker>
+            <text class="val">{{accountName}}</text>
+            <text class="caret">▾</text>
           </view>
         </view>
-      </view>
+      </picker>
 
-      <view class="pick" wx:if="{{kind !== 'transfer'}}">
-        <picker mode="selector" range="{{accountNames}}" value="{{accountIndex}}" bindchange="pickAccount">
-          <view class="pick-box">
-            <text class="pick-k">账户</text>
-            <view class="pick-v">
-              <text class="val">{{accountName}}</text>
-              <text class="caret">▾</text>
-            </view>
+      <view class="swap-btn" bindtap="swapAccounts">⇄</view>
+
+      <picker class="transfer-side" mode="selector" range="{{accountNames}}" value="{{toAccountIndex}}" bindchange="pickToAccount">
+        <view class="transfer-box">
+          <text class="pick-k">转入账户</text>
+          <view class="pick-v">
+            <text class="val {{toAccountId ? '' : 'ph'}}">{{toAccountName}}</text>
+            <text class="caret">▾</text>
           </view>
-        </picker>
+        </view>
+      </picker>
+    </view>
+
+    <view class="sec-divider"></view>
+    <view class="sec-head">
+      <text class="sec-title">点选转出</text>
+    </view>
+    <view class="chip-grid">
+      <view
+        class="item-chip {{acc.id === accountId ? 'on brand' : ''}}"
+        wx:for="{{accounts}}"
+        wx:for-item="acc"
+        wx:key="id"
+        data-id="{{acc.id}}"
+        bindtap="selectAccount"
+      >
+        {{acc.name}}
       </view>
-      <view class="pick" wx:else>
-        <picker mode="selector" range="{{accountNames}}" value="{{toAccountIndex}}" bindchange="pickToAccount">
-          <view class="pick-box">
-            <text class="pick-k">转入</text>
-            <view class="pick-v">
-              <text class="val {{toAccountId ? '' : 'ph'}}">{{toAccountName}}</text>
-              <text class="caret">▾</text>
-            </view>
-          </view>
+    </view>
+
+    <view class="sec-head" style="margin-top: 20rpx">
+      <text class="sec-title">点选转入</text>
+    </view>
+    <view class="chip-grid">
+      <view
+        class="item-chip {{acc.id === toAccountId ? 'on brand' : ''}}"
+        wx:for="{{accounts}}"
+        wx:for-item="acc"
+        wx:key="id"
+        data-id="{{acc.id}}"
+        bindtap="selectToAccount"
+      >
+        {{acc.name}}
+      </view>
+    </view>
+  </view>
+
+  <!-- 日期时间、备注与选项 -->
+  <view class="card">
+    <view class="date-row">
+      <view class="date-Quick">
+        <view class="q-pill {{datePreset === 'today' ? 'on' : ''}}" data-preset="today" bindtap="tapQuickDate">今天</view>
+        <view class="q-pill {{datePreset === 'yesterday' ? 'on' : ''}}" data-preset="yesterday" bindtap="tapQuickDate">昨天</view>
+        <view class="q-pill {{datePreset === 'beforeYesterday' ? 'on' : ''}}" data-preset="beforeYesterday" bindtap="tapQuickDate">前天</view>
+      </view>
+      <view class="date-pickers">
+        <picker mode="date" value="{{date}}" bindchange="onDate">
+          <view class="dt-pill">{{dateText}} ▾</view>
+        </picker>
+        <picker mode="time" value="{{clock}}" bindchange="onClock">
+          <view class="dt-pill clock">{{clock}}</view>
         </picker>
       </view>
     </view>
-    <view class="empty" wx:if="{{kind !== 'transfer' && !categoryNames.length}}">还没有分类，去「我的 → 分类」加一个</view>
-  </view>
 
-  <view class="card">
-    <view class="field" style="margin-bottom: 0">
-      <view class="label">备注</view>
-      <input class="input" value="{{note}}" bindinput="onNote" placeholder="比如：和同事午饭" placeholder-class="ph" />
+    <view class="sec-divider"></view>
+
+    <view class="note-row">
+      <text class="note-label">备注</text>
+      <input
+        class="note-input"
+        value="{{note}}"
+        bindinput="onNote"
+        placeholder="写点备注，比如：和同事午饭"
+        placeholder-class="ph"
+      />
+      <view class="note-clear" wx:if="{{note}}" bindtap="clearNote">×</view>
     </view>
-  </view>
 
-  <view class="card">
+    <view class="sec-divider"></view>
+
     <view class="pair">
       <view class="pair-item">
-        <text>不计入统计</text>
+        <text>不计入收支统计</text>
         <switch checked="{{excluded}}" color="#3b5bdb" bindchange="onExcluded" />
       </view>
-      <view class="pair-item" wx:if="{{!id}}">
-        <text>继续下一笔</text>
+      <view class="pair-item" wx:if="{{!id && !convertGift}}">
+        <text>继续记下一笔</text>
         <switch checked="{{keepGoing}}" color="#3b5bdb" bindchange="onKeepGoing" />
       </view>
-    </view>
-    <view class="row" style="padding-bottom: 0">
-      <view class="grow title">{{hasReceipt ? '收据已上传' : '收据'}}</view>
-      <view class="text-btn" wx:if="{{hasReceipt}}" bindtap="viewReceipt">查看</view>
-      <view class="text-btn" wx:if="{{hasReceipt}}" bindtap="deleteReceipt">删除</view>
-      <view class="text-btn" bindtap="pickReceipt">{{hasReceipt ? '更换' : '上传'}}</view>
     </view>
   </view>
 </view>

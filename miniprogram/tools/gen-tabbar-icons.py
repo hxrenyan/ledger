@@ -7,7 +7,7 @@
 用法：
     python3 miniprogram/tools/gen-tabbar-icons.py
 产物：
-    miniprogram/images/tab-{list,gift,wallet,user}[-on].png
+    miniprogram/images/tab-{list,gift,wallet,user,tools}[-on].png
 """
 
 import pathlib
@@ -146,6 +146,14 @@ def icon_wallet(color):
     return c
 
 
+def icon_tools(color):
+    """工具：四个圆角方块，像一组入口。"""
+    c = Canvas(SIZE)
+    for x0, y0 in ((16, 16), (45, 16), (16, 45), (45, 45)):
+        c.round_rect(x0, y0, x0 + 20, y0 + 20, 6, color, width=5)
+    return c
+
+
 def icon_user(color):
     """我的：头 + 肩。"""
     c = Canvas(SIZE)
@@ -165,6 +173,7 @@ ICONS = {
     "list": icon_list,
     "gift": icon_gift,
     "wallet": icon_wallet,
+    "tools": icon_tools,
     "user": icon_user,
 }
 

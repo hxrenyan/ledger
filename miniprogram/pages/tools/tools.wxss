@@ -1,0 +1,5 @@
+.empty {
+  padding: 80rpx 24rpx;
+  text-align: center;
+  color: #8e8e93;
+}

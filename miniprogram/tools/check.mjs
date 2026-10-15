@@ -214,11 +214,11 @@ for (const [file, cfg] of parsed) {
 // ---------------------------------------------------------------------------
 // 10. 产品约定：账本切换只有「我的 → 账本与成员」一个入口
 //
-// 明细 / 人情 / 资产三个 tab 页不展示账本切换。这条约定很容易在后续迭代里被
+// 明细 / 人情 / 工具三个 tab 页不展示账本切换。这条约定很容易在后续迭代里被
 // 顺手加回来（在页头放个切换条看着挺方便），所以用脚本拦住。若确实要恢复，
 // 记得一并删掉这条检查，并让三个页面的 onShow 重新处理账本变化的筛选重置。
 // ---------------------------------------------------------------------------
-const TAB_PAGES_NO_SWITCH = ["pages/home/home", "pages/favors/favors", "pages/assets/assets"];
+const TAB_PAGES_NO_SWITCH = ["pages/home/home", "pages/favors/favors", "pages/tools/tools"];
 for (const pg of TAB_PAGES_NO_SWITCH) {
   for (const ext of ["wxml", "json"]) {
     const p = join(root, `${pg}.${ext}`);

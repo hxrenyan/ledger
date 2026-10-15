@@ -31,11 +31,81 @@ function timeText(ms) {
   return String(d.getUTCHours()).padStart(2, '0') + ':' + String(d.getUTCMinutes()).padStart(2, '0')
 }
 
+function daySumLabel(incomeCents, expenseCents) {
+  const parts = []
+  if (incomeCents > 0) parts.push('收 ' + money.formatYuan(incomeCents))
+  if (expenseCents > 0) parts.push('支 ' + money.formatYuan(expenseCents))
+  return parts.length ? parts.join(' · ') : '无收支'
+}
+
+function buildQuickMonths(selectedMonth) {
+  const thisMonth = time.shanghaiMonth()
+  const current = selectedMonth || thisMonth
+  const years = time.pickerYears(thisMonth)
+  const minMonth = years[0] + '-01'
+  const recentStart = time.addMonth(thisMonth, -5)
+  const items = []
+
+  if (current >= recentStart) {
+    for (let i = -5; i <= 0; i += 1) {
+      const m = time.addMonth(thisMonth, i)
+      if (m < minMonth) continue
+      const sameYear = m.slice(0, 4) === thisMonth.slice(0, 4)
+      items.push({
+        month: m,
+        label:
+          m === thisMonth
+            ? '本月'
+            : sameYear
+              ? Number(m.slice(5, 7)) + '月'
+              : m.slice(2, 4) + '/' + Number(m.slice(5, 7)),
+        on: m === current,
+        isBack: false,
+      })
+    }
+    return items
+  }
+
+  const prevCap = time.addMonth(thisMonth, -1)
+  let start = time.addMonth(current, -2)
+  if (start < minMonth) start = minMonth
+  let end = time.addMonth(start, 4)
+  if (end > prevCap) {
+    end = prevCap
+    start = time.addMonth(end, -4)
+    if (start < minMonth) start = minMonth
+  }
+  for (let i = 0; i < 5; i += 1) {
+    const m = time.addMonth(start, i)
+    if (m > end) break
+    const sameYearAsCurrent = m.slice(0, 4) === current.slice(0, 4)
+    const showYear = m === current && m.slice(0, 4) !== thisMonth.slice(0, 4)
+    items.push({
+      month: m,
+      label: showYear
+        ? m.slice(2, 4) + '年' + Number(m.slice(5, 7)) + '月'
+        : sameYearAsCurrent
+          ? Number(m.slice(5, 7)) + '月'
+          : m.slice(2, 4) + '/' + Number(m.slice(5, 7)),
+      on: m === current,
+      isBack: false,
+    })
+  }
+  items.push({
+    month: thisMonth,
+    label: '回到本月',
+    on: false,
+    isBack: true,
+  })
+  return items
+}
+
 Page({
   data: {
     month: '',
     monthText: '',
     isCurrentMonth: true,
+    quickMonths: [],
     view: 'list',
     loading: true,
 
@@ -53,8 +123,8 @@ Page({
     empty: false,
 
     // 筛选
-    showSearch: false,
     q: '',
+    kindFilter: 'all',
     accountId: '',
     categoryId: '',
     // 两个筛选项各存各的显示名。以前共用一个 filterText，选完账户再选分类时，
@@ -66,6 +136,7 @@ Page({
     categoryFilterIndex: 0,
     accountNames: [],
     categoryNames: [],
+    hasFilter: false,
 
     // 日历
     cells: [],
@@ -73,6 +144,7 @@ Page({
     selectedDay: '',
     dayItems: [],
     dayTitle: '',
+    daySumText: '',
 
     // 统计
     statCats: [],
@@ -102,6 +174,7 @@ Page({
       month: month,
       monthText: time.monthLabel(month),
       isCurrentMonth: true,
+      quickMonths: buildQuickMonths(month),
       todayISO: time.todayISO(),
     })
     this.buildCells(month)
@@ -140,12 +213,15 @@ Page({
     this.ledgerId = session.getLedgerId()
     if (switched) {
       this.setData({
+        q: '',
+        kindFilter: 'all',
         accountId: '',
         categoryId: '',
         accountFilterText: '',
         categoryFilterText: '',
         accountFilterIndex: 0,
         categoryFilterIndex: 0,
+        hasFilter: false,
       })
       this.loadRefs().then(() => this.loadMonth())
       this.loadedOnce = true
@@ -262,16 +338,22 @@ Page({
         const monthly = res[1] || {}
         const overview = res[2] || {}
         const decorated = items.map((t) => this.decorate(t))
+        const kindFilter = this.data.kindFilter || 'all'
+        const filtered = kindFilter === 'all' ? decorated : decorated.filter((t) => t.kind === kindFilter)
+        const hasFilter = Boolean(
+          this.data.q || this.data.accountId || this.data.categoryId || kindFilter !== 'all',
+        )
         const budget = Number(monthly.budget_cents) || 0
         const used = Number(monthly.budget_used_cents) || 0
         const net = Number(monthly.net_cents) || 0
         this.setData({
           loading: false,
-          empty: !items.length,
-          groups: this.groupByDay(decorated),
+          empty: !filtered.length,
+          hasFilter: hasFilter,
+          groups: this.groupByDay(filtered),
           incomeText: money.formatYuan(monthly.income_cents),
           expenseText: money.formatYuan(monthly.expense_cents),
-          netText: money.formatYuan(monthly.net_cents),
+          netText: (net > 0 ? '+' : '') + money.formatYuan(monthly.net_cents),
           netClass: net < 0 ? 'expense' : 'income',
           budgetText: budget ? money.formatYuan(used) + ' / ' + money.formatYuan(budget) : '',
           budgetPercent: budget ? Math.min(100, Math.round((used / budget) * 100)) : 0,
@@ -302,6 +384,7 @@ Page({
       id: t.id,
       kind: t.kind,
       kindText: kindText,
+      amountCents: Number(t.amount_cents) || 0,
       date: time.occurredAtToDate(t.occurred_at),
       clock: timeText(t.occurred_at),
       amountText: money.signedText(t.kind, t.amount_cents),
@@ -320,19 +403,21 @@ Page({
     items.forEach((it) => {
       let g = byKey[it.date]
       if (!g) {
-        g = { key: it.date, label: time.dayLabel(it.date), items: [], income: 0, expense: 0 }
+        g = { key: it.date, label: time.dayLabel(it.date), items: [], incomeCents: 0, expenseCents: 0 }
         byKey[it.date] = g
         groups.push(g)
       }
       g.items.push(it)
-      if (it.kind === 'income') g.income += 1
-      if (it.kind === 'expense') g.expense += 1
+      if (!it.excluded) {
+        if (it.kind === 'income') g.incomeCents += Number(it.amountCents) || 0
+        if (it.kind === 'expense') g.expenseCents += Number(it.amountCents) || 0
+      }
     })
     return groups.map((g) => ({
       key: g.key,
       label: g.label,
       items: g.items,
-      sumText: '收 ' + g.income + ' · 支 ' + g.expense,
+      sumText: daySumLabel(g.incomeCents, g.expenseCents),
     }))
   },
 
@@ -415,15 +500,50 @@ Page({
   },
 
   changeMonth(month, day) {
+    const cap = time.shanghaiMonth()
+    const years = time.pickerYears(cap)
+    if (!month || month > cap) return
+    if (years.length && month < years[0] + '-01') return
     this.setData({
       month: month,
       monthText: time.monthLabel(month),
-      isCurrentMonth: month === time.shanghaiMonth(),
+      isCurrentMonth: month === cap,
+      quickMonths: buildQuickMonths(month),
       selectedDay: day || '',
       dayItems: [],
+      daySumText: '',
     })
     this.buildCells(month)
     this.loadMonth()
+  },
+
+  tapQuickMonth(e) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    const month = e.currentTarget.dataset.month
+    if (!month || month === this.data.month) return
+    this.changeMonth(month)
+  },
+
+  onCalTouchStart(e) {
+    const t = e.touches && e.touches[0]
+    if (!t) return
+    this.calTouchX = t.clientX
+    this.calTouchY = t.clientY
+  },
+
+  onCalTouchEnd(e) {
+    const t = e.changedTouches && e.changedTouches[0]
+    if (!t || this.calTouchX == null || this.calTouchY == null) return
+    const dx = t.clientX - this.calTouchX
+    const dy = t.clientY - this.calTouchY
+    this.calTouchX = null
+    this.calTouchY = null
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return
+    const next = time.addMonth(this.data.month, dx < 0 ? 1 : -1)
+    if (next !== this.data.month) this.changeMonth(next)
   },
 
   /** 保存落在别的月份时，列表停在本月会像没记下。切到那一天再刷新。 */
@@ -454,28 +574,44 @@ Page({
 
   // ---- 搜索与筛选 ----
 
-  toggleSearch() {
+  onSearch(e) {
     if (!session.getToken()) {
       session.goLogin()
       return
     }
-    const show = !this.data.showSearch
-    this.setData({ showSearch: show })
-    if (!show && this.data.q) {
-      this.setData({ q: '' })
-      this.loadMonth()
-    }
-  },
-
-  onSearch(e) {
     this.setData({ q: e.detail.value })
   },
 
   doSearch() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    this.loadMonth()
+  },
+
+  clearSearch() {
+    if (!this.data.q) return
+    this.setData({ q: '' })
+    this.loadMonth()
+  },
+
+  setKindFilter(e) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    const kind = e.currentTarget.dataset.kind || 'all'
+    if (kind === this.data.kindFilter) return
+    this.setData({ kindFilter: kind })
     this.loadMonth()
   },
 
   pickAccount(e) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
     const idx = Number(e.detail.value)
     const id = idx === 0 ? '' : this.accounts[idx - 1].id
     this.setData({
@@ -487,6 +623,10 @@ Page({
   },
 
   pickCategory(e) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
     const idx = Number(e.detail.value)
     const id = idx === 0 ? '' : this.categories[idx - 1].id
     this.setData({
@@ -505,7 +645,9 @@ Page({
       categoryFilterText: '',
       accountFilterIndex: 0,
       categoryFilterIndex: 0,
+      kindFilter: 'all',
       q: '',
+      hasFilter: false,
     })
     this.loadMonth()
   },
@@ -542,18 +684,82 @@ Page({
 
   showDay(date) {
     const items = (this.all || []).filter((it) => it.date === date)
+    let incomeCents = 0
+    let expenseCents = 0
+    items.forEach((it) => {
+      if (!it.excluded) {
+        if (it.kind === 'income') incomeCents += Number(it.amountCents) || 0
+        if (it.kind === 'expense') expenseCents += Number(it.amountCents) || 0
+      }
+    })
     this.setData({
       selectedDay: date,
       dayTitle: time.dateLabel(date),
       dayItems: items,
+      daySumText: items.length ? daySumLabel(incomeCents, expenseCents) : '',
     })
   },
 
   clearDay() {
-    this.setData({ selectedDay: '', dayItems: [] })
+    this.setData({ selectedDay: '', dayItems: [], daySumText: '' })
+  },
+
+  addTxOnSelectedDay() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    nav.go('tx-form', this.data.selectedDay ? { date: this.data.selectedDay } : {})
+  },
+
+  // ---- 统计联动 ----
+
+  tapTrendMonth(e) {
+    const month = e.currentTarget.dataset.month
+    if (!month || month === this.data.month) return
+    this.changeMonth(month)
+  },
+
+  tapStatCategory(e) {
+    const id = e.currentTarget.dataset.id
+    const name = e.currentTarget.dataset.name
+    if (!id) return
+    const categories = this.categories || []
+    const idx = categories.findIndex((c) => c.id === id)
+    this.setData({
+      view: 'list',
+      categoryId: id,
+      categoryFilterText: name || (idx >= 0 ? categories[idx].name : ''),
+      categoryFilterIndex: idx >= 0 ? idx + 1 : 0,
+    })
+    this.loadMonth()
+  },
+
+  openBudget() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    nav.go('budgets')
   },
 
   // ---- 流水操作 ----
+
+  quickAddTx() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    nav.go('tx-form', {})
+  },
+
+  openVoice() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    this.setData({ showVoice: true })
+  },
 
   editTx(e) {
     nav.go('tx-form', { id: e.currentTarget.dataset.id })

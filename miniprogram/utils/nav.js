@@ -13,6 +13,7 @@ const NATIVE_PAGES = {
   'favor-person': '/pages/favor-person/favor-person',
   'gift-form': '/pages/gift-form/gift-form',
   assets: '/pages/assets/assets',
+  tools: '/pages/tools/tools',
   me: '/pages/me/me',
   ledger: '/pages/ledger/ledger',
   budgets: '/pages/budgets/budgets',
@@ -23,7 +24,7 @@ const NATIVE_PAGES = {
 }
 
 /** tabBar 页面只能 switchTab / reLaunch，navigateTo 会失败。 */
-const TAB_PAGES = { home: true, favors: true, assets: true, me: true }
+const TAB_PAGES = { home: true, favors: true, tools: true, me: true }
 
 function qs(query) {
   const parts = []

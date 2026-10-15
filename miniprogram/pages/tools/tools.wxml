@@ -1,0 +1,5 @@
+<view class="page" wx:if="{{!src}}">
+  <view class="empty">{{hint}}</view>
+  <button wx:if="{{guest}}" class="btn" bindtap="goLogin">登录</button>
+</view>
+<web-view wx:else src="{{src}}" binderror="onWebError"></web-view>

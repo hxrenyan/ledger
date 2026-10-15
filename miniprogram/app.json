@@ -7,6 +7,7 @@
     "pages/favor-person/favor-person",
     "pages/gift-form/gift-form",
     "pages/assets/assets",
+    "pages/tools/tools",
     "pages/me/me",
     "pages/points/points",
     "pages/feedback/feedback",
@@ -44,10 +45,10 @@
         "selectedIconPath": "images/tab-gift-on.png"
       },
       {
-        "pagePath": "pages/assets/assets",
-        "text": "资产",
-        "iconPath": "images/tab-wallet.png",
-        "selectedIconPath": "images/tab-wallet-on.png"
+        "pagePath": "pages/tools/tools",
+        "text": "工具",
+        "iconPath": "images/tab-tools.png",
+        "selectedIconPath": "images/tab-tools-on.png"
       },
       {
         "pagePath": "pages/me/me",
