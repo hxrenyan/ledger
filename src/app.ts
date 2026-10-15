@@ -120,6 +120,8 @@ export function createApp(cfg: AppConfig) {
   app.use('/api/v1/*', async (c, next) => {
     const path = c.req.path
     if (path.startsWith('/api/v1/auth/') || path === '/api/v1/admin/login') return next()
+    // 工具页用哪一套。没登录也要能读到，读不到就保持原生，不能把游客踢去登录。
+    if (c.req.method === 'GET' && path === '/api/v1/app/tools') return next()
     const header = c.req.header('Authorization') ?? ''
     if (!header.startsWith('Bearer ')) throw unauthorized()
     try {
@@ -141,7 +143,12 @@ export function createApp(cfg: AppConfig) {
   })
 
   app.use('/api/v1/*', async (c, next) => {
-    if (c.get('isAdmin') || c.req.path.startsWith('/api/v1/auth/') || c.req.path === '/api/v1/admin/login') {
+    if (
+      c.get('isAdmin') ||
+      c.req.path.startsWith('/api/v1/auth/') ||
+      c.req.path === '/api/v1/admin/login' ||
+      (c.req.method === 'GET' && c.req.path === '/api/v1/app/tools')
+    ) {
       return next()
     }
     const db = c.get('db')
@@ -173,6 +180,7 @@ export function createApp(cfg: AppConfig) {
       c.get('isAdmin') ||
       path.startsWith('/api/v1/auth/') ||
       path.startsWith('/api/v1/admin') ||
+      (c.req.method === 'GET' && path === '/api/v1/app/tools') ||
       LEDGER_OPTIONAL.has(path)
     ) {
       return next()

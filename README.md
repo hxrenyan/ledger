@@ -10,7 +10,7 @@
 - 账户、分类、收支、转账
 - 月预算、收据图
 - **人情往来**（按人记送出/收入、事由、差额；认得出人名就记人情，记的时候可以同时记明细，明细和人情也可以互转。联系人可以记阳历或农历的日子，名称自己写。见 [docs/favors.md](docs/favors.md)）
-- **工具**（小程序底部一栏，页面是 H5。里面先有联系人管理，再加东西不用发小程序。见 [docs/tools.md](docs/tools.md)）
+- **工具**（小程序底部一栏。默认原生联系人管理；管理后台可切成 H5，切过去之后再加工具不用发小程序。见 [docs/tools.md](docs/tools.md)）
 - **账单导入**：微信 / 支付宝 / 银行 / 通用 CSV、Excel、JSON，可选 AI 兜底解析（见 [docs/import.md](docs/import.md)）
 - **拍照记账**：拍小票 / 发票 / 支付截图 / 手写本，OCR 认字再由模型整理成流水，逐行核对后入库（见 [docs/photo.md](docs/photo.md)）
 - CSV 导出
@@ -72,16 +72,14 @@ ledger/
 
 ## 小程序与 web-view 混合
 
-`miniprogram/` 是原生小程序，复用上面这套 API。高频操作（登录、明细、记账、转账、收据、语音、人情）走原生；长尾页（预算、分类、周期记账、账单导入、账本与成员）可以切到 `<web-view>` 加载同一份 H5 代码，**改这些页面不走审核**。
-
-「哪个页走原生、哪个页走网页」由服务端 `app_configs` 表决定（`PUT /api/v1/admin/app-config`），改完即生效，不用发版：
+`miniprogram/` 是原生小程序，复用上面这套 API。登录、明细、记账、转账、收据、语音、人情走原生。底部「工具」默认也是原生；管理后台把它改成 H5 后，这一栏用 `<web-view>` 打开 `/tools`。
 
 ```bash
-GET /api/v1/app/config          # 小程序启动时拉取，缓存在 storage
-PUT /api/v1/admin/app-config    # 运维灰度切换，可单页回退
+GET /api/v1/app/tools           # 不用登录。{ mode: "native" | "h5" }，缺省 native
+PUT /api/v1/admin/tools         # 管理员切换，body { mode }
 ```
 
-默认全部原生；`webview.enabled=0` 就是纯原生，此时连业务域名都不需要。
+没写过 `tools.mode`、读失败、网页加载失败，都是原生。
 
 > ⚠️ `<web-view>` 的业务域名**仅非个人主体小程序可配置**，域名还需 HTTPS + ICP 备案（备案主体与小程序认证主体一致）。三个条件缺一不可。
 
@@ -191,10 +189,10 @@ web-view 会话交接：
 - `POST /api/v1/auth/webview-session`：网页侧调用，body `{ code }`，无需 Bearer（交接码即凭据）。返回完整会话，并多一个 `ledger_id`（小程序当时的账本），网页据此对齐首屏账本。码过期 / 已用过返回 401，形状不对返回 400。
 - 库里只存 SHA-256，兑换用 `UPDATE ... RETURNING` 原子抢占，防并发重放。
 
-页面归属表：
+工具页模式：
 
-- `GET /api/v1/app/config`：小程序启动时拉取，返回 `{ webview: { enabled, host, pages } }`。
-- `GET` / `PUT /api/v1/admin/app-config`：管理员读写。`host` 只接受 `https://<域名>`（无路径、无结尾斜杠）；`enabled=1` 而 `host` 为空会被拒；`NATIVE_ONLY` 里的页面切成 `webview` 会被拒。
+- `GET /api/v1/app/tools`：不用登录，也不要账本头。返回 `{ mode: "native" | "h5" }`。库里没有 `tools.mode` 时是 `native`。
+- `GET` / `PUT /api/v1/admin/tools`：管理员读写。`mode` 只能是 `native` 或 `h5`。
 
 拍照记账（图片识别）：
 

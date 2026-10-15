@@ -46,7 +46,7 @@ npm run db:migrate
 | `recurrences` | 自增整数 | 周期记账（只支持收入 / 支出） |
 | `import_batches` | 自增整数 | 账单导入批次台账（回溯 / 撤销） |
 | `ai_profiles` | 自增整数 | 模型配置。`llm` 解析账单，`asr` 语音识别，`ocr` 图片识别；同 kind 内按 `sort_order` 接力。不保存录音和账单原文 |
-| `app_configs` | `key` | 服务端业务配置。目前存 `webview.enabled` / `webview.host` / `webview.pages`（页面归属表，原生 or web-view）。改完即生效，不用发版 |
+| `app_configs` | `key` | 服务端业务配置。`tools.mode` 为 `native` 或 `h5`（缺省原生），另有微信登录凭证等。改完即生效，不用发版 |
 | `handoff_codes` | `code_hash` | 一次性会话交接码。web-view 里没有 `wx.login`，网页侧靠它换回会话；只存 SHA-256，5 分钟过期，用一次即失效 |
 | `point_accounts` | `user_id` | 微信用户积分余额。一人一行，没有微信身份的账号不写入 |
 | `point_entries` | 自增整数 | 积分明细，只追加。`biz_key` 避免同一天或同一次识别重复入账，见 `idx_point_entries_biz` |

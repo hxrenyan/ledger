@@ -60,7 +60,6 @@ Page({
     // 范围：month 按月看 | all 全部时间
     scope: 'month',
     month: '',
-    summaryScopeText: '',
     // 汇总
     givenText: '0.00',
     receivedText: '0.00',
@@ -86,10 +85,7 @@ Page({
     this.gifts = []
     this.contacts = []
     const month = time.shanghaiMonth()
-    this.setData({
-      month: month,
-      summaryScopeText: time.monthLabel(month),
-    })
+    this.setData({ month: month })
   },
 
   onShow() {
@@ -228,7 +224,6 @@ Page({
       groups: shapedGroups,
       empty: !list.length,
       hasGiftFilter: hasGiftFilter,
-      summaryScopeText: useMonth ? time.monthLabel(month) : '累计往来',
       emptyText: hasGiftFilter
         ? '没有匹配的往来记录'
         : useMonth
@@ -348,7 +343,7 @@ Page({
       session.goLogin()
       return
     }
-    wx.switchTab({ url: '/pages/tools/tools' })
+    nav.go('tool-contacts')
   },
 
   editGift(e) {

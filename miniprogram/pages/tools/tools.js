@@ -1,66 +1,71 @@
 /**
  * 工具。
  *
- * 这一页只负责打开 H5。里面加什么（联系人、以后的其它工具）都在网页上，
- * 重新发布服务就生效，不用发小程序。
+ * 两套界面：原生联系人管理，和内嵌的 H5。用哪一套由服务端 tools.mode 决定，
+ * 管理后台改完，下次进入这一栏生效。没读到、读失败、网页打不开，都留在原生。
  */
 
-const config = require('../../config')
-const request = require('../../utils/request')
 const session = require('../../utils/session')
+const nav = require('../../utils/nav')
+const request = require('../../utils/request')
+const config = require('../../config')
 
 Page({
   data: {
     guest: false,
-    src: '',
-    hint: '打开中…',
+    webviewSrc: '',
   },
 
   onShow() {
-    if (!session.getToken()) {
-      this.ledgerId = ''
-      this.setData({ guest: true, src: '', hint: '登录后使用工具' })
+    const guest = !session.getToken()
+    this.setData({ guest: guest })
+    if (guest) {
+      this.setData({ webviewSrc: '' })
       return
     }
-    const ledgerId = session.getLedgerId()
-    if (!ledgerId) {
-      this.ledgerId = ''
-      this.setData({ guest: false, src: '', hint: '请先在「我的」里选择账本' })
-      return
-    }
-    if (this.data.src && this.ledgerId === ledgerId) return
-    this.ledgerId = ledgerId
-    this.open(ledgerId)
+    this.loadMode()
+  },
+
+  loadMode() {
+    const ticket = (this._ticket || 0) + 1
+    this._ticket = ticket
+    const self = this
+    request
+      .request({ path: '/api/v1/app/tools', withLedger: false })
+      .then(function (body) {
+        if (self._ticket !== ticket) return null
+        if (!body || body.mode !== 'h5') {
+          self.setData({ webviewSrc: '' })
+          return null
+        }
+        if (self.data.webviewSrc) return null
+        return request.request({ path: '/api/v1/webview/handoff', method: 'POST', data: {} })
+      })
+      .then(function (issued) {
+        if (!issued || self._ticket !== ticket || !issued.code) return
+        self.setData({
+          webviewSrc: config.getBaseUrl() + '/tools?handoff=' + encodeURIComponent(issued.code),
+        })
+      })
+      .catch(function () {
+        if (self._ticket !== ticket) return
+        self.setData({ webviewSrc: '' })
+      })
+  },
+
+  onWebError() {
+    this.setData({ webviewSrc: '' })
   },
 
   goLogin() {
     session.goLogin()
   },
 
-  open(ledgerId) {
-    this.setData({ hint: '打开中…', guest: false })
-    request
-      .post('/api/v1/webview/handoff', {})
-      .then((body) => {
-        if (this.ledgerId !== ledgerId) return
-        if (!body || !body.code) {
-          this.setData({ src: '', hint: '打不开工具' })
-          return
-        }
-        const src = config.getBaseUrl() + '/tools?handoff=' + encodeURIComponent(body.code)
-        this.setData({ src: src, hint: '' })
-      })
-      .catch(() => {
-        if (this.ledgerId !== ledgerId) return
-        this.setData({ src: '', hint: '工具页打不开，请检查网络' })
-      })
-  },
-
-  onWebError() {
-    this.ledgerId = ''
-    this.setData({
-      src: '',
-      hint: '工具页打不开。请确认业务域名已配置；开发时勾选不校验合法域名。',
-    })
+  openContacts() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    nav.go('tool-contacts')
   },
 })

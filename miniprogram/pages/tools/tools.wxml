@@ -1,5 +1,17 @@
-<view class="page" wx:if="{{!src}}">
-  <view class="empty">{{hint}}</view>
-  <button wx:if="{{guest}}" class="btn" bindtap="goLogin">登录</button>
+<web-view wx:if="{{webviewSrc}}" src="{{webviewSrc}}" binderror="onWebError"></web-view>
+<view wx:else class="page">
+  <view class="card guest-card" wx:if="{{guest}}">
+    <view class="guest-title">登录后使用工具</view>
+    <view class="muted">联系人、日子都跟当前账本走</view>
+    <button class="btn compact" bindtap="goLogin">去登录</button>
+  </view>
+
+  <view class="card tool-card" wx:else bindtap="openContacts">
+    <view class="tool-ico">人</view>
+    <view class="tool-main">
+      <view class="tool-name">联系人管理</view>
+      <view class="muted">改姓名、关系和日子。人情里的人也会出现在这里</view>
+    </view>
+    <view class="arrow">›</view>
+  </view>
 </view>
-<web-view wx:else src="{{src}}" binderror="onWebError"></web-view>

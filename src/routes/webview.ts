@@ -1,13 +1,18 @@
 import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
 import { issueHandoff, redeemHandoff } from '../auth/handoff.ts'
+import { readToolsMode } from '../tools/mode.ts'
 import { buildSession } from './auth.ts'
 
 /**
- * 小程序工具页是 web-view，网页里没有 wx.login。
- * 原生先拿一次性交接码，网页再用它换会话。
+ * 网页会话交接，以及「工具」走原生还是 H5。
+ * 默认原生。管理后台改成 h5 后，小程序再进「工具」才打开网页，并先要一次性码。
  */
 export function registerWebviewRoutes(app: Hono<AppEnv>) {
+  app.get('/api/v1/app/tools', async (c) => {
+    return c.json({ mode: await readToolsMode(c.get('db')) })
+  })
+
   app.post('/api/v1/webview/handoff', async (c) => {
     const issued = await issueHandoff(c.get('db'), c.get('userId'), c.get('ledgerId'))
     return c.json(issued)

@@ -1,5 +1,50 @@
-.empty {
-  padding: 80rpx 24rpx;
+.guest-card {
   text-align: center;
-  color: #8e8e93;
+  padding: 48rpx 28rpx;
+}
+
+.guest-title {
+  font-size: 32rpx;
+  font-weight: 600;
+  margin-bottom: 8rpx;
+}
+
+.guest-card .btn {
+  margin-top: 28rpx;
+}
+
+.tool-card {
+  display: flex;
+  align-items: center;
+  gap: 20rpx;
+}
+
+.tool-ico {
+  width: 80rpx;
+  height: 80rpx;
+  line-height: 80rpx;
+  text-align: center;
+  border-radius: 24rpx;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 32rpx;
+  font-weight: 600;
+  flex: none;
+}
+
+.tool-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-name {
+  font-size: 30rpx;
+  font-weight: 600;
+  margin-bottom: 6rpx;
+}
+
+.arrow {
+  color: var(--muted);
+  font-size: 32rpx;
+  flex: none;
 }

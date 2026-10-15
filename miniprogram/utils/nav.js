@@ -14,6 +14,8 @@ const NATIVE_PAGES = {
   'gift-form': '/pages/gift-form/gift-form',
   assets: '/pages/assets/assets',
   tools: '/pages/tools/tools',
+  'tool-contacts': '/pages/tool-contacts/tool-contacts',
+  'contact-form': '/pages/contact-form/contact-form',
   me: '/pages/me/me',
   ledger: '/pages/ledger/ledger',
   budgets: '/pages/budgets/budgets',

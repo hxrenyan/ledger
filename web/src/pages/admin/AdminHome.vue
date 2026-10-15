@@ -6,10 +6,11 @@ import AdminAi from './AdminAi.vue'
 import AdminAsr from './AdminAsr.vue'
 import AdminOcr from './AdminOcr.vue'
 import AdminWechat from './AdminWechat.vue'
+import AdminTools from './AdminTools.vue'
 import AdminPoints from './AdminPoints.vue'
 import AdminFeedback from './AdminFeedback.vue'
 
-type Tab = 'users' | 'ledgers' | 'points' | 'feedback' | 'ai' | 'asr' | 'ocr' | 'wechat'
+type Tab = 'users' | 'ledgers' | 'points' | 'feedback' | 'ai' | 'asr' | 'ocr' | 'wechat' | 'tools'
 type UserStatus = 'all' | 'active' | 'disabled'
 type TimeSort = 'created' | 'seen'
 type TimeOrder = 'asc' | 'desc'
@@ -42,6 +43,7 @@ const aiPanel = ref<Reloadable | null>(null)
 const asrPanel = ref<Reloadable | null>(null)
 const ocrPanel = ref<Reloadable | null>(null)
 const wechatPanel = ref<Reloadable | null>(null)
+const toolsPanel = ref<Reloadable | null>(null)
 let userReq = 0
 let ledgerReq = 0
 let userTimer = 0
@@ -50,7 +52,7 @@ let ledgerTimer = 0
 const navGroups = [
   { title: '概览', items: [{ key: 'users', label: '用户' }, { key: 'ledgers', label: '账本' }, { key: 'points', label: '积分' }, { key: 'feedback', label: '反馈' }] },
   { title: '能力配置', items: [{ key: 'ai', label: 'AI 解析' }, { key: 'asr', label: '语音识别' }, { key: 'ocr', label: '图片识别' }] },
-  { title: '产品配置', items: [{ key: 'wechat', label: '微信登录' }] },
+  { title: '产品配置', items: [{ key: 'wechat', label: '微信登录' }, { key: 'tools', label: '工具页' }] },
 ] as const
 const navItems: { key: Tab; label: string }[] = []
 for (const group of navGroups) {
@@ -203,6 +205,7 @@ function currentPanel() {
   if (tab.value === 'asr') return asrPanel.value
   if (tab.value === 'ocr') return ocrPanel.value
   if (tab.value === 'wechat') return wechatPanel.value
+  if (tab.value === 'tools') return toolsPanel.value
   return null
 }
 
@@ -395,6 +398,7 @@ onMounted(() => {
         <AdminAsr v-else-if="tab === 'asr'" ref="asrPanel" />
         <AdminOcr v-else-if="tab === 'ocr'" ref="ocrPanel" />
         <AdminWechat v-else-if="tab === 'wechat'" ref="wechatPanel" />
+        <AdminTools v-else-if="tab === 'tools'" ref="toolsPanel" />
       </section>
     </main>
   </div>

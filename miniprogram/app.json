@@ -8,6 +8,8 @@
     "pages/gift-form/gift-form",
     "pages/assets/assets",
     "pages/tools/tools",
+    "pages/tool-contacts/tool-contacts",
+    "pages/contact-form/contact-form",
     "pages/me/me",
     "pages/points/points",
     "pages/feedback/feedback",

@@ -1,0 +1,99 @@
+<view class="page">
+  <view class="top-actions">
+    <view class="h1">联系人</view>
+    <view class="add-pill" bindtap="addContact">＋ 新增</view>
+  </view>
+
+  <view class="stats" wx:if="{{!loading && !emptyAll}}">
+    <view class="stat {{filter === 'all' ? 'on' : ''}}" data-filter="all" bindtap="setFilter">
+      <view class="sk">联系人</view>
+      <view class="sv">{{countAll}}</view>
+    </view>
+    <view class="stat {{filter === 'date' ? 'on' : ''}}" data-filter="date" bindtap="setFilter">
+      <view class="sk">已设日子</view>
+      <view class="sv brand">{{countDate}}</view>
+    </view>
+    <view class="stat {{filter === 'upcoming' ? 'on' : ''}}" data-filter="upcoming" bindtap="setFilter">
+      <view class="sk">30天内</view>
+      <view class="sv {{countUpcoming ? 'warn' : ''}}">{{countUpcoming}}</view>
+    </view>
+  </view>
+
+  <view class="search-bar" wx:if="{{!loading && !emptyAll}}">
+    <input class="search-input" value="{{q}}" bindinput="onSearch" placeholder="搜索姓名、关系或日子" placeholder-class="ph" />
+    <view class="search-clear" wx:if="{{q}}" bindtap="clearSearch">×</view>
+  </view>
+
+  <view class="pills" wx:if="{{!loading && !emptyAll}}">
+    <view class="pill {{filter === 'all' ? 'on' : ''}}" data-filter="all" bindtap="setFilter">全部</view>
+    <view class="pill {{filter === 'date' ? 'on' : ''}}" data-filter="date" bindtap="setFilter">有日子</view>
+    <view class="pill {{filter === 'upcoming' ? 'on' : ''}}" wx:if="{{countUpcoming}}" data-filter="upcoming" bindtap="setFilter">近期</view>
+    <view class="pill {{filter === 'archived' ? 'on' : ''}}" wx:if="{{countArchived}}" data-filter="archived" bindtap="setFilter">已归档</view>
+  </view>
+
+  <view class="pills" wx:if="{{relations.length && filter !== 'archived'}}">
+    <view
+      class="pill rel {{relationFilter === rel ? 'on' : ''}}"
+      wx:for="{{relations}}"
+      wx:for-item="rel"
+      wx:key="*this"
+      data-rel="{{rel}}"
+      bindtap="toggleRelation"
+    >{{rel}}</view>
+  </view>
+
+  <view class="empty" wx:if="{{loading}}">加载中…</view>
+
+  <view class="card empty-card" wx:elif="{{emptyAll}}">
+    <view class="empty-title">还没有联系人</view>
+    <view class="muted">人情里记下的人也会出现在这里</view>
+    <button class="btn compact" bindtap="addContact">＋ 新增联系人</button>
+  </view>
+
+  <view class="card empty-card" wx:elif="{{emptyShown}}">
+    <view class="empty-title">没有匹配的联系人</view>
+    <view class="empty-actions">
+      <button class="btn ghost compact" bindtap="resetFilters">清除筛选</button>
+      <button class="btn compact" bindtap="addContact">＋ 新增</button>
+    </view>
+  </view>
+
+  <view
+    class="card person {{item.archived ? 'archived' : ''}}"
+    wx:for="{{shown}}"
+    wx:key="id"
+    data-id="{{item.id}}"
+    bindtap="openEdit"
+  >
+    <view class="person-top">
+      <view class="avatar {{item.upcoming ? 'hot' : ''}}">{{item.initial}}</view>
+      <view class="person-main">
+        <view class="name-line">
+          <text class="name">{{item.name}}</text>
+          <text class="badge" wx:if="{{item.relation}}">{{item.relation}}</text>
+          <text class="badge arch" wx:if="{{item.archived}}">已归档</text>
+        </view>
+        <view class="date-line" wx:if="{{item.dateText}}">
+          <text class="date-tag {{item.upcoming ? 'hot' : ''}}">{{item.dateText}}</text>
+          <text class="rem {{item.upcoming ? 'hot' : ''}}" wx:if="{{item.reminderText}}">{{item.reminderText}}</text>
+          <text class="age" wx:if="{{item.ageText}}">{{item.ageText}}</text>
+        </view>
+        <view class="no-date" wx:else>未设置日子</view>
+      </view>
+    </view>
+    <view class="person-foot">
+      <view class="money" wx:if="{{item.hasGifts}}">
+        <text>{{item.givenText}}</text>
+        <text class="dot">·</text>
+        <text>{{item.receivedText}}</text>
+        <text class="dot">·</text>
+        <text class="{{item.netClass}}">{{item.netText}}</text>
+      </view>
+      <view class="money muted" wx:else>暂无人情往来</view>
+      <view class="foot-actions">
+        <view class="act" wx:if="{{!item.archived}}" catchtap="openRecords" data-id="{{item.id}}">往来</view>
+        <view class="act" catchtap="toggleArchive" data-id="{{item.id}}">{{item.archived ? '恢复' : '归档'}}</view>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,78 @@
+<view class="page entry">
+  <view class="empty" wx:if="{{loading}}">加载中…</view>
+  <block wx:else>
+    <view class="card">
+      <view class="field">
+        <view class="label">姓名</view>
+        <input class="input" value="{{name}}" bindinput="onName" maxlength="32" placeholder="1–32 个字" placeholder-class="ph" />
+      </view>
+      <view class="field" style="margin-bottom: 0">
+        <view class="label">关系</view>
+        <input class="input" value="{{relation}}" bindinput="onRelation" maxlength="16" placeholder="比如同事、亲戚，可以空着" placeholder-class="ph" />
+        <view class="chips">
+          <view
+            class="chip {{relation === rel ? 'on' : ''}}"
+            wx:for="{{quickRelations}}"
+            wx:for-item="rel"
+            wx:key="*this"
+            data-rel="{{rel}}"
+            bindtap="pickRelation"
+          >{{rel}}</view>
+        </view>
+      </view>
+    </view>
+
+    <view class="card">
+      <view class="sec-head">
+        <text class="label">日子</text>
+        <text class="clear" wx:if="{{showDate}}" bindtap="clearDate">不填</text>
+        <text class="hint" wx:else>选填</text>
+      </view>
+      <view class="chips">
+        <view
+          class="chip {{selected === tag && !naming ? 'on' : ''}}"
+          wx:for="{{tags}}"
+          wx:for-item="tag"
+          wx:key="*this"
+          data-tag="{{tag}}"
+          bindtap="pickTag"
+        >{{tag}}</view>
+        <view class="chip add {{naming ? 'on' : ''}}" bindtap="toggleNaming">＋ 自定义</view>
+      </view>
+      <view class="custom-row" wx:if="{{naming}}">
+        <input class="input" value="{{draft}}" bindinput="onDraft" maxlength="16" placeholder="如：生日、纪念日" placeholder-class="ph" />
+        <view class="mini-btn" bindtap="addTag">{{addingTag ? '添加中' : '确定'}}</view>
+        <view class="mini-btn ghost" bindtap="toggleNaming">取消</view>
+      </view>
+
+      <block wx:if="{{showDate}}">
+        <view class="sec-head date-head">
+          <text class="label">历法</text>
+          <text class="leap {{leap ? 'on' : ''}}" wx:if="{{calendar === 'lunar'}}" bindtap="toggleLeap">{{leap ? '✓ 闰月' : '闰月'}}</text>
+        </view>
+        <view class="seg">
+          <view class="seg-item {{calendar === 'solar' ? 'on' : ''}}" data-cal="solar" bindtap="pickCalendar">阳历</view>
+          <view class="seg-item {{calendar === 'lunar' ? 'on' : ''}}" data-cal="lunar" bindtap="pickCalendar">农历</view>
+        </view>
+        <view class="date-row">
+          <picker mode="selector" range="{{monthNames}}" value="{{monthIndex}}" bindchange="pickMonth">
+            <view class="dt">{{monthNames[monthIndex]}} ▾</view>
+          </picker>
+          <picker mode="selector" range="{{dayNames}}" value="{{dayIndex}}" bindchange="pickDay">
+            <view class="dt">{{dayNames[dayIndex]}} ▾</view>
+          </picker>
+          <input class="input year" value="{{year}}" bindinput="onYear" maxlength="4" type="number" placeholder="{{yearLabel}}" placeholder-class="ph" />
+        </view>
+      </block>
+    </view>
+  </block>
+</view>
+
+<view class="save-bar" wx:if="{{!loading}}">
+  <view class="err" wx:if="{{err}}">{{err}}</view>
+  <view class="actions">
+    <button class="btn ghost" bindtap="goBack">取消</button>
+    <button class="btn ghost" wx:if="{{!isNew}}" bindtap="toggleArchive">{{archived ? '恢复' : '归档'}}</button>
+    <button class="btn" bindtap="save" disabled="{{saving}}">{{saving ? '保存中…' : '保存'}}</button>
+  </view>
+</view>

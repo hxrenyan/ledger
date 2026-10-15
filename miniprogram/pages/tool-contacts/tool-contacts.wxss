@@ -1,0 +1,275 @@
+.top-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16rpx;
+}
+
+.top-actions .h1 {
+  margin: 0;
+}
+
+.add-pill {
+  height: 56rpx;
+  line-height: 56rpx;
+  padding: 0 22rpx;
+  border-radius: 999rpx;
+  background: var(--brand);
+  color: #fff;
+  font-size: 24rpx;
+  font-weight: 600;
+}
+
+.stats {
+  display: flex;
+  gap: 12rpx;
+  margin-bottom: 16rpx;
+}
+
+.stat {
+  flex: 1;
+  background: #fff;
+  border-radius: 24rpx;
+  padding: 18rpx 8rpx;
+  text-align: center;
+  box-shadow: 0 8rpx 32rpx rgba(20, 20, 40, 0.05);
+  border: 2rpx solid transparent;
+}
+
+.stat.on {
+  border-color: var(--brand);
+  background: #f5f7ff;
+}
+
+.sk {
+  font-size: 22rpx;
+  color: var(--muted);
+}
+
+.sv {
+  margin-top: 6rpx;
+  font-size: 36rpx;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.sv.brand { color: var(--brand); }
+.sv.warn { color: #e8590c; }
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  height: 76rpx;
+  background: #fff;
+  border-radius: 999rpx;
+  padding: 0 12rpx 0 28rpx;
+  margin-bottom: 16rpx;
+  box-shadow: 0 8rpx 28rpx rgba(20, 20, 40, 0.05);
+}
+
+.search-input {
+  flex: 1;
+  min-width: 0;
+  height: 76rpx;
+  font-size: 28rpx;
+}
+
+.search-clear {
+  width: 48rpx;
+  height: 48rpx;
+  line-height: 44rpx;
+  text-align: center;
+  color: var(--muted);
+  font-size: 34rpx;
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10rpx;
+  margin-bottom: 16rpx;
+}
+
+.pill {
+  height: 52rpx;
+  line-height: 52rpx;
+  padding: 0 20rpx;
+  border-radius: 999rpx;
+  background: #eceef5;
+  color: var(--muted);
+  font-size: 24rpx;
+}
+
+.pill.on {
+  background: var(--brand);
+  color: #fff;
+  font-weight: 600;
+}
+
+.pill.rel {
+  background: #fff;
+  border: 1rpx solid var(--line);
+  color: var(--text);
+}
+
+.pill.rel.on {
+  background: var(--brand-soft);
+  color: var(--brand);
+  border-color: transparent;
+}
+
+.person.archived {
+  opacity: 0.72;
+}
+
+.person-top {
+  display: flex;
+  gap: 16rpx;
+}
+
+.avatar {
+  width: 72rpx;
+  height: 72rpx;
+  line-height: 72rpx;
+  border-radius: 36rpx;
+  background: var(--brand-soft);
+  color: var(--brand);
+  text-align: center;
+  font-weight: 600;
+  flex: none;
+}
+
+.avatar.hot {
+  background: #fff0e6;
+  color: #e8590c;
+}
+
+.person-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.name-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8rpx;
+}
+
+.name {
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.badge {
+  padding: 2rpx 12rpx;
+  border-radius: 999rpx;
+  background: #f2f3f7;
+  color: var(--muted);
+  font-size: 20rpx;
+}
+
+.badge.arch {
+  background: #ffe9e8;
+  color: var(--expense);
+}
+
+.date-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8rpx;
+  margin-top: 8rpx;
+}
+
+.date-tag {
+  font-size: 22rpx;
+  background: #f4f5f8;
+  padding: 2rpx 10rpx;
+  border-radius: 8rpx;
+}
+
+.date-tag.hot {
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+
+.rem, .age, .no-date {
+  font-size: 22rpx;
+  color: var(--muted);
+}
+
+.rem.hot {
+  padding: 0 10rpx;
+  border-radius: 999rpx;
+  background: #fff0e6;
+  color: #e8590c;
+  font-weight: 600;
+}
+
+.person-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12rpx;
+  margin-top: 16rpx;
+  padding-top: 16rpx;
+  border-top: 1rpx solid var(--line);
+}
+
+.money {
+  flex: 1;
+  min-width: 0;
+  font-size: 22rpx;
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  color: var(--muted);
+  margin: 0 6rpx;
+}
+
+.foot-actions {
+  display: flex;
+  gap: 8rpx;
+  flex: none;
+}
+
+.act {
+  height: 48rpx;
+  line-height: 48rpx;
+  padding: 0 16rpx;
+  border-radius: 999rpx;
+  background: #f2f3f7;
+  color: var(--text);
+  font-size: 22rpx;
+  font-weight: 600;
+}
+
+.empty-card {
+  text-align: center;
+  padding: 40rpx 24rpx;
+}
+
+.empty-title {
+  font-size: 30rpx;
+  font-weight: 600;
+  margin-bottom: 8rpx;
+}
+
+.empty-card .btn {
+  margin-top: 24rpx;
+}
+
+.empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 16rpx;
+  margin-top: 24rpx;
+}
+
+.empty-actions .btn {
+  margin-top: 0;
+}
+
+.ph { color: #b8b8bd; }

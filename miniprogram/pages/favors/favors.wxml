@@ -33,7 +33,7 @@
 
     <view class="summary">
       <view class="s">
-        <view class="k">送出（{{summaryScopeText}}）</view>
+        <view class="k">送出</view>
         <view class="v expense">{{givenText}}</view>
       </view>
       <view class="s">

@@ -8,7 +8,7 @@
 | [../src/README.md](../src/README.md) | 后端模块结构 |
 | [import.md](import.md) | 账单导入：格式、接口、AI 配置、限制 |
 | [favors.md](favors.md) | 人情往来：人名识别、导入默认、明细互转、改联系人、自定义日子 |
-| [tools.md](tools.md) | 小程序「工具」：H5 页面，联系人管理 |
+| [tools.md](tools.md) | 小程序「工具」：原生与 H5 两套，后台切换 |
 | [dicts.md](dicts.md) | 账本字典：可复用的标签和选项，目前用于联系人日子 |
 | [points.md](points.md) | 微信用户积分：进入发放、识别扣费、管理后台手动分配。看广告未做 |
 | [moderation.md](moderation.md) | 本地违禁词检查：规则、打分、配置、词库格式、性能。尚未接入业务 |

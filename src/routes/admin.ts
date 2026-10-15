@@ -11,6 +11,7 @@ import { OCR_PROTOCOL, readOcrProfiles, recognizeOne, replaceOcrProfiles, toPubl
 import { imageFromFile } from './ocr.ts'
 import { adjustPoints, adjustPointsMany, assertWechatUser, listPointEntries, listWechatPointUsers } from '../points/adjust.ts'
 import { recognitionRestricted, setRecognitionRestricted } from '../points/wallet.ts'
+import { readToolsMode, saveToolsMode } from '../tools/mode.ts'
 import { listAdminFeedback, parseFeedbackStatus, updateFeedback } from '../feedback/service.ts'
 
 export function registerAdminRoutes(app: Hono<AppEnv>) {
@@ -313,6 +314,15 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
   app.put('/api/v1/admin/wechat', async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
     return c.json(await saveWechatAdminConfig(c.get('db'), body))
+  })
+
+  app.get('/api/v1/admin/tools', async (c) => {
+    return c.json({ mode: await readToolsMode(c.get('db')) })
+  })
+
+  app.put('/api/v1/admin/tools', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+    return c.json(await saveToolsMode(c.get('db'), body))
   })
 
   app.get('/api/v1/admin/recognition', async (c) => {

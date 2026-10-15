@@ -170,6 +170,46 @@ describe('日子字典', () => {
 
 })
 
+describe('工具页模式', () => {
+  it('缺省是原生，后台可以切到 H5，未登录也能读到', async () => {
+    const { app } = await setup()
+    const open = await json(app, '/api/v1/app/tools')
+    expect(open.status).toBe(200)
+    expect(open.body).toEqual({ mode: 'native' })
+
+    const login = await json(app, '/api/v1/admin/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ password: 'admin-secret' }),
+    })
+    const token = (login.body as { token: string }).token
+    const denied = await json(app, '/api/v1/admin/tools', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'h5' }),
+    })
+    expect(denied.status).toBe(401)
+
+    const saved = await json(app, '/api/v1/admin/tools', {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'h5' }),
+    })
+    expect(saved.status).toBe(200)
+    expect(saved.body).toEqual({ mode: 'h5' })
+
+    const again = await json(app, '/api/v1/app/tools')
+    expect(again.body).toEqual({ mode: 'h5' })
+
+    const bad = await json(app, '/api/v1/admin/tools', {
+      method: 'PUT',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ mode: 'web' }),
+    })
+    expect(bad.status).toBe(400)
+  })
+})
+
 describe('工具页交接码', () => {
   it('用一次就失效，库里没有明文', async () => {
     const { app, db } = await setup()
