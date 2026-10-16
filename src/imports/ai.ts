@@ -127,13 +127,14 @@ export async function chat(
   if (!endpoint || !cfg.apiKey || !cfg.model) return { ok: false, error: 'AI 未配置完整' }
   const withJson = opts.json !== false
 
-  const attempt = async (jsonMode: boolean): Promise<AiResult<string>> => {
+  const attempt = async (jsonMode: boolean, sendTemperature: boolean): Promise<AiResult<string>> => {
     const body: Record<string, unknown> = {
       model: cfg.model,
       messages,
-      temperature: 0,
       stream: false,
     }
+    // 记账解析需要稳定输出。只接受默认温度的模型会拒绝 0，调用方再去掉这个字段重试。
+    if (sendTemperature) body.temperature = 0
     if (jsonMode) body.response_format = { type: 'json_object' }
     let res: Response
     try {
@@ -166,13 +167,25 @@ export async function chat(
     return { ok: true, data: content }
   }
 
-  const first = await attempt(withJson)
-  if (first.ok) return first
-  // 部分兼容网关不支持 response_format，去掉后重试一次
-  if (withJson && /response_format|json_object|400|422/.test(first.error)) {
-    return attempt(false)
+  let sendTemperature = true
+  let res = await attempt(withJson, sendTemperature)
+  if (res.ok) return res
+  // 例如 gpt-5 只接受默认 temperature（1），显式传 0 会 400。去掉后由服务端用默认值。
+  if (temperatureRejected(res.error)) {
+    sendTemperature = false
+    res = await attempt(withJson, false)
+    if (res.ok) return res
   }
-  return first
+  // 部分兼容网关不支持 response_format，去掉后重试一次
+  if (withJson && /response_format|json_object|400|422/.test(res.error)) {
+    return attempt(false, sendTemperature)
+  }
+  return res
+}
+
+/** 模型明确拒绝非默认 temperature 时才重试，避免把别的 400 误判成温度问题。 */
+function temperatureRejected(error: string): boolean {
+  return /temperature/i.test(error) && /unsupported|does not support|only the default/i.test(error)
 }
 
 /** 从模型输出里尽力取出 JSON：直接解析失败时剥 ```json 围栏、再退到首尾括号截取。 */

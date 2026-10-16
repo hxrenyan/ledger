@@ -72,7 +72,7 @@
 
 - `base_url`：`https://api.deepseek.com/v1`（带不带 `/v1` 都会归一化成 `.../v1/chat/completions`，也可以直接填完整 endpoint）
 - `api_key`：只写不读，保存后仅回显掩码
-- `model`：如 `deepseek-chat`
+- `model`：如 `deepseek-chat`。请求先带 `temperature: 0`。模型只接受默认温度时会去掉这个字段再试一次，JSON 模式不支持时也会去掉 `response_format` 再试一次
 
 只在两处调用模型：① 表格结构识别不出来时兜底转字段；② 用户点「AI 建议分类」或导入前需要建议时。
 全部失败只降级、不阻断——规则解析的结果照常可用。

@@ -6,7 +6,7 @@ import { parseDelimited, textToTable, jsonToRows } from '../src/imports/text.ts'
 import { detectTable, normalizeRow } from '../src/imports/mapping.ts'
 import { parseAmountCents, parseDateYmd, parseDirection, excelSerialToYmd } from '../src/imports/values.ts'
 import { suggestAccount, suggestCategory } from '../src/imports/match.ts'
-import { extractJson, resolveEndpoint, withAiFailover, type AiConfig } from '../src/imports/ai.ts'
+import { extractJson, resolveEndpoint, testAi, withAiFailover, type AiConfig } from '../src/imports/ai.ts'
 
 async function setup() {
   const db = createSqliteDb(':memory:')
@@ -593,5 +593,28 @@ describe('AI 失败换下一套', () => {
     })
     expect(res).toMatchObject({ ok: true, data: '{"rows":[]}' })
     expect(called).toEqual(['bad', 'good'])
+  })
+
+  it('模型拒绝 temperature 0 时去掉该字段再请求', async () => {
+    const bodies: Record<string, unknown>[] = []
+    globalThis.fetch = async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>
+      bodies.push(body)
+      if ('temperature' in body) {
+        return new Response(JSON.stringify({
+          error: {
+            message: "Unsupported value: 'temperature' does not support 0 with this model. Only the default (1) value is supported.",
+            code: 'unsupported_value',
+          },
+        }), { status: 400 })
+      }
+      return new Response(JSON.stringify({ choices: [{ message: { content: '{"ok":true}' } }] }), { status: 200 })
+    }
+    const res = await testAi(cfg('主', 'gpt-5'))
+    expect(res.ok).toBe(true)
+    expect(bodies).toHaveLength(2)
+    expect(bodies[0].temperature).toBe(0)
+    expect(bodies[1].temperature).toBeUndefined()
+    expect(bodies[1].response_format).toEqual({ type: 'json_object' })
   })
 })
