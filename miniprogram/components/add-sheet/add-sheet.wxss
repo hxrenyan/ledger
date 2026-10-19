@@ -65,6 +65,11 @@
   color: #556070;
 }
 
+.as-ico.voice {
+  background: #e7f6ee;
+  color: #0f9f6e;
+}
+
 .as-label {
   font-size: 26rpx;
   color: #1d1d1f;

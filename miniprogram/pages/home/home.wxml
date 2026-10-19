@@ -261,12 +261,14 @@
 
 <view class="fab" bindtap="openAdd">+</view>
 
-<add-sheet show="{{showAdd}}" canAi="{{canAi}}" bind:close="closeAdd" bind:select="onAddSelect" />
+<add-sheet show="{{showAdd}}" canAi="{{canAi}}" canSpeak="{{canSpeak}}" bind:close="closeAdd" bind:select="onAddSelect" />
 <ai-panel
   show="{{showVoice}}"
   scope="tx"
+  target="{{voiceTarget}}"
+  title="{{voiceTarget === 'note' ? '记到日历记录' : '智能记账'}}"
   can-speak="{{canSpeak}}"
-  can-photo="{{canPhoto}}"
+  can-photo="{{voiceTarget === 'note' ? false : canPhoto}}"
   bind:close="closeVoice"
   bind:done="onVoiceDone"
 />

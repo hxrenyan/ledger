@@ -8,7 +8,7 @@
 >
   <view class="ap-sheet" catchtap="noop">
     <view class="ap-head">
-      <view class="ap-title">智能记账</view>
+      <view class="ap-title">{{title}}</view>
       <view class="ap-close" bindtap="close">关闭</view>
     </view>
 
@@ -41,7 +41,7 @@
       </view>
 
       <!-- 录音时仍占位。拿掉它浮层会变矮，按住的圆按钮会从手指底下挪走。 -->
-      <view class="ap-photo {{state === 'recording' ? 'hold' : ''}}" wx:if="{{canPhoto}}" bindtap="pickPhoto">
+      <view class="ap-photo {{state === 'recording' ? 'hold' : ''}}" wx:if="{{canPhoto && target !== 'note'}}" bindtap="pickPhoto">
         <view class="ap-photo-ico"></view>
         <text>拍一张小票 / 支付截图</text>
       </view>
@@ -53,6 +53,25 @@
       <view class="ap-spin"></view>
       <view class="ap-hint">{{tip || '识别中…'}}</view>
     </view>
+
+    <!-- 日历语音记录：认出的字记到今天，不进流水 -->
+    <block wx:if="{{state === 'note'}}">
+      <view class="ap-hint">记到今天的日历记录，不进流水</view>
+      <textarea
+        class="ap-ocr-input"
+        value="{{noteBody}}"
+        bindinput="onNoteInput"
+        maxlength="200"
+        auto-height
+        placeholder="识别出的记事"
+      ></textarea>
+      <view class="ap-meta">{{noteCount}}/200</view>
+      <view class="ap-bad-reason" wx:if="{{noteError}}">{{noteError}}</view>
+      <view class="ap-actions">
+        <button class="btn ghost" disabled="{{noteBusy}}" bindtap="retry">重说</button>
+        <button class="btn" disabled="{{!noteCanSave || noteBusy}}" bindtap="saveNote">记下</button>
+      </view>
+    </block>
 
     <!-- 核对 -->
     <block wx:if="{{state === 'editing'}}">

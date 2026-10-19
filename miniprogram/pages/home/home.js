@@ -156,6 +156,8 @@ Page({
     showAdd: false,
     guest: false,
     showVoice: false,
+    /** tx 智能记账；note 日历记录，识别后写入今天的日历。 */
+    voiceTarget: 'tx',
     /** 「智能记账」浮层里两个入口各自的可用性（后台配了对应模型才有） */
     canSpeak: true,
     canPhoto: true,
@@ -760,7 +762,7 @@ Page({
       session.goLogin()
       return
     }
-    this.setData({ showVoice: true })
+    this.setData({ showVoice: true, voiceTarget: 'tx' })
   },
 
   editTx(e) {
@@ -801,12 +803,15 @@ Page({
     const type = e.detail.type
     if (type === 'tx') nav.go('tx-form', {})
     else if (type === 'gift') nav.go('gift-form', {})
-    else if (type === 'speak') this.setData({ showVoice: true })
-    else if (type === 'import') nav.go('import')
+    else if (type === 'speak') this.setData({ showVoice: true, voiceTarget: 'tx' })
+    else if (type === 'note') {
+      if (!this.data.canSpeak) return
+      this.setData({ showVoice: true, voiceTarget: 'note' })
+    } else if (type === 'import') nav.go('import')
   },
 
   closeVoice() {
-    this.setData({ showVoice: false })
+    this.setData({ showVoice: false, voiceTarget: 'tx' })
   },
 
   onVoiceDone(e) {

@@ -4,7 +4,7 @@
  * 两条入口，汇到同一个下游：
  *   语音  按住说话 → POST /speech/transcribe → 文字
  *   拍照  拍一张   → 本机 VisionKit 先认字；不够再压图上传 POST /ocr/scan → 文字
- *   两者都 → POST /imports/receipt 或 /imports/utterances（提示词不同：
+ *   记账  → POST /imports/receipt 或 /imports/utterances（提示词不同：
  *          口语一句一笔；票据要区分实付金额与余额、明细与合计）
  *        → 用户核对、改正 → POST /imports/commit。
  *
@@ -12,6 +12,9 @@
  *   tx    普通记账，解析结果按支出/收入正常入账；
  *   favor 人情往来。认出对方姓名的行默认是人情，核对时可以改回明细。
  *         人情行可以打开「同时记明细」，再按所选账户和分类写一笔流水。
+ *
+ * target=note 是明细加号里的「日历记录」：仍走上面的语音识别，
+ * 认出的文字记到今天的个人日历，不整理成流水，也不拍照。
  *
  * 两个可用性开关（管理员在后台配了对应模型才有）：
  *   canSpeak 语音识别（ASR）    canPhoto 图片识别（OCR）
@@ -34,6 +37,8 @@ const MAX_SECONDS = 60
 const PARSE_TIMEOUT_MS = 120000
 /** 核对页里那行原文只作参考，太长就把票据正文挤没了。 */
 const BRIEF_CHARS = 200
+/** 日历记事正文上限，和 day-notes 接口一致，按字符数算。 */
+const NOTE_MAX = 200
 
 const WECHAT_ONLY = '语音识别、图片识别和文本整理仅支持微信登录'
 
@@ -80,6 +85,10 @@ function ensurePoints(need) {
     }
     return summary
   })
+}
+
+function noteChars(text) {
+  return Array.from(String(text || '').trim())
 }
 
 function brief(text) {
@@ -133,6 +142,10 @@ Component({
   properties: {
     show: { type: Boolean, value: false },
     scope: { type: String, value: 'tx' },
+    /** 浮层标题。从加号记日历进来时是「记到日历记录」。 */
+    title: { type: String, value: '智能记账' },
+    /** tx 整理成流水；note 把识别文字记进今天的日历。 */
+    target: { type: String, value: 'tx' },
     canSpeak: { type: Boolean, value: true },
     canPhoto: { type: Boolean, value: true },
   },
@@ -164,16 +177,24 @@ Component({
     expNames: [],
     incNames: [],
     tip: '',
+    noteBody: '',
+    noteCount: 0,
+    noteCanSave: false,
+    noteError: '',
+    noteBusy: false,
   },
 
   observers: {
     show(v) {
       if (v) {
         this.reset()
-        this.ensureRefs()
+        if (this.data.target !== 'note') this.ensureRefs()
       } else if (this.data.state === 'recording') {
         this.finishRecord()
       }
+    },
+    target() {
+      this.syncHint()
     },
     // 两个开关是父页面异步拉回来的，可能晚于 show 到位，所以各自盯一下。
     canSpeak() {
@@ -244,12 +265,25 @@ Component({
         tip: '',
         canCloudRetry: false,
         ocrSource: '',
+        noteBody: '',
+        noteCount: 0,
+        noteCanSave: false,
+        noteError: '',
+        noteBusy: false,
       })
+      this._savingNote = false
       this.syncHint()
     },
 
     /** 提示语跟着可用入口走，免得出现「按住说话」但语音没配。 */
     syncHint() {
+      if (this.data.target === 'note') {
+        const hint = this.data.canSpeak
+          ? '按住说话，记到今天的日历记录'
+          : '语音识别还没配置（管理员在后台加语音识别模型即可）'
+        this.setData({ hintText: hint })
+        return
+      }
       const speak = !!this.data.canSpeak
       const photo = !!this.data.canPhoto
       let hint = ''
@@ -478,11 +512,72 @@ Component({
             ui.toast('没听清，再说一次')
             return null
           }
+          if (this.data.target === 'note') {
+            this.showCalendarNote(text)
+            return null
+          }
           this.setData({ text: brief(text), rawText: '' })
           return request.post('/api/v1/imports/utterances', { text: text }, { timeout: PARSE_TIMEOUT_MS })
         })
         .then((preview) => this.applyPreview(preview, '没解析出记录，换种说法再试'))
         .catch((err) => this.onFail(err, '语音识别失败'))
+    },
+
+    /** 语音识别结果记进今天的日历，不整理成流水。 */
+    showCalendarNote(raw) {
+      const chars = noteChars(raw)
+      const clipped = chars.length > NOTE_MAX
+      const text = clipped ? chars.slice(0, NOTE_MAX).join('') : chars.join('')
+      this.setData({
+        state: 'note',
+        noteBody: text,
+        noteCount: Array.from(text).length,
+        noteCanSave: text.length > 0,
+        noteError: clipped ? '超过 200 字，已截断，可再改' : '',
+        noteBusy: false,
+        tip: '',
+      })
+    },
+
+    onNoteInput(e) {
+      const text = String((e.detail && e.detail.value) || '')
+      const count = noteChars(text).length
+      this.setData({
+        noteBody: text,
+        noteCount: count,
+        noteCanSave: count >= 1 && count <= NOTE_MAX && !this.data.noteBusy,
+        noteError: '',
+      })
+    },
+
+    saveNote() {
+      if (this._savingNote || this.data.noteBusy) return
+      const text = noteChars(this.data.noteBody).join('')
+      if (!text || Array.from(text).length > NOTE_MAX) {
+        this.setData({ noteError: '正文须为 1–200 字', noteCanSave: false })
+        return
+      }
+      const gen = this.photoGen
+      this._savingNote = true
+      this.setData({ noteBusy: true, noteCanSave: false, noteError: '' })
+      request
+        .post('/api/v1/day-notes', { day: time.todayISO(), body: text })
+        .then(() => {
+          if (this.photoGen !== gen) return
+          ui.ok('已记到日历')
+          this.triggerEvent('close')
+        })
+        .catch((err) => {
+          if (this.photoGen !== gen) return
+          this.setData({
+            noteError: (err && err.message) || '保存失败',
+            noteCanSave: true,
+          })
+        })
+        .then(() => {
+          this._savingNote = false
+          if (this.photoGen === gen) this.setData({ noteBusy: false })
+        })
     },
 
     /** 录音器报错（由模块级 bindRecorder 转发过来）。 */
@@ -503,6 +598,7 @@ Component({
      * 图片不落库、不进云存储：识别完就丢，临时文件交给微信回收。
      */
     pickPhoto() {
+      if (this.data.target === 'note') return
       if (this.data.state === 'busy' || this.data.state === 'recording' || this.holding) return
       const gen = this.photoGen || 0
       ensurePoints(1)

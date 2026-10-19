@@ -14,6 +14,10 @@
         <view class="as-ico brand">智</view>
         <view class="as-label">智能记账</view>
       </view>
+      <view class="as-item" wx:if="{{canSpeak}}" data-type="note" bindtap="pick">
+        <view class="as-ico voice">语</view>
+        <view class="as-label">日历记录</view>
+      </view>
       <view class="as-item" data-type="import" bindtap="pick">
         <view class="as-ico plain">导</view>
         <view class="as-label">账单导入</view>
