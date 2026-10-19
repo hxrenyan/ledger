@@ -73,12 +73,12 @@
           <text class="badge" wx:if="{{item.relation}}">{{item.relation}}</text>
           <text class="badge arch" wx:if="{{item.archived}}">已归档</text>
         </view>
-        <view class="date-line" wx:if="{{item.dateText}}">
-          <text class="date-tag {{item.upcoming ? 'hot' : ''}}">{{item.dateText}}</text>
-          <text class="rem {{item.upcoming ? 'hot' : ''}}" wx:if="{{item.reminderText}}">{{item.reminderText}}</text>
-          <text class="age" wx:if="{{item.ageText}}">{{item.ageText}}</text>
+        <view class="date-line" wx:for="{{item.dateLines}}" wx:for-item="line" wx:key="key">
+          <text class="date-tag {{line.hot ? 'hot' : ''}}">{{line.text}}</text>
+          <text class="rem {{line.hot ? 'hot' : ''}}" wx:if="{{line.when}}">{{line.when}}</text>
+          <text class="age" wx:if="{{line.age}}">{{line.age}}</text>
         </view>
-        <view class="no-date" wx:else>未设置日子</view>
+        <view class="no-date" wx:if="{{!item.dateLines.length}}">未设置日子</view>
       </view>
     </view>
     <view class="person-foot">

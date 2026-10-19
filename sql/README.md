@@ -41,18 +41,20 @@ npm run db:migrate
 | `budgets` | 自增整数 | 月预算。`category_id = 0` 表示不限分类的总预算 |
 | `attachments` | `transaction_id` | 收据图，一笔流水一张。主键即流水自增 id |
 | `dict_items` | 自增整数 | 可复用配置。`kind`、`name` 是字符串。`ledger_id` 为空是公共字典，有值则只属于该账本。同名不重复，见 `idx_dict_items_ledger_name` / `idx_dict_items_public_name` |
-| `contacts` | 自增整数 | 人情联系人。`date_item_id` 指向日子标签，0 表示没记；再记阳历/农历、月日、可选年份、农历闰月 |
+| `contacts` | 自增整数 | 人情联系人。日子不写在这张表上 |
+| `contact_dates` | 自增整数 | 联系人的日子，一个人可以有多条。`item_id` 指向日子标签；再记阳历/农历、月日、可选年份、农历闰月。按账本和人列出，见 `idx_contact_dates_ledger` |
 | `gifts` | 自增整数 | 人情往来 |
 | `recurrences` | 自增整数 | 周期记账（只支持收入 / 支出） |
 | `import_batches` | 自增整数 | 账单导入批次台账（回溯 / 撤销） |
 | `ai_profiles` | 自增整数 | 模型配置。`llm` 解析账单，`asr` 语音识别，`ocr` 图片识别；同 kind 内按 `sort_order` 接力。不保存录音和账单原文 |
-| `app_configs` | `key` | 服务端业务配置。`tools.mode` 为 `native` 或 `h5`（缺省原生），另有微信登录凭证等。改完即生效，不用发版 |
+| `app_configs` | `key` | 服务端业务配置。`tools.mode` 为 `native` 或 `h5`（缺省原生），`miniprogram.client` 是关于文案和最低版本，另有微信登录凭证等。改完即生效，不用发版 |
 | `handoff_codes` | `code_hash` | 一次性会话交接码。web-view 里没有 `wx.login`，网页侧靠它换回会话；只存 SHA-256，5 分钟过期，用一次即失效 |
 | `point_accounts` | `user_id` | 微信用户积分余额。一人一行，没有微信身份的账号不写入 |
 | `point_entries` | 自增整数 | 积分明细，只追加。`biz_key` 避免同一天或同一次识别重复入账，见 `idx_point_entries_biz` |
 | `point_checkins` | `user_id` | 连续进入。`last_day` 是上海日期，断一天从 1 重新计 |
 | `point_calls` | 自增整数 | 每种识别每天的调用次数，含失败。按 `user_id, kind, day` 计数，见 `idx_point_calls_user_day` |
 | `feedbacks` | 自增整数 | 用户反馈。自己的列表走 `idx_feedbacks_user`，后台按状态走 `idx_feedbacks_status`，全部按时间走 `idx_feedbacks_recent` |
+| `day_notes` | 自增整数 | 个人日历记事。跟用户走，不跟账本。按 `user_id, day` 查某月或某一天，见 `idx_day_notes_user_day` |
 
 新环境只用 `schema.sql`。线上已有数据只追加 `sql/migrations/`，不要对生产库重跑全量 schema。
 

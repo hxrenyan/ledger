@@ -65,6 +65,11 @@
   color: #fff;
 }
 
+/* 点在文字上会让文字成为触摸目标；录音中改文案时不能把这次按住拆掉。 */
+.ap-talk-label {
+  pointer-events: none;
+}
+
 /* 拍照入口做得比录音轻：它是备选路径，不该跟大圆按钮抢注意力 */
 .ap-photo {
   margin: 20rpx auto 4rpx;
@@ -327,6 +332,14 @@
   margin-top: 12rpx;
   font-size: 22rpx;
   color: #e5484d;
+}
+
+.ap-cloud {
+  margin-top: 16rpx;
+  text-align: center;
+  font-size: 24rpx;
+  color: #3b5bdb;
+  line-height: 1.6;
 }
 
 .ap-actions {

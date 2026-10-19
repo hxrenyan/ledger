@@ -62,6 +62,12 @@ function makeWx() {
     if (typeof opts.success === 'function') opts.success({})
     return {}
   }
+  const updateManager = {
+    onCheckForUpdate: noop,
+    onUpdateReady: noop,
+    onUpdateFailed: noop,
+    applyUpdate: noop,
+  }
   const base = {
     getStorageSync: (k) => (storage.has(k) ? storage.get(k) : ''),
     setStorageSync: (k, v) => storage.set(k, v),
@@ -82,6 +88,7 @@ function makeWx() {
     getDeviceInfo: () => ({ platform: 'devtools' }),
     getAppBaseInfo: () => ({ SDKVersion: '3.5.7', version: '8.0.0', language: 'zh_CN' }),
     getAccountInfoSync: () => ({ miniProgram: { appId: 'wx0000000000000000', envVersion: 'develop' } }),
+    getUpdateManager: () => updateManager,
     login: asyncNoop,
     checkSession: asyncNoop,
     request: asyncNoop,

@@ -21,6 +21,7 @@ import { registerSpeechRoutes } from './routes/speech.ts'
 import { registerOcrRoutes } from './routes/ocr.ts'
 import { registerPointRoutes } from './routes/points.ts'
 import { registerFeedbackRoutes } from './routes/feedback.ts'
+import { registerDayNoteRoutes } from './routes/dayNotes.ts'
 import { registerWebviewRoutes } from './routes/webview.ts'
 import type { WechatCodeExchange } from './auth/wechat.ts'
 
@@ -53,6 +54,11 @@ export type AppConfig = {
 /**
  * 不要求账本上下文的路径：这些接口要么在选账本之前就要用，要么自己处理账本归属。
  */
+/** 没登录也要读：工具页模式、关于文案、是否必须更新。 */
+function isOpenAppRead(method: string, path: string) {
+  return method === 'GET' && (path === '/api/v1/app/tools' || path === '/api/v1/app/client')
+}
+
 const LEDGER_OPTIONAL = new Set([
   '/api/v1/me',
   '/api/v1/me/nickname',
@@ -120,8 +126,8 @@ export function createApp(cfg: AppConfig) {
   app.use('/api/v1/*', async (c, next) => {
     const path = c.req.path
     if (path.startsWith('/api/v1/auth/') || path === '/api/v1/admin/login') return next()
-    // 工具页用哪一套。没登录也要能读到，读不到就保持原生，不能把游客踢去登录。
-    if (c.req.method === 'GET' && path === '/api/v1/app/tools') return next()
+    // 工具页模式、关于文案、版本门槛。没登录也要能读到，不能把游客踢去登录。
+    if (isOpenAppRead(c.req.method, path)) return next()
     const header = c.req.header('Authorization') ?? ''
     if (!header.startsWith('Bearer ')) throw unauthorized()
     try {
@@ -147,7 +153,7 @@ export function createApp(cfg: AppConfig) {
       c.get('isAdmin') ||
       c.req.path.startsWith('/api/v1/auth/') ||
       c.req.path === '/api/v1/admin/login' ||
-      (c.req.method === 'GET' && c.req.path === '/api/v1/app/tools')
+      isOpenAppRead(c.req.method, c.req.path)
     ) {
       return next()
     }
@@ -180,7 +186,7 @@ export function createApp(cfg: AppConfig) {
       c.get('isAdmin') ||
       path.startsWith('/api/v1/auth/') ||
       path.startsWith('/api/v1/admin') ||
-      (c.req.method === 'GET' && path === '/api/v1/app/tools') ||
+      isOpenAppRead(c.req.method, path) ||
       LEDGER_OPTIONAL.has(path)
     ) {
       return next()
@@ -220,6 +226,7 @@ export function createApp(cfg: AppConfig) {
   registerOcrRoutes(app)
   registerPointRoutes(app)
   registerFeedbackRoutes(app)
+  registerDayNoteRoutes(app)
   registerWebviewRoutes(app)
   registerAdminRoutes(app)
 

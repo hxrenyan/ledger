@@ -8,7 +8,7 @@
 
 | `kind` | 名称 | 用在哪 |
 |--------|------|--------|
-| `contact_date` | 1–16 字 | 联系人日子。`contacts.date_item_id` 指向这里，`0` 表示没记。规则见 [favors.md](favors.md) |
+| `contact_date` | 1–16 字 | 联系人日子。`contact_dates.item_id` 指向这里。一个人可以有多条，规则见 [favors.md](favors.md) |
 
 ## 接口
 

@@ -3,7 +3,7 @@
  *
  * 两条入口，汇到同一个下游：
  *   语音  按住说话 → POST /speech/transcribe → 文字
- *   拍照  拍一张   → utils/image 压到能送出去 → POST /ocr/scan → 文字
+ *   拍照  拍一张   → 本机 VisionKit 先认字；不够再压图上传 POST /ocr/scan → 文字
  *   两者都 → POST /imports/receipt 或 /imports/utterances（提示词不同：
  *          口语一句一笔；票据要区分实付金额与余额、明细与合计）
  *        → 用户核对、改正 → POST /imports/commit。
@@ -24,6 +24,7 @@
 const request = require('../../utils/request')
 const session = require('../../utils/session')
 const image = require('../../utils/image')
+const localOcr = require('../../utils/localOcr')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
 const ui = require('../../utils/ui')
@@ -103,6 +104,19 @@ function brief(text) {
 let activePanel = null
 
 function bindRecorder(manager) {
+  manager.onStart(function () {
+    const panel = activePanel
+    // 浮层已经关了：没有面板来收这次开始，直接停，避免麦克风空录到时长上限。
+    if (!panel) {
+      try {
+        manager.stop()
+      } catch (e) {
+        /* ignore */
+      }
+      return
+    }
+    panel.onRecordStart()
+  })
   manager.onStop(function (res) {
     const panel = activePanel
     activePanel = null
@@ -126,9 +140,15 @@ Component({
   data: {
     state: 'idle', // idle | recording | busy | editing
     seconds: 0,
+    /** 圆按钮上的字。录音中只改这段文字，不换节点，否则松手事件会丢。 */
+    talkText: '按住说话',
     maxSeconds: MAX_SECONDS,
     /** 这一轮是从哪进来的：'' | 'voice' | 'photo'（决定「重说」还是「换一张」） */
     mode: '',
+    /** 本机认字成功后才允许「云端再认一次」。云端路径不再提供，避免同一张图反复上传。 */
+    canCloudRetry: false,
+    /** '' | 'local' | 'cloud'。核对页用来标明这批字是从哪认出来的。 */
+    ocrSource: '',
     hintText: '',
     /** 核对页里显示的原文（语音是原句，拍照是票据文字的前一段） */
     text: '',
@@ -171,18 +191,27 @@ Component({
       this.recorder = null
       this.timer = null
       this.stopGuard = null
+      this.photoGen = 0
+      this.photoPicked = null
+      this.holding = false
+      this.stopping = false
+      this.pendingStop = false
+      this.recorderStarted = false
     },
     detached() {
       // 录音途中被销毁：这次的结果没人要了，但 activePanel 必须清掉，
       // 否则下一次录音的回调会落在一个已销毁的实例上（正是上面说的那个坑）。
       this.holding = false
+      this.pendingStop = true
+      const recorder = this.recorder
+      const started = this.recorderStarted || this.data.state === 'recording'
       if (activePanel === this) activePanel = null
       this.clearTimer()
       this.clearStopGuard()
       this.clearSlowTip()
-      if (this.recorder && this.data.state === 'recording') {
+      if (recorder && started) {
         try {
-          this.recorder.stop()
+          recorder.stop()
         } catch (e) {
           /* ignore */
         }
@@ -195,9 +224,17 @@ Component({
       this.clearTimer()
       this.clearStopGuard()
       this.clearSlowTip()
+      // 作废还在飞的认图：关掉再打开时，上一张的结果不能写进新的一轮。
+      this.photoGen = (this.photoGen || 0) + 1
+      this.photoPicked = null
+      this.holding = false
+      this.stopping = false
+      this.pendingStop = false
+      this.recorderStarted = false
       this.setData({
         state: 'idle',
         seconds: 0,
+        talkText: '按住说话',
         mode: '',
         text: '',
         rawText: '',
@@ -205,6 +242,8 @@ Component({
         parser: '',
         aiError: '',
         tip: '',
+        canCloudRetry: false,
+        ocrSource: '',
       })
       this.syncHint()
     },
@@ -316,42 +355,84 @@ Component({
     },
 
     startRecord() {
-      if (this.data.state === 'recording' || this.holding) return
+      if (this.data.state === 'recording' || this.data.state === 'busy' || this.holding) return
+      // 新语音沿用整轮重置，清掉上一张照片，并作废选图、认图和确认弹窗的迟到回调。
+      this.reset()
+      const gen = this.photoGen
       this.holding = true
       ensurePoints(1)
         .then((summary) => {
+          if (this.photoGen !== gen) return
           // 余额查询回来时手指已经松开，就不要再开录，否则按钮会在松手后才变状态。
-          if (!summary || !this.holding || this.data.state === 'recording') {
+          if (!summary || !this.holding || this.data.state !== 'idle') {
             this.holding = false
             return
           }
           // 认领这次录音：结束回调由模块级 bindRecorder 转发到这儿（见文件顶部说明）。
           activePanel = this
-          this.setData({ state: 'recording', mode: 'voice', seconds: 0, tip: '松开发送' })
+          this.setData({
+            state: 'recording',
+            mode: 'voice',
+            seconds: 0,
+            talkText: '0 · 松开结束',
+            tip: '松开发送',
+          })
           this.ensureRecorder().start({ duration: MAX_SECONDS * 1000, format: 'mp3', sampleRate: 16000, encodeBitRate: 48000 })
           this.clearTimer()
           this.timer = setInterval(() => {
+            if (this.data.state !== 'recording') return
             const s = this.data.seconds + 1
-            this.setData({ seconds: s })
+            this.setData({ seconds: s, talkText: s + ' · 松开结束' })
             if (s >= MAX_SECONDS) this.finishRecord()
           }, 1000)
         })
         .catch((err) => {
+          if (this.photoGen !== gen) return
           this.holding = false
           this.onFail(err, '暂时无法录音')
         })
     },
 
+    /**
+     * 松手、滑出、来电打断都走这里。蒙版和圆按钮都会调用，必须可重复进入。
+     * 录音器在 onStart 之前收到 stop 会直接丢掉，所以先记下，等真正开始再停。
+     */
     finishRecord() {
       this.holding = false
-      if (this.data.state !== 'recording') return
+      if (this.stopping) return
+      const recording = this.data.state === 'recording'
+      if (!recording && !this.pendingStop) return
+      if (!this.recorderStarted) {
+        this.pendingStop = true
+        if (recording) {
+          this.clearTimer()
+          this.setData({ state: 'busy', tip: '识别中…', talkText: '按住说话' })
+          this.armStopGuard()
+        }
+        return
+      }
+      this.stopRecorder()
+    },
+
+    /** 录音器真正开始。手指已经松开的话，补上刚才被丢掉的 stop。 */
+    onRecordStart() {
+      this.recorderStarted = true
+      if (!this.holding || this.pendingStop) this.stopRecorder()
+    },
+
+    stopRecorder() {
+      if (this.stopping) return
+      this.stopping = true
+      this.pendingStop = false
+      this.holding = false
       this.clearTimer()
-      this.setData({ state: 'busy', tip: '识别中…' })
+      this.setData({ state: 'busy', tip: '识别中…', talkText: '按住说话' })
       this.gotStop = false
       this.armStopGuard()
       try {
         this.recorder.stop()
       } catch (e) {
+        this.stopping = false
         this.clearStopGuard()
         this.setData({ state: 'idle', tip: '' })
       }
@@ -417,41 +498,133 @@ Component({
     /**
      * 拍照 / 选图识账。
      *
-     * 压缩放在 utils/image 里（起点档位是纯函数，逐档收敛在 prepare 里）。
+     * 先在手机上认（VisionKit，照片不上传）。有效文字够就直接整理成流水。
+     * 不够、超时或这台设备没有端侧能力时，再压图上传走原来的 /ocr/scan。
      * 图片不落库、不进云存储：识别完就丢，临时文件交给微信回收。
      */
     pickPhoto() {
-      if (this.data.state === 'busy' || this.data.state === 'recording') return
+      if (this.data.state === 'busy' || this.data.state === 'recording' || this.holding) return
+      const gen = this.photoGen || 0
       ensurePoints(1)
         .then((summary) => {
-          if (!summary) return null
+          if (!summary || this.photoGen !== gen) return null
           this.setData({ mode: 'photo' })
           return image.pick()
         })
         .then((picked) => {
-          if (!picked) return null
-          this.setData({ state: 'busy', tip: '处理照片…' })
-          return image.prepare(picked)
+          if (!picked || this.photoGen !== gen) return null
+          this.photoPicked = picked
+          // 基础库没有 VisionKit 时不要先闪一句「本机识别」。
+          if (!localOcr.supported()) return this.runCloudScan(picked, gen, '正在识别…')
+          this.setData({ state: 'busy', tip: '正在本机识别…', canCloudRetry: false, ocrSource: '' })
+          return localOcr.recognize(picked.filePath).then(
+            (text) => {
+              if (this.photoGen !== gen) return null
+              if (localOcr.usable(text)) {
+                this.setData({ canCloudRetry: true, ocrSource: 'local' })
+                return this.useOcrText(text, gen)
+              }
+              return this.runCloudScan(picked, gen, '本机没认全，改用云端识别…')
+            },
+            (err) => {
+              if (this.photoGen !== gen) return null
+              const tip = err && err.code === 'unsupported' ? '这台设备改用云端识别…' : '本机没认全，改用云端识别…'
+              return this.runCloudScan(picked, gen, tip)
+            },
+          )
         })
-        .then((ready) => {
-          if (!ready) return null
-          this.setData({ tip: '识别中…' })
-          this.armSlowTip()
-          return request.scanImage(ready)
+        .catch((err) => {
+          if (this.photoGen !== gen) return
+          this.onFail(err, '拍照识别失败')
         })
-        .then((res) => {
-          if (!res) return null
-          const text = (res && res.text) || ''
-          if (!text.trim()) {
-            this.setData({ state: 'idle', tip: '' })
-            ui.toast('这张没认出文字，靠近点重拍')
-            return null
-          }
-          this.setData({ text: brief(text), rawText: text })
-          return request.post('/api/v1/imports/receipt', { text: text }, { timeout: PARSE_TIMEOUT_MS })
-        })
-        .then((preview) => this.applyPreview(preview, '这张没整理出流水，可以换一张'))
-        .catch((err) => this.onFail(err, '拍照识别失败'))
+    },
+
+    canRetryPhoto() {
+      return this.data.mode === 'photo' && this.data.canCloudRetry && !!this.photoPicked
+        && this.data.state !== 'busy' && this.data.state !== 'recording' && !this.holding
+    },
+
+    /**
+     * 用户觉得本机结果不对。确认后再上传同一张图。
+     * 云端失败或没认出字时，把确认前的核对结果放回来，不要把已经对过的行清掉。
+     */
+    cloudRetry() {
+      if (!this.canRetryPhoto()) return
+      const picked = this.photoPicked
+      const gen = this.photoGen || 0
+      const keep = this.snapshot()
+      wx.showModal({
+        title: '云端再认一次',
+        content: '这张照片会上传到服务器重新读字，整理成流水时按这一次的结果计积分。照片不会保存。',
+        confirmText: '上传识别',
+        success: (res) => {
+          if (!res || !res.confirm || this.photoGen !== gen || this.photoPicked !== picked || !this.canRetryPhoto()) return
+          this.runCloudScan(picked, gen, '正在上传，云端识别…', true)
+            .then((preview) => {
+              if (this.photoGen !== gen) return
+              if (!preview) this.restore(keep)
+            })
+            .catch((err) => {
+              if (this.photoGen !== gen) return
+              this.restore(keep)
+              this.onFail(err, '拍照识别失败', true)
+            })
+        },
+      })
+    },
+
+    snapshot() {
+      return {
+        state: this.data.state,
+        items: this.data.items,
+        text: this.data.text,
+        rawText: this.data.rawText,
+        parser: this.data.parser,
+        aiError: this.data.aiError,
+        tip: this.data.tip,
+        canCloudRetry: this.data.canCloudRetry,
+        ocrSource: this.data.ocrSource,
+      }
+    },
+
+    restore(keep) {
+      if (!keep) return
+      this.setData(keep)
+    },
+
+    /** 已经有文字了：交给票据整理。重试无可用结果时不覆盖原核对行，返回 null。 */
+    useOcrText(text, gen, keepPreview) {
+      const value = String(text || '')
+      if (!value.trim()) {
+        this.clearSlowTip()
+        this.setData({ state: 'idle', tip: '' })
+        ui.toast('这张没认出文字，靠近点重拍')
+        return Promise.resolve(null)
+      }
+      this.setData({ text: brief(value), rawText: value, tip: '正在整理…' })
+      return request.post('/api/v1/imports/receipt', { text: value }, { timeout: PARSE_TIMEOUT_MS }).then((preview) => {
+        if (this.photoGen !== gen) return null
+        if (keepPreview && (!preview || preview.parser === 'none' || !Array.isArray(preview.items) || !preview.items.length)) {
+          this.clearSlowTip()
+          ui.toast((preview && preview.ai_error) || '这张没整理出流水，保留原核对结果')
+          return null
+        }
+        this.applyPreview(preview, '这张没整理出流水，可以换一张')
+        return preview || null
+      })
+    },
+
+    /** 压到能送出去的体积，再走服务器认图。tip 由调用方按「自动回退 / 用户点的再认」分开写。 */
+    runCloudScan(picked, gen, tip, keepPreview) {
+      this.setData({ state: 'busy', tip: tip, canCloudRetry: false, ocrSource: 'cloud' })
+      this.armSlowTip()
+      return image.prepare(picked).then((ready) => {
+        if (!ready || this.photoGen !== gen) return null
+        return request.scanImage(ready)
+      }).then((res) => {
+        if (!res || this.photoGen !== gen) return null
+        return this.useOcrText((res && res.text) || '', gen, keepPreview)
+      })
     },
 
     // ---- 两条入口汇到这儿 ----
@@ -470,11 +643,14 @@ Component({
       })
     },
 
-    /** 用户点取消不算失败，别弹报错。 */
-    onFail(err, fallback) {
+    /**
+     * 用户点取消不算失败，别弹报错。
+     * keepState：云端再认失败时核对页还在，不能把 state 刷回 idle。
+     */
+    onFail(err, fallback, keepState) {
       this.clearSlowTip()
       const cancelled = err && err.code === 'cancelled'
-      this.setData({ state: 'idle', tip: '' })
+      if (!keepState) this.setData({ state: 'idle', tip: '' })
       if (cancelled) return
       const message = (err && err.message) || fallback
       if (err && (err.code === 'insufficient_points' || err.status === 403)) {

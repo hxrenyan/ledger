@@ -729,7 +729,13 @@ input.bare {
   gap: 12px;
 }
 .admin-table.users { --cols: minmax(180px, 1.7fr) 68px 156px 156px 76px 76px; }
-.admin-table.ledgers { --cols: minmax(160px, 1.5fr) minmax(120px, 1fr) 68px 76px 156px 156px; }
+.admin-table.ledgers { --cols: minmax(160px, 1.3fr) minmax(200px, 1.8fr) 72px 148px 148px; }
+.ledger-users { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ledger-user { font-size: 13px; line-height: 1.35; }
+.ledger-user small { margin-left: 4px; color: var(--admin-muted, #8e8e93); }
+.ledger-user em { margin-left: 6px; font-style: normal; font-size: 11px; color: var(--admin-brand, #3b5bdb); }
+.ledger-user em.off { color: var(--admin-danger, #e5484d); }
+.ledger-user.off { opacity: 0.55; }
 .admin-table.points { --cols: 28px minmax(160px, 1.6fr) 76px 88px 156px 68px; min-width: 760px; }
 .admin-sort {
   justify-self: start;

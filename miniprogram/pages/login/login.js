@@ -8,6 +8,7 @@ const request = require('../../utils/request')
 const session = require('../../utils/session')
 const config = require('../../config')
 const ui = require('../../utils/ui')
+const nav = require('../../utils/nav')
 
 function wxLogin() {
   return new Promise(function (resolve, reject) {
@@ -40,6 +41,7 @@ Page({
   },
 
   onLoad() {
+    if (nav.blockForUpdate()) return
     this.syncEnv()
     if (session.getToken()) {
       wx.reLaunch({ url: '/pages/home/home' })
@@ -59,6 +61,7 @@ Page({
   },
 
   browse() {
+    if (nav.blockForUpdate()) return
     const pages = getCurrentPages()
     if (pages.length > 1) wx.navigateBack()
     else wx.switchTab({ url: '/pages/home/home' })
@@ -76,6 +79,7 @@ Page({
   /** 登录成功后写会话并进首页。 */
   afterLogin(body) {
     session.apply(body)
+    if (nav.blockForUpdate()) return
     wx.reLaunch({ url: '/pages/home/home' })
   },
 

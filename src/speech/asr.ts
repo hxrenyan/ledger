@@ -1,7 +1,7 @@
 /**
  * 语音识别：多套配置，按 sort_order 接力。
  *
- * 一套超时、HTTP 失败或没有文本，就换下一套。不是多选一。
+ * 一套超时或 HTTP 失败，就换下一套。正常返回但没有文字时停在这一套，按空结果成功。
  * protocol 目前只有 openai-audio（POST {base}/audio/transcriptions，multipart file+model），
  * 硅基流动的 XingChenASR 走这条。以后换别的协议只加分支，不必改表。
  */
@@ -132,7 +132,7 @@ export async function transcribeOne(
   try {
     const payload = JSON.parse(body) as { text?: unknown }
     const text = typeof payload.text === 'string' ? payload.text.trim() : ''
-    if (!text) return { ok: false, error: '没有识别出文本' }
+    // 服务正常返回但没文字，是空结果，不是故障。接力停在这一套。
     return { ok: true, text }
   } catch {
     const text = body.trim()

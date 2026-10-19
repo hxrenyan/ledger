@@ -11,6 +11,7 @@ import { OCR_PROTOCOL, readOcrProfiles, recognizeOne, replaceOcrProfiles, toPubl
 import { imageFromFile } from './ocr.ts'
 import { adjustPoints, adjustPointsMany, assertWechatUser, listPointEntries, listWechatPointUsers } from '../points/adjust.ts'
 import { recognitionRestricted, setRecognitionRestricted } from '../points/wallet.ts'
+import { readClientConfig, saveClientConfig } from '../miniprogram/clientConfig.ts'
 import { readToolsMode, saveToolsMode } from '../tools/mode.ts'
 import { listAdminFeedback, parseFeedbackStatus, updateFeedback } from '../feedback/service.ts'
 
@@ -181,15 +182,56 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
        LEFT JOIN (
          SELECT ledger_id, COUNT(*) AS n FROM transactions GROUP BY ledger_id
        ) tc ON tc.ledger_id = l.id
-       ${like ? `WHERE (l.name LIKE ? ESCAPE '\\' OR u.username LIKE ? ESCAPE '\\' OR u.nickname LIKE ? ESCAPE '\\')` : ''}
+       ${
+         like
+           ? `WHERE (l.name LIKE ? ESCAPE '\\' OR u.username LIKE ? ESCAPE '\\' OR u.nickname LIKE ? ESCAPE '\\'
+               OR EXISTS (
+                 SELECT 1 FROM members sm
+                 JOIN users su ON su.id = sm.user_id
+                 WHERE sm.ledger_id = l.id
+                   AND (su.username LIKE ? ESCAPE '\\' OR su.nickname LIKE ? ESCAPE '\\')
+               ))`
+           : ''
+       }
        ORDER BY ${timeOrderSql('l', sort, order)}`,
-      like ? [like, like, like] : [],
+      like ? [like, like, like, like, like] : [],
     )
+    const ids = rows.map((row) => row.id)
+    const memberRows = ids.length
+      ? await c.get('db').all<{
+          ledger_id: number
+          role: string
+          id: number
+          username: string
+          nickname: string
+          disabled: number
+        }>(
+          `SELECT m.ledger_id, m.role, u.id, u.username, u.nickname, u.disabled
+           FROM members m
+           JOIN users u ON u.id = m.user_id
+           WHERE m.ledger_id IN (${ids.map(() => '?').join(',')})
+           ORDER BY m.ledger_id ASC, CASE WHEN m.role = 'owner' THEN 0 ELSE 1 END, u.id ASC`,
+          ids,
+        )
+      : []
+    const membersByLedger = new Map<number, { id: number; username: string; nickname: string; role: string; disabled: boolean }[]>()
+    for (const member of memberRows) {
+      const list = membersByLedger.get(member.ledger_id) ?? []
+      list.push({
+        id: member.id,
+        username: member.username,
+        nickname: member.nickname,
+        role: member.role,
+        disabled: Number(member.disabled) === 1,
+      })
+      membersByLedger.set(member.ledger_id, list)
+    }
     return c.json({
       items: rows.map((r) => ({
         ...r,
         member_count: Number(r.member_count),
         tx_count: Number(r.tx_count),
+        members: membersByLedger.get(r.id) ?? [],
       })),
     })
   })
@@ -317,6 +359,15 @@ export function registerAdminRoutes(app: Hono<AppEnv>) {
   app.put('/api/v1/admin/wechat', async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
     return c.json(await saveWechatAdminConfig(c.get('db'), body))
+  })
+
+  app.get('/api/v1/admin/miniprogram', async (c) => {
+    return c.json(await readClientConfig(c.get('db')))
+  })
+
+  app.put('/api/v1/admin/miniprogram', async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as Record<string, unknown>
+    return c.json(await saveClientConfig(c.get('db'), body))
   })
 
   app.get('/api/v1/admin/tools', async (c) => {

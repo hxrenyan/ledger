@@ -2,14 +2,19 @@
 
 拍一张小票 / 发票 / 支付截图 / 手写记账本，认出来 → 整理成流水行 → 逐行核对 → 存进账本。
 
-小程序（智能记账浮层的「拍一张」）和 H5（加号浮层、智能记账整页）都有这个入口，
-走的是同一套接口，区别只在客户端怎么把图压下来。
+小程序（智能记账浮层的「拍一张」）和 H5（加号浮层、智能记账整页）都有这个入口。
+小程序先在手机上认字，不够才上传；H5 直接上传。上传前的压图两边各自一份。
 
-链路分两步，**两步是两个不同的模型**，这点最容易踩：
+链路分两步，**两步是两个不同的模型**，这点最容易踩。小程序的第一步会先在手机上认：
 
 ```text
 照片
-  → 【第一步】图片识别（kind=ocr，OpenAI 兼容的 chat/completions + image_url data URL）
+  → 【小程序优先】微信 VisionKit 端侧 OCR（utils/localOcr.js，照片不上传）
+     有效文字够（至少 8 个字母 / 数字 / 汉字）就用这段
+     不够、12 秒超时、或这台设备不支持 → 落到下面的服务器识别
+     核对页可以点「云端再认一次」，确认后上传同一张图
+  → 【第一步 · 服务器】图片识别（kind=ocr，OpenAI 兼容的 chat/completions + image_url data URL）
+     H5 没有 VisionKit，始终从这里开始
      作用：把版面文字全认出来，不做结构化
   → 纯文本
   → 【第二步】票据文本 → 流水行（kind=llm，与口语记账共用一套配置）
@@ -58,7 +63,8 @@
 
 | 位置 | 职责 |
 |------|------|
-| `miniprogram/utils/image.js` | 小程序端**唯一**允许调 `wx.chooseMedia` / `wx.compressImage` 的地方 |
+| `miniprogram/utils/localOcr.js` | 小程序端**唯一**允许调 `wx.createVKSession` / `wx.createOffscreenCanvas` 的地方。本机先认，不够再上传 |
+| `miniprogram/utils/image.js` | 小程序端**唯一**允许调 `wx.chooseMedia` / `wx.compressImage` 的地方。压缩只服务上传 |
 | `miniprogram/utils/request.js` | `scanImage()` 按通道分流；`imageLimit()` 给出对应的体积上限 |
 | `miniprogram/components/ai-panel/` | 小程序智能记账浮层：语音与拍照两条入口，共用核对与提交 |
 | `web/src/photoSteps.ts` | H5 压图的**决策**（梯度、起始档位）。纯函数，拆出来是为了能单测 |
@@ -66,6 +72,21 @@
 | `web/src/components/ShotButton.vue` | H5 的相机入口（隐藏的 `input[type=file]`），两个 UI 处共用 |
 | `web/src/voice.ts` | H5 共用逻辑：`checkPhoto()` / `pickPhoto()`，与语音汇到同一段核对 |
 | `web/src/components/VoiceSheet.vue`、`web/src/pages/Speak.vue` | H5 的两个入口：加号浮层、智能记账整页 |
+
+### 小程序先在手机上认
+
+`utils/localOcr.js` 用微信 VisionKit 的静态图模式（`OCR mode: 2`，基础库 2.27.0+）：
+
+1. 选图后不先走上传用的压缩梯度，原图画进离屏 canvas，长边收到 1280 以内，拷一份 RGBA 再 `runOCR`。
+2. 文字块都有坐标时按从上到下、从左到右拼接；否则保持微信返回的顺序。
+3. 字母、数字、汉字合计少于 8 个，或者 12 秒内没结果、设备不支持，改走原来的 `/ocr/scan`。提示是「本机没认全，改用云端识别…」。
+4. 本机认全时核对页标明「本机识别」，并给出「云端再认一次」。点下去要确认：照片这才上传，整理成流水按这一次重新计积分。云端失败、没认出字、文本整理失败（`parser: 'none'`）或未整理出记录时，保留确认前的核对行及用户已修改但未保存的内容；只有解析出可用记录才替换。
+5. 关掉浮层再打开、或开始新一轮语音时，会作废上一轮的照片与认图回调。语音核对页不显示图片识别来源或云端重试；迟到的选图、积分检查与上传确认也不能上传上一张照片或覆盖语音内容。
+
+端侧这一步不占图片识别次数、不扣积分。积分仍在第二步「整理成流水」上扣，规则见 [points.md](points.md)。
+服务器没配图片识别时，只要这台手机能跑 VisionKit，拍照入口仍然在；认不全再请求服务器，会得到「没有可用的图片识别配置」。
+
+H5 没有这个接口，拍照仍整张上传。
 
 ### 为什么压图必须集中在一处
 
@@ -80,12 +101,12 @@
 | 直连（开发者工具 / 真机调试） | 3MB | 后端 6MB，留一倍余量 |
 | 云（体验版 / 正式版） | 600KB | event 1MB ÷ 4/3，再留余量 |
 
-压缩梯度（`utils/image.js` 的 `STEPS`）是**先降质量、再降分辨率**：
+压缩只发生在要上传的时候（本机认字用原图，不走这条梯度）。梯度（`utils/image.js` 的 `STEPS`）是**先降质量、再降分辨率**：
 小票上真正要读的是数字，先缩图会先把它糊掉。起始档位由 `startStep()` 这个纯函数决定
 （按最坏情况估算，再往前让一档 —— 多压一轮只多花一两百毫秒，压过头是永久损失清晰度），
 真机上再逐档压完核对实际体积收敛。
 
-`check.mjs` 第 16 条会拦住绕开 `utils/image.js` 的写法（只覆盖小程序）。
+`check.mjs` 第 16 条会拦住绕开 `utils/image.js` 的写法，第 17 条会拦住绕开 `utils/localOcr.js` 的写法（只覆盖小程序）。
 
 ### H5 那份的差别
 
@@ -124,4 +145,6 @@ H5 那边是内存里的 blob，用完交给 GC。需求上也不需要留存 �
 | `web/src/pages/admin/AdminOcr.vue` | 后台配置页 |
 | `test/ocr.test.ts` | 后端：接力、两种送法、体积与类型守卫 |
 | `test/web-photo.test.ts` | H5 压图的决策逻辑 + 与小程序的一致性 |
+| `miniprogram/utils/localOcr.js` | 端侧认字：缩放、文字块顺序、够不够长、像素缓冲、VisionKit 会话 |
+| `test/miniprogram-local-ocr.test.ts` | 上面纯函数的单测（不跑真机 VisionKit） |
 | `test/miniprogram-image.test.ts` | 小程序压图的决策逻辑 |

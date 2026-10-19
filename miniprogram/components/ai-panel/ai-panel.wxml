@@ -1,4 +1,11 @@
-<view class="ap-mask" wx:if="{{show}}" bindtap="close">
+<!-- 松手可能已经不在圆按钮上（手指挪开、或按钮刚被 setData 刷新）。结束绑在蒙版上，松在哪都停。 -->
+<view
+  class="ap-mask"
+  wx:if="{{show}}"
+  bindtap="close"
+  bindtouchend="finishRecord"
+  bindtouchcancel="finishRecord"
+>
   <view class="ap-sheet" catchtap="noop">
     <view class="ap-head">
       <view class="ap-title">智能记账</view>
@@ -20,17 +27,17 @@
 
       <view class="ap-hint" wx:if="{{!(state === 'idle' && parser === 'none')}}">{{tip || hintText}}</view>
 
+      <!-- 圆按钮里的文字始终是同一个节点。wx:if 换字会拆掉按下时的目标，松手事件就丢了。 -->
       <view
         class="ap-talk {{state === 'recording' ? 'on' : ''}}"
         wx:if="{{canSpeak || state === 'recording'}}"
         hover-class="none"
-        catchtouchmove="noop"
         bindtouchstart="startRecord"
+        bindtouchmove="noop"
         bindtouchend="finishRecord"
         bindtouchcancel="finishRecord"
       >
-        <text wx:if="{{state === 'recording'}}">{{seconds}}" · 松开结束</text>
-        <text wx:else>按住说话</text>
+        <text class="ap-talk-label">{{talkText}}</text>
       </view>
 
       <!-- 录音时仍占位。拿掉它浮层会变矮，按住的圆按钮会从手指底下挪走。 -->
@@ -38,6 +45,7 @@
         <view class="ap-photo-ico"></view>
         <text>拍一张小票 / 支付截图</text>
       </view>
+      <view class="ap-cloud" wx:if="{{mode === 'photo' && canCloudRetry && state !== 'recording'}}" bindtap="cloudRetry">本机结果不准？云端再认一次</view>
     </block>
 
     <!-- 识别中 -->
@@ -51,6 +59,8 @@
       <view class="ap-text" wx:if="{{text}}">“{{text}}”</view>
       <view class="ap-meta">
         共 {{items.length}} 行 · {{parser === 'ai' ? 'AI 解析' : '规则解析'}}
+        <text wx:if="{{mode === 'photo' && ocrSource === 'local'}}"> · 本机识别</text>
+        <text wx:elif="{{mode === 'photo' && ocrSource === 'cloud'}}"> · 云端识别</text>
         <text wx:if="{{aiError}}">（{{aiError}}）</text>
       </view>
 
@@ -125,6 +135,7 @@
         </view>
       </scroll-view>
 
+      <view class="ap-cloud" wx:if="{{mode === 'photo' && canCloudRetry}}" bindtap="cloudRetry">本机结果不准？云端再认一次</view>
       <view class="ap-actions">
         <button class="btn ghost" bindtap="retry">{{mode === 'photo' ? '换一张' : '重说'}}</button>
         <button class="btn" bindtap="commit">保存 {{items.length}} 笔</button>

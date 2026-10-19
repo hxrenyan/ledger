@@ -1,0 +1,9 @@
+<view class="page force-page">
+  <view class="card">
+    <view class="title">需要更新</view>
+    <view class="body">{{message}}</view>
+    <view class="hint" wx:if="{{!failed}}">正在下载新版本，完成后会自动重新进入。</view>
+    <view class="hint" wx:else>没有下到新版本。请在微信里删除小程序后，重新搜索打开。</view>
+    <button wx:if="{{failed}}" class="btn" bindtap="retry">重新检查</button>
+  </view>
+</view>

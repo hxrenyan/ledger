@@ -92,6 +92,9 @@ function loadRequestModule(
     if (id === '../config') return configStub
     if (id === './session') return sessionStub
     if (id === './transport') return transport
+    if (id === './nav') {
+      return loadModule(readFileSync(join(process.cwd(), 'miniprogram/utils/nav.js'), 'utf8'), wx, () => undefined, 'nav.js')
+    }
     throw new Error(`request.js 里出现了预期外的 require('${id}')`)
   }
   // wx 作为参数注入，模块里对 wx 的引用就会落到这个桩上。

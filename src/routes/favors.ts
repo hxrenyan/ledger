@@ -19,18 +19,26 @@ import { dateTimeToOccurredAt, dateToOccurredAt } from '../time.ts'
 
 const OCCASION_MAX = 16
 
+/** 一个人最多记这么多条日子。 */
+const DATE_LIMIT = 8
+
 type ContactRow = {
   id: number
   name: string
   relation: string
   archived: number
-  date_item_id: number
+}
+
+type DateRow = {
+  id: number
+  contact_id: number
+  item_id: number
   date_name: string | null
-  date_calendar: string
-  date_month: number | null
-  date_day: number | null
-  date_year: number | null
-  date_leap: number
+  calendar: string
+  month: number
+  day: number
+  year: number | null
+  leap: number
 }
 
 type GiftRow = {
@@ -49,30 +57,25 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
   app.get('/api/v1/contacts', async (c) => {
     const db = c.get('db')
     const ledgerId = c.get('ledgerId')
-    const rows = await db.all<
-      ContactRow & { given_cents: number; received_cents: number }
-    >(
+    const rows = await db.all<ContactRow & { given_cents: number; received_cents: number }>(
       `SELECT c.id, c.name, c.relation, c.archived,
-              c.date_item_id, c.date_calendar, c.date_month, c.date_day, c.date_year, c.date_leap,
-              d.name AS date_name,
               COALESCE(SUM(CASE WHEN g.kind = 'give' THEN g.amount_cents ELSE 0 END), 0) AS given_cents,
               COALESCE(SUM(CASE WHEN g.kind = 'receive' THEN g.amount_cents ELSE 0 END), 0) AS received_cents
        FROM contacts c
-       LEFT JOIN dict_items d ON d.id = c.date_item_id AND d.kind = ?
-         AND (d.ledger_id IS NULL OR d.ledger_id = c.ledger_id)
        LEFT JOIN gifts g ON g.contact_id = c.id
        WHERE c.ledger_id = ?
        GROUP BY c.id
        ORDER BY c.archived ASC, c.name COLLATE NOCASE ASC`,
-      [CONTACT_DATE_KIND, ledgerId],
+      [ledgerId],
     )
     const today = todayYmd()
+    const byContact = groupDates(await loadContactDates(db, ledgerId))
     return c.json({
       items: rows.map((r) => {
         const given = Number(r.given_cents) || 0
         const received = Number(r.received_cents) || 0
         return {
-          ...shapeContact(r, today),
+          ...shapeContact(r, byContact.get(r.id) ?? [], today),
           given_cents: given,
           received_cents: received,
           net_cents: received - given,
@@ -177,12 +180,15 @@ function shapeGift(row: GiftRow & { contact_name?: string }) {
   }
 }
 
-const CONTACT_SQL = `SELECT c.id, c.name, c.relation, c.archived,
-            c.date_item_id, c.date_calendar, c.date_month, c.date_day, c.date_year, c.date_leap,
-            d.name AS date_name
-     FROM contacts c
-     LEFT JOIN dict_items d ON d.id = c.date_item_id AND d.kind = ?
-       AND (d.ledger_id IS NULL OR d.ledger_id = c.ledger_id)`
+const CONTACT_SQL = `SELECT id, name, relation, archived FROM contacts`
+
+type ShapedDate = ContactDate & {
+  id: number
+  item_id: number
+  label: string
+  kind_label: string
+  reminder: ReturnType<typeof buildReminder>
+}
 
 function assertName(raw: unknown, label: string): string {
   if (typeof raw !== 'string' || !raw.trim() || raw.trim().length > 32) {
@@ -191,58 +197,175 @@ function assertName(raw: unknown, label: string): string {
   return raw.trim()
 }
 
-function shapeContact(row: ContactRow, today: Ymd) {
-  const date = contactDateOf(row)
+function shapeContact(row: ContactRow, dateRows: DateRow[], today: Ymd) {
+  const dates = dateRows.map((item) => shapeDate(item, today)).filter((item): item is ShapedDate => item != null)
+  const primary = pickPrimary(dates)
   return {
     id: row.id,
     name: row.name,
     relation: row.relation,
     archived: !!row.archived,
-    date: date
-      ? { ...date, item_id: row.date_item_id, label: dateLabel(date), kind_label: dateKindLabel(date.kind) }
-      : null,
+    dates: dates.map(publicDate),
+    date: primary ? publicDate(primary) : null,
+    reminder: primary?.reminder ?? null,
+  }
+}
+
+function publicDate(date: ShapedDate) {
+  return {
+    id: date.id,
+    kind: date.kind,
+    calendar: date.calendar,
+    month: date.month,
+    day: date.day,
+    year: date.year,
+    leap: date.leap,
+    item_id: date.item_id,
+    label: date.label,
+    kind_label: date.kind_label,
+    reminder: date.reminder,
+  }
+}
+
+function shapeDate(row: DateRow, today: Ymd): ShapedDate | null {
+  const kind = normalizeDateKind(row.date_name || '')
+  if (!kind || !row.item_id) return null
+  if (row.calendar !== 'solar' && row.calendar !== 'lunar') return null
+  if (row.month == null || row.day == null) return null
+  const date: ContactDate = {
+    kind,
+    calendar: row.calendar,
+    month: Number(row.month),
+    day: Number(row.day),
+    year: row.year == null ? null : Number(row.year),
+    leap: !!row.leap,
+  }
+  return {
+    ...date,
+    id: row.id,
+    item_id: row.item_id,
+    label: dateLabel(date),
+    kind_label: dateKindLabel(date.kind),
     reminder: buildReminder(date, today),
   }
 }
 
-function contactDateOf(row: ContactRow): ContactDate | null {
-  const kind = normalizeDateKind(row.date_name || '')
-  if (!kind || !row.date_item_id) return null
-  if (row.date_calendar !== 'solar' && row.date_calendar !== 'lunar') return null
-  if (row.date_month == null || row.date_day == null) return null
-  return {
-    kind,
-    calendar: row.date_calendar,
-    month: Number(row.date_month),
-    day: Number(row.date_day),
-    year: row.date_year == null ? null : Number(row.date_year),
-    leap: !!row.date_leap,
-  }
+/** 即将到来的优先，其次是刚过去的。都没有就用第一条。 */
+function pickPrimary(dates: ShapedDate[]): ShapedDate | null {
+  const upcoming = dates
+    .filter((item) => item.reminder?.state === 'upcoming')
+    .sort((a, b) => (a.reminder?.days ?? 0) - (b.reminder?.days ?? 0))
+  if (upcoming[0]) return upcoming[0]
+  const past = dates
+    .filter((item) => item.reminder?.state === 'past')
+    .sort((a, b) => (a.reminder?.days ?? 0) - (b.reminder?.days ?? 0))
+  return past[0] ?? dates[0] ?? null
 }
 
-/** body 没带 date 就保持原样；null 表示清掉。 */
-function readDatePatch(body: Record<string, unknown>, today: Ymd): ContactDate | null | undefined {
+/**
+ * 没带 dates / date 就保持原样。
+ * dates 是整表替换；只带 date 时也替换成这一条，date 为 null 则清空。
+ */
+function readDatesPatch(body: Record<string, unknown>, today: Ymd): ContactDate[] | undefined {
+  if (Object.prototype.hasOwnProperty.call(body, 'dates')) {
+    if (!Array.isArray(body.dates)) throw badRequest('日子须为列表')
+    if (body.dates.length > DATE_LIMIT) throw badRequest(`日子最多 ${DATE_LIMIT} 个`)
+    const parsed = body.dates.map((item) => parseOneDate(item, today))
+    const seen = new Set<string>()
+    for (const date of parsed) {
+      const key = `${date.kind}|${date.calendar}|${date.month}|${date.day}|${date.year ?? ''}|${date.leap ? 1 : 0}`
+      if (seen.has(key)) throw badRequest('同一日子不能重复')
+      seen.add(key)
+    }
+    return parsed
+  }
   if (!Object.prototype.hasOwnProperty.call(body, 'date')) return undefined
-  if (body.date == null) return null
+  if (body.date == null) return []
+  return [parseOneDate(body.date, today)]
+}
+
+function parseOneDate(raw: unknown, today: Ymd): ContactDate {
   try {
-    return parseContactDate(body.date, today)
+    return parseContactDate(raw, today)
   } catch (e) {
     throw badRequest(e instanceof Error ? e.message : '日期无效')
   }
 }
 
-async function dateFields(db: AppEnv['Variables']['db'], ledgerId: number, date: ContactDate | null) {
-  if (!date) return { itemId: 0, name: '', calendar: '', month: null as number | null, day: null as number | null, year: null as number | null, leap: 0 }
-  const item = await ensureDictItem(db, ledgerId, CONTACT_DATE_KIND, date.kind)
-  return {
-    itemId: item.id,
-    name: item.name,
-    calendar: date.calendar,
-    month: date.month,
-    day: date.day,
-    year: date.year,
-    leap: date.leap ? 1 : 0,
+async function loadContactDates(db: AppEnv['Variables']['db'], ledgerId: number, contactId?: number) {
+  if (contactId != null) {
+    return db.all<DateRow>(
+      `SELECT d.id, d.contact_id, d.item_id, d.calendar, d.month, d.day, d.year, d.leap, di.name AS date_name
+       FROM contact_dates d
+       LEFT JOIN dict_items di ON di.id = d.item_id AND di.kind = ?
+         AND (di.ledger_id IS NULL OR di.ledger_id = d.ledger_id)
+       WHERE d.ledger_id = ? AND d.contact_id = ?
+       ORDER BY d.sort_order ASC, d.id ASC`,
+      [CONTACT_DATE_KIND, ledgerId, contactId],
+    )
   }
+  return db.all<DateRow>(
+    `SELECT d.id, d.contact_id, d.item_id, d.calendar, d.month, d.day, d.year, d.leap, di.name AS date_name
+     FROM contact_dates d
+     LEFT JOIN dict_items di ON di.id = d.item_id AND di.kind = ?
+       AND (di.ledger_id IS NULL OR di.ledger_id = d.ledger_id)
+     WHERE d.ledger_id = ?
+     ORDER BY d.contact_id ASC, d.sort_order ASC, d.id ASC`,
+    [CONTACT_DATE_KIND, ledgerId],
+  )
+}
+
+function groupDates(rows: DateRow[]) {
+  const map = new Map<number, DateRow[]>()
+  for (const row of rows) {
+    const list = map.get(row.contact_id) ?? []
+    list.push(row)
+    map.set(row.contact_id, list)
+  }
+  return map
+}
+
+async function dateCols(db: AppEnv['Variables']['db'], ledgerId: number, dates: ContactDate[]) {
+  const cols = []
+  for (const date of dates) {
+    const item = await ensureDictItem(db, ledgerId, CONTACT_DATE_KIND, date.kind)
+    cols.push({ ...date, itemId: item.id })
+  }
+  return cols
+}
+
+function replaceDateStmts(
+  ledgerId: number,
+  contactId: number,
+  cols: Awaited<ReturnType<typeof dateCols>>,
+  now: number,
+) {
+  const stmts: { sql: string; params: unknown[] }[] = [
+    {
+      sql: `DELETE FROM contact_dates WHERE ledger_id = ? AND contact_id = ?`,
+      params: [ledgerId, contactId],
+    },
+  ]
+  cols.forEach((col, index) => {
+    stmts.push({
+      sql: `INSERT INTO contact_dates
+              (ledger_id, contact_id, item_id, calendar, month, day, year, leap, sort_order, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      params: [
+        ledgerId,
+        contactId,
+        col.itemId,
+        col.calendar,
+        col.month,
+        col.day,
+        col.year,
+        col.leap ? 1 : 0,
+        index,
+        now,
+      ],
+    })
+  })
+  return stmts
 }
 
 async function upsertContact(
@@ -254,98 +377,95 @@ async function upsertContact(
   const name = body.name != null ? assertName(body.name, '姓名') : ''
   const relation = typeof body.relation === 'string' ? body.relation.trim().slice(0, 16) : ''
   const today = todayYmd()
-  const datePatch = readDatePatch(body, today)
+  const datesPatch = readDatesPatch(body, today)
   if (!id) {
     if (!name) throw badRequest('姓名须为 1–32 字')
     const existing = await db.first<ContactRow>(
-      `${CONTACT_SQL}
-       WHERE c.ledger_id = ? AND c.name = ? AND c.archived = 0`,
-      [CONTACT_DATE_KIND, ledgerId, name],
+      `${CONTACT_SQL} WHERE ledger_id = ? AND name = ? AND archived = 0`,
+      [ledgerId, name],
     )
     if (existing) {
-      if (datePatch === undefined) return shapeContact(existing, today)
-      const cols = await dateFields(db, ledgerId, datePatch)
+      if (datesPatch === undefined) {
+        const dates = await loadContactDates(db, ledgerId, existing.id)
+        return shapeContact(existing, dates, today)
+      }
+      const cols = await dateCols(db, ledgerId, datesPatch)
       const nextRel = body.relation != null ? relation : existing.relation
-      await db.run(
-        `UPDATE contacts
-         SET relation = ?, date_item_id = ?, date_calendar = ?, date_month = ?, date_day = ?, date_year = ?, date_leap = ?
-         WHERE id = ?`,
-        [nextRel, cols.itemId, cols.calendar, cols.month, cols.day, cols.year, cols.leap, existing.id],
+      const now = Date.now()
+      await db.batch([
+        {
+          sql: `UPDATE contacts SET relation = ? WHERE id = ? AND ledger_id = ?`,
+          params: [nextRel, existing.id, ledgerId],
+        },
+        ...replaceDateStmts(ledgerId, existing.id, cols, now),
+      ])
+      return shapeContact(
+        { ...existing, relation: nextRel },
+        await loadContactDates(db, ledgerId, existing.id),
+        today,
       )
-      return shapeContact({ ...existing, relation: nextRel, ...dateRow(cols) }, today)
     }
     const now = Date.now()
-    const cols = await dateFields(db, ledgerId, datePatch ?? null)
-    const created = await db.first<{ id: number }>(
-      `INSERT INTO contacts
-        (ledger_id, name, relation, archived, created_at, date_item_id, date_calendar, date_month, date_day, date_year, date_leap)
-       VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-      [ledgerId, name, relation, now, cols.itemId, cols.calendar, cols.month, cols.day, cols.year, cols.leap],
-    )
-    if (!created) throw new Error('联系人创建失败')
-    return shapeContact(
+    const cols = await dateCols(db, ledgerId, datesPatch ?? [])
+    const inserted = await db.batch([
       {
-        id: created.id,
-        name,
-        relation,
-        archived: 0,
-        ...dateRow(cols),
+        sql: `INSERT INTO contacts (ledger_id, name, relation, archived, created_at) VALUES (?, ?, ?, 0, ?)`,
+        params: [ledgerId, name, relation, now],
       },
+      ...cols.map((col, index) => ({
+        sql: `INSERT INTO contact_dates
+                (ledger_id, contact_id, item_id, calendar, month, day, year, leap, sort_order, created_at)
+              SELECT ?, c.id, ?, ?, ?, ?, ?, ?, ?, ?
+              FROM contacts c
+              WHERE c.ledger_id = ? AND c.name = ? AND c.created_at = ?
+              ORDER BY c.id DESC
+              LIMIT 1`,
+        params: [
+          ledgerId,
+          col.itemId,
+          col.calendar,
+          col.month,
+          col.day,
+          col.year,
+          col.leap ? 1 : 0,
+          index,
+          now,
+          ledgerId,
+          name,
+          now,
+        ],
+      })),
+    ])
+    const createdId = inserted[0]?.lastId
+    if (createdId == null) throw new Error('联系人创建失败')
+    return shapeContact(
+      { id: createdId, name, relation, archived: 0 },
+      await loadContactDates(db, ledgerId, createdId),
       today,
     )
   }
-  const row = await db.first<ContactRow>(
-    `${CONTACT_SQL} WHERE c.id = ? AND c.ledger_id = ?`,
-    [CONTACT_DATE_KIND, id, ledgerId],
-  )
+  const row = await db.first<ContactRow>(`${CONTACT_SQL} WHERE id = ? AND ledger_id = ?`, [id, ledgerId])
   if (!row) throw notFound('联系人不存在')
   const nextName = name || row.name
   const nextRel = body.relation != null ? relation : row.relation
   const archived = body.archived != null ? (body.archived ? 1 : 0) : row.archived
-  const cols = datePatch === undefined ? fieldsOf(row) : await dateFields(db, ledgerId, datePatch)
-  await db.run(
-    `UPDATE contacts
-     SET name = ?, relation = ?, archived = ?, date_item_id = ?, date_calendar = ?, date_month = ?, date_day = ?, date_year = ?, date_leap = ?
-     WHERE id = ?`,
-    [nextName, nextRel, archived, cols.itemId, cols.calendar, cols.month, cols.day, cols.year, cols.leap, id],
-  )
-  return shapeContact(
+  const now = Date.now()
+  const stmts: { sql: string; params: unknown[] }[] = [
     {
-      id,
-      name: nextName,
-      relation: nextRel,
-      archived,
-      ...dateRow(cols),
+      sql: `UPDATE contacts SET name = ?, relation = ?, archived = ? WHERE id = ? AND ledger_id = ?`,
+      params: [nextName, nextRel, archived, id, ledgerId],
     },
+  ]
+  if (datesPatch !== undefined) {
+    const cols = await dateCols(db, ledgerId, datesPatch)
+    stmts.push(...replaceDateStmts(ledgerId, id, cols, now))
+  }
+  await db.batch(stmts)
+  return shapeContact(
+    { id, name: nextName, relation: nextRel, archived },
+    await loadContactDates(db, ledgerId, id),
     today,
   )
-}
-
-function fieldsOf(row: ContactRow) {
-  return {
-    itemId: row.date_item_id,
-    name: row.date_name || '',
-    calendar: row.date_calendar,
-    month: row.date_month,
-    day: row.date_day,
-    year: row.date_year,
-    leap: row.date_leap,
-  }
-}
-
-function dateRow(cols: ReturnType<typeof fieldsOf>): Pick<
-  ContactRow,
-  'date_item_id' | 'date_name' | 'date_calendar' | 'date_month' | 'date_day' | 'date_year' | 'date_leap'
-> {
-  return {
-    date_item_id: cols.itemId,
-    date_name: cols.name,
-    date_calendar: cols.calendar,
-    date_month: cols.month,
-    date_day: cols.day,
-    date_year: cols.year,
-    date_leap: cols.leap,
-  }
 }
 
 async function upsertGift(c: Context<AppEnv>, id: number | null, body: Record<string, unknown>) {

@@ -3,6 +3,7 @@ import { createApp } from '../src/app.ts'
 import { ensureMigrated } from '../src/db/migrate.ts'
 import { createSqliteDb } from '../src/db/sqlite.ts'
 import { detectFavor, parseUtterances } from '../src/imports/favor.ts'
+import { setRecognitionRestricted } from '../src/points/wallet.ts'
 import { transcribeChain, type AsrProfile } from '../src/speech/asr.ts'
 
 async function setup() {
@@ -108,6 +109,41 @@ describe('语音识别多套接力', () => {
     )
     expect(res).toMatchObject({ ok: true, text: '给张三随了500', profile: '3' })
     expect(called).toEqual(['bad', 'XingChenAGI/XingChenASR-V3.2-Ultra'])
+  })
+
+  it('没有识别出文本时返回空文本，不再试下一套，也不扣积分', async () => {
+    const { app, db } = await setup()
+    await setRecognitionRestricted(db, true)
+    await db.run(
+      `INSERT INTO ai_profiles (kind, name, enabled, protocol, base_url, api_key, model, sort_order, updated_at)
+       VALUES ('asr', '主', 1, 'openai-audio', 'https://api.example.com/v1', 'sk-test', 'first', 0, 1),
+              ('asr', '备', 1, 'openai-audio', 'https://api.example.com/v1', 'sk-test', 'second', 1, 1)`,
+    )
+    const { headers } = await wechatSession(app, 'empty-speech')
+    const called: string[] = []
+    globalThis.fetch = async (_url, init) => {
+      const model = String(init?.body && (init.body as FormData).get('model'))
+      called.push(model)
+      return new Response(JSON.stringify({ text: '   ' }), { status: 200 })
+    }
+    const user = await db.first<{ id: number }>(`SELECT id FROM users WHERE username LIKE 'wx_%' ORDER BY id DESC`)
+    const before = await db.first<{ balance: number }>(`SELECT balance FROM point_accounts WHERE user_id = ?`, [user?.id])
+    const form = new FormData()
+    form.set('file', new File([new Uint8Array([1, 2, 3, 4])], 'a.mp3', { type: 'audio/mpeg' }))
+    form.set('duration_ms', '2000')
+    const speech = await json(app, '/api/v1/speech/transcribe', {
+      method: 'POST',
+      headers: { authorization: headers.authorization, 'x-ledger-id': headers['x-ledger-id'] },
+      body: form,
+    })
+    expect(speech.status).toBe(200)
+    expect(speech.body).toMatchObject({ text: '', profile: '主', points: { charged: 0, balance: before?.balance } })
+    expect(called).toEqual(['first'])
+    const speechEntries = await db.first<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM point_entries WHERE user_id = ? AND kind = 'speech'`,
+      [user?.id],
+    )
+    expect(Number(speechEntries?.n)).toBe(0)
   })
 
   it('管理端按顺序保存多套，密钥只回显掩码', async () => {

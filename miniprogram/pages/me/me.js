@@ -246,6 +246,7 @@ Page({
   },
 
   openFeedback() {
+    if (nav.blockForUpdate()) return
     if (!session.getToken()) {
       session.goLogin()
       return
@@ -254,6 +255,7 @@ Page({
   },
 
   openPoints() {
+    if (nav.blockForUpdate()) return
     if (!session.getToken()) {
       session.goLogin()
       return
@@ -402,7 +404,7 @@ Page({
     ui.confirm('退出后需要重新登录。').then((yes) => {
       if (!yes) return
       session.clear()
-      wx.reLaunch({ url: '/pages/login/login' })
+      if (!nav.blockForUpdate()) wx.reLaunch({ url: '/pages/login/login' })
     })
   },
 
@@ -411,11 +413,23 @@ Page({
   },
 
   about() {
-    wx.showModal({
-      title: '记账',
-      content:
-        '个人和家庭记账。记录收入、支出和转账，查看月度明细与预算，管理账户和分类。可以建多个账本，邀请家人一起记，也能记人情往来、做周期记账、导入和导出账单。',
-      showCancel: false,
-    })
+    const app = getApp()
+    const show = function (text) {
+      wx.showModal({
+        title: text.title,
+        content: text.content,
+        showCancel: false,
+      })
+    }
+    // 每次打开都读一次。启动时缓存的是旧文案，后台刚改完再点「关于」必须看到新的。
+    return request
+      .get('/api/v1/app/client', null, { withLedger: false })
+      .then(function (body) {
+        if (body) app.globalData.client = body
+        show(app.aboutText())
+      })
+      .catch(function () {
+        show(app.aboutText())
+      })
   },
 })

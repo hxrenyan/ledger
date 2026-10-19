@@ -27,6 +27,31 @@ export async function upgradeSchema(db: Db) {
   await rebuildAttachments(db)
   await dropColumn(db, 'contacts', 'note')
   await dropColumn(db, 'recurrences', 'to_account_id')
+  await moveContactDates(db)
+}
+
+/** 联系人上的单条日子挪到 contact_dates，再丢掉旧列。已经迁过的库是空操作。 */
+async function moveContactDates(db: Db) {
+  if (!(await tableExists(db, 'contacts')) || !(await tableExists(db, 'contact_dates'))) return
+  const cols = await columnNames(db, 'contacts')
+  if (!cols.includes('date_item_id')) return
+  await db.run(
+    `INSERT INTO contact_dates
+       (ledger_id, contact_id, item_id, calendar, month, day, year, leap, sort_order, created_at)
+     SELECT ledger_id, id, date_item_id, date_calendar, date_month, date_day, date_year, date_leap, 0, created_at
+     FROM contacts
+     WHERE date_item_id > 0 AND date_month IS NOT NULL AND date_day IS NOT NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM contact_dates d
+         WHERE d.ledger_id = contacts.ledger_id AND d.contact_id = contacts.id
+       )`,
+  )
+  await dropColumn(db, 'contacts', 'date_item_id')
+  await dropColumn(db, 'contacts', 'date_calendar')
+  await dropColumn(db, 'contacts', 'date_month')
+  await dropColumn(db, 'contacts', 'date_day')
+  await dropColumn(db, 'contacts', 'date_year')
+  await dropColumn(db, 'contacts', 'date_leap')
 }
 
 async function mergeLegacyProfiles(db: Db) {

@@ -15,6 +15,8 @@ const name = ref('')
 const relation = ref('')
 const archived = ref(false)
 const tags = ref<string[]>([])
+const dates = ref<DateDraft[]>([])
+const editingIndex = ref<number | null>(null)
 const selected = ref('')
 const draft = ref('')
 const naming = ref(false)
@@ -28,12 +30,14 @@ const leap = ref(false)
 const error = ref('')
 const saving = ref(false)
 const loading = ref(false)
+const DATE_LIMIT = 8
 
 const activeLabel = computed(() => {
   if (naming.value && draft.value.trim()) return draft.value.trim()
   return selected.value.trim()
 })
 const showDateDetail = computed(() => Boolean(selected.value || naming.value))
+const atLimit = computed(() => editingIndex.value == null && dates.value.length >= DATE_LIMIT)
 
 const monthOptions = computed(() => {
   if (calendar.value === 'lunar') return lunarMonths.map((label, index) => ({ value: index + 1, label }))
@@ -59,15 +63,10 @@ onMounted(async () => {
     name.value = found.name
     relation.value = found.relation || ''
     archived.value = !!found.archived
-    if (found.date) {
-      const label = found.date.kind_label || found.date.kind
-      selected.value = label
-      calendar.value = found.date.calendar
-      month.value = found.date.month
-      day.value = found.date.day
-      year.value = found.date.year ? String(found.date.year) : ''
-      leap.value = !!found.date.leap
-      if (label && !tags.value.includes(label)) tags.value.unshift(label)
+    const loaded = found.dates?.length ? found.dates : found.date ? [found.date] : []
+    dates.value = loaded.map((item, index) => draftFrom(item, index))
+    for (const item of dates.value) {
+      if (item.kind && !tags.value.includes(item.kind)) tags.value.unshift(item.kind)
     }
   } catch (err) {
     error.value = err instanceof Error ? err.message : '加载失败'
@@ -85,11 +84,111 @@ function pickQuickRelation(rel: string) {
   relation.value = relation.value.trim() === rel ? '' : rel
 }
 
-function clearDate() {
+function clearComposer() {
   selected.value = ''
   draft.value = ''
   naming.value = false
+  editingIndex.value = null
+  calendar.value = 'solar'
+  month.value = 1
+  day.value = 1
+  year.value = ''
+  leap.value = false
   error.value = ''
+}
+
+function draftFrom(item: ContactDateRow, index: number): DateDraft {
+  return {
+    key: `d-${item.id || index}`,
+    kind: item.kind_label || item.kind,
+    calendar: item.calendar,
+    month: item.month,
+    day: item.day,
+    year: item.year ? String(item.year) : '',
+    leap: !!item.leap,
+  }
+}
+
+function summaryOf(item: DateDraft) {
+  const cal = item.calendar === 'lunar' ? '农历' : '阳历'
+  const monthText =
+    item.calendar === 'lunar'
+      ? `${item.leap ? '闰' : ''}${lunarMonths[item.month - 1] || ''}${dayLabelOf(item.day, 'lunar')}`
+      : `${item.month}月${item.day}日`
+  const yearText = item.year ? `${item.year}年` : ''
+  return `${item.kind} · ${cal} ${yearText}${monthText}`
+}
+
+function dayLabelOf(value: number, kind: CalendarKind) {
+  if (kind === 'solar') return `${value}日`
+  const n = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
+  if (value <= 10) return `初${n[value]}`
+  if (value < 20) return `十${n[value - 10]}`
+  if (value === 20) return '二十'
+  if (value < 30) return `廿${n[value - 20]}`
+  return '三十'
+}
+
+function currentDraft(): DateDraft | null {
+  const label = activeLabel.value
+  if (!label) return null
+  return {
+    key: editingIndex.value == null ? `new-${Date.now()}` : dates.value[editingIndex.value]?.key || `e-${editingIndex.value}`,
+    kind: label,
+    calendar: calendar.value,
+    month: Number(month.value),
+    day: Number(day.value),
+    year: year.value.trim(),
+    leap: calendar.value === 'lunar' && leap.value,
+  }
+}
+
+function sameDate(a: DateDraft, b: DateDraft) {
+  return (
+    a.kind === b.kind &&
+    a.calendar === b.calendar &&
+    a.month === b.month &&
+    a.day === b.day &&
+    a.year === b.year &&
+    a.leap === b.leap
+  )
+}
+
+function applyComposer() {
+  error.value = commitComposer()
+}
+
+function commitComposer() {
+  const item = currentDraft()
+  if (!item) return '请先选择或填写日子名称'
+  const dup = dates.value.some((row, index) => index !== editingIndex.value && sameDate(row, item))
+  if (dup) return '同一日子不能重复'
+  if (editingIndex.value == null && dates.value.length >= DATE_LIMIT) return `日子最多 ${DATE_LIMIT} 个`
+  if (editingIndex.value == null) dates.value.push(item)
+  else dates.value.splice(editingIndex.value, 1, item)
+  clearComposer()
+  return ''
+}
+
+function editDate(index: number) {
+  const item = dates.value[index]
+  if (!item) return
+  editingIndex.value = index
+  selected.value = item.kind
+  naming.value = false
+  draft.value = ''
+  calendar.value = item.calendar
+  month.value = item.month
+  day.value = item.day
+  year.value = item.year
+  leap.value = item.leap
+  error.value = ''
+}
+
+function removeDate(index: number) {
+  dates.value.splice(index, 1)
+  if (editingIndex.value === index) clearComposer()
+  else if (editingIndex.value != null && editingIndex.value > index) editingIndex.value -= 1
 }
 
 async function toggleNaming() {
@@ -114,13 +213,7 @@ function maxSolarDay(value: number) {
 }
 
 function dayLabel(value: number) {
-  if (calendar.value === 'solar') return `${value}日`
-  const n = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
-  if (value <= 10) return `初${n[value]}`
-  if (value < 20) return `十${n[value - 10]}`
-  if (value === 20) return '二十'
-  if (value < 30) return `廿${n[value - 20]}`
-  return '三十'
+  return dayLabelOf(value, calendar.value)
 }
 
 function pickTag(label: string) {
@@ -195,21 +288,24 @@ async function save() {
     draftInput.value?.focus()
     return
   }
-  const label = activeLabel.value
-  const date =
-    label === ''
-      ? null
-      : {
-          kind: label,
-          calendar: calendar.value,
-          month: Number(month.value),
-          day: Number(day.value),
-          year: year.value.trim() ? Number(year.value.trim()) : null,
-          leap: calendar.value === 'lunar' && leap.value,
-        }
+  if (activeLabel.value) {
+    const message = commitComposer()
+    if (message) {
+      error.value = message
+      return
+    }
+  }
+  const payloadDates = dates.value.map((item) => ({
+    kind: item.kind,
+    calendar: item.calendar,
+    month: item.month,
+    day: item.day,
+    year: item.year.trim() ? Number(item.year.trim()) : null,
+    leap: item.calendar === 'lunar' && item.leap,
+  }))
   saving.value = true
   try {
-    const payload = { name: name.value.trim(), relation: relation.value.trim(), date }
+    const payload = { name: name.value.trim(), relation: relation.value.trim(), dates: payloadDates }
     if (isNew.value) await api('/api/v1/contacts', { method: 'POST', body: JSON.stringify(payload) })
     else await api(`/api/v1/contacts/${route.params.id}`, { method: 'PATCH', body: JSON.stringify(payload) })
     await router.replace('/tools/contacts')
@@ -220,20 +316,34 @@ async function save() {
   }
 }
 
+type ContactDateRow = {
+  id?: number
+  kind: string
+  kind_label: string
+  calendar: CalendarKind
+  month: number
+  day: number
+  year: number | null
+  leap: boolean
+}
+
+type DateDraft = {
+  key: string
+  kind: string
+  calendar: CalendarKind
+  month: number
+  day: number
+  year: string
+  leap: boolean
+}
+
 type ContactRow = {
   id: number
   name: string
   relation: string
   archived: boolean
-  date: {
-    kind: string
-    kind_label: string
-    calendar: CalendarKind
-    month: number
-    day: number
-    year: number | null
-    leap: boolean
-  } | null
+  date: ContactDateRow | null
+  dates?: ContactDateRow[]
 }
 </script>
 
@@ -279,8 +389,19 @@ type ContactRow = {
     <div class="field">
       <div class="date-head">
         <span>日子</span>
-        <button v-if="showDateDetail" class="clear-btn" type="button" @click="clearDate">不填</button>
-        <small v-else class="date-hint">选填，点选标签即可记录</small>
+        <small class="date-hint">最多 {{ DATE_LIMIT }} 个，比如生日和纪念日</small>
+      </div>
+      <div v-if="dates.length" class="date-list">
+        <div v-for="(item, index) in dates" :key="item.key" class="date-item" :class="{ on: editingIndex === index }">
+          <span>{{ summaryOf(item) }}</span>
+          <button type="button" class="link" @click="editDate(index)">改</button>
+          <button type="button" class="link danger" @click="removeDate(index)">删</button>
+        </div>
+      </div>
+      <p v-else class="date-hint">还没有日子，在下面选一个名称就能加上</p>
+      <div class="date-head">
+        <span>{{ editingIndex == null ? '再加一个' : '修改这条' }}</span>
+        <button v-if="showDateDetail || editingIndex != null" class="clear-btn" type="button" @click="clearComposer">取消</button>
       </div>
       <div class="tags">
         <button
@@ -288,7 +409,7 @@ type ContactRow = {
           :key="item"
           type="button"
           class="tag"
-          :class="{ on: selected === item && !naming }"
+          :class="{ on: selected === item && !naming, used: dates.some((row) => row.kind === item) }"
           @click="pickTag(item)"
         >
           {{ item }}
@@ -358,6 +479,9 @@ type ContactRow = {
           <input v-model="year" inputmode="numeric" maxlength="4" placeholder="可空" />
         </label>
       </div>
+      <button class="btn ghost compact add-date" type="button" :disabled="atLimit && editingIndex == null" @click="applyComposer">
+        {{ editingIndex == null ? '加入这个日子' : '保存这条' }}
+      </button>
     </div>
     <p v-if="error" class="err">{{ error }}</p>
     <div class="form-actions">
@@ -466,6 +590,29 @@ type ContactRow = {
   min-height: 44px;
   padding: 0 14px;
 }
+.date-list { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.date-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f6f7fb;
+  font-size: 13px;
+}
+.date-item.on { background: #eef0ff; }
+.date-item span { flex: 1; min-width: 0; }
+.link {
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  font-weight: 600;
+  padding: 0;
+  width: auto;
+}
+.link.danger { color: var(--expense); }
+.tag.used { box-shadow: inset 0 0 0 1px #d5daf0; }
+.add-date { margin-top: 8px; }
 .date-panel {
   margin-top: 4px;
   padding-top: 12px;

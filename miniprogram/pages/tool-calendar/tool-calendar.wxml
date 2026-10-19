@@ -1,0 +1,211 @@
+<!-- 记事编辑器。新增和就地修改共用这一套结构，只有文案不同。 -->
+<template name="noteEditor">
+  <view class="editor">
+    <textarea
+      class="note-input"
+      maxlength="200"
+      focus="{{true}}"
+      auto-height="{{true}}"
+      hold-keyboard="{{true}}"
+      cursor-spacing="140"
+      confirm-type="done"
+      show-confirm-bar="{{true}}"
+      value="{{draft}}"
+      bindinput="onDraft"
+      bindconfirm="save"
+      placeholder="{{placeholder}}"
+      placeholder-class="ph"
+    />
+    <view class="editor-foot">
+      <text class="muted {{draftCount >= 200 ? 'over' : ''}}">{{draftCount}}/200</text>
+      <view class="editor-btns">
+        <view class="act-btn" catchtap="cancelEdit">取消</view>
+        <!-- 用 touchstart：键盘收起会把页面顶走，tap 经常落空，字还在但没提交。 -->
+        <view class="act-btn primary {{canSave && !busy ? '' : 'off'}}" catchtouchstart="save">{{busy ? '保存中…' : saveText}}</view>
+      </view>
+    </view>
+  </view>
+</template>
+
+<view class="page">
+  <!-- 1. 月历卡：顶部固定月份切换 + 回今天 + 收起/展开月历；不再夹在当天标题与记事之间 -->
+  <view class="card cal-card" bindtouchstart="onCalTouchStart" bindtouchend="onCalTouchEnd">
+    <view class="cal-top">
+      <view class="cal-bar">
+        <view class="nav" catchtap="prevMonth"><view class="ico"></view></view>
+        <picker class="bar-picker" mode="date" fields="month" value="{{month}}" bindchange="onPickMonth">
+          <view class="label">{{monthText}}<view class="bar-caret"></view></view>
+        </picker>
+        <view class="nav" catchtap="nextMonth"><view class="ico ico-next"></view></view>
+      </view>
+
+      <view class="cal-actions">
+        <view class="pill-btn today-btn" wx:if="{{showBack}}" catchtap="backToday">回今天</view>
+        <view class="pill-btn fold-btn" catchtap="toggleCal">
+          <text>{{calOpen ? '收起日历' : '展开日历'}}</text>
+          <view class="caret {{calOpen ? 'open' : ''}}"></view>
+        </view>
+      </view>
+    </view>
+
+    <block wx:if="{{calOpen}}">
+      <view class="cal">
+        <view class="w {{index >= 5 ? 'end' : ''}}" wx:for="{{calWeek}}" wx:key="*this">{{item}}</view>
+        <block wx:for="{{cells}}" wx:for-item="cell" wx:key="key">
+          <view class="d blank" wx:if="{{cell.blank}}"></view>
+          <view
+            class="d {{cell.has ? 'has' : ''}} {{cell.date === selected ? 'on' : ''}} {{cell.date === today ? 'today' : ''}} {{cell.weekend ? 'weekend' : ''}}"
+            wx:else
+            data-date="{{cell.date}}"
+            catchtap="tapDay"
+          >
+            <text class="num">{{cell.day}}</text>
+            <view class="mark">
+              <text class="cnt" wx:if="{{cell.count > 1}}">{{cell.count}}</text>
+              <view class="dot" wx:elif="{{cell.count === 1}}"></view>
+            </view>
+          </view>
+        </block>
+      </view>
+      <view class="cal-tip">左右滑动切月</view>
+    </block>
+  </view>
+
+  <!-- 2. 当天记事卡：前一天/日期/后一天 + 记一条按钮 → 紧接着输入框和当天记事列表 -->
+  <view class="card day-card">
+    <view class="day-bar">
+      <view class="day-nav">
+        <view class="step-btn" catchtap="prevDay"><view class="ico"></view></view>
+        <view class="day-info">
+          <view class="day-title-row">
+            <text class="day-title">{{dayTitle}}</text>
+            <text class="rel-tag {{selected === today ? 'today' : ''}}" wx:if="{{dayRel}}">{{dayRel}}</text>
+          </view>
+          <text class="day-sub">{{items.length ? '当天 ' + items.length + ' 条记事' : '当天暂无记事'}}</text>
+        </view>
+        <view class="step-btn" catchtap="nextDay"><view class="ico ico-next"></view></view>
+      </view>
+
+      <view class="add-btn {{adding ? 'on' : ''}}" catchtap="startAdd">
+        <text class="add-ico">{{adding ? '×' : '＋'}}</text>
+        <text>{{adding ? '收起' : '记一条'}}</text>
+      </view>
+    </view>
+
+    <view class="err" wx:if="{{error}}">{{error}}</view>
+
+    <block wx:if="{{adding}}">
+      <template
+        is="noteEditor"
+        data="{{draft, draftCount, canSave, busy, saveText: '记下', placeholder: '记下这天要办的事（如：下午三点取快递、交水电费）…'}}"
+      />
+    </block>
+
+    <view wx:if="{{loading && !items.length}}" class="day-loading">加载中…</view>
+    <view wx:if="{{!items.length && !adding && !loading}}" class="empty-day" catchtap="startAdd">这天还没有记事，点此记一条 ＋</view>
+    <!-- 列表单独渲染，不放进 wx:else。否则保存后数据已经写上，列表仍可能不出来。 -->
+    <view class="note {{editingId === note.id ? 'on' : ''}}" wx:for="{{items}}" wx:for-item="note" wx:key="id">
+      <block wx:if="{{editingId === note.id}}">
+        <template
+          is="noteEditor"
+          data="{{draft, draftCount, canSave, busy, saveText: '保存', placeholder: ''}}"
+        />
+      </block>
+      <block wx:if="{{editingId !== note.id}}">
+        <view class="note-body">{{note.body}}</view>
+        <view class="note-meta">
+          <text class="muted">{{note.clock}}{{note.edited ? ' · 已编辑' : ''}}</text>
+          <view class="note-btns">
+            <view class="act-btn" data-id="{{note.id}}" catchtap="startEdit">编辑</view>
+            <view class="act-btn danger" data-id="{{note.id}}" catchtap="remove">删除</view>
+          </view>
+        </view>
+      </block>
+    </view>
+  </view>
+
+  <!-- 3. 记事一览：默认展开，支持全部/待办切换、跨月搜索，以及直接在列表里操作 -->
+  <view class="card list-card">
+    <view class="lc-top">
+      <view class="lc-head" bindtap="toggleList">
+        <view class="lc-title-wrap">
+          <text class="lc-title">记事一览</text>
+          <text class="lc-sub">{{monthCount}} 条 · {{activeDaysCount}} 天</text>
+        </view>
+        <view class="caret {{listOpen ? 'open' : ''}}"></view>
+      </view>
+
+      <view class="lc-tabs" wx:if="{{!searching}}">
+        <view
+          class="lc-tab {{listFilter === 'all' ? 'on' : ''}}"
+          data-filter="all"
+          catchtap="setFilter"
+        >
+          本月 {{monthCount}}
+        </view>
+        <view
+          class="lc-tab {{listFilter === 'upcoming' ? 'on' : ''}}"
+          data-filter="upcoming"
+          catchtap="setFilter"
+        >
+          今起 {{upcomingCount}}
+        </view>
+      </view>
+    </view>
+
+    <block wx:if="{{listOpen}}">
+      <view class="lc-search">
+        <input
+          class="lc-search-input"
+          value="{{q}}"
+          bindinput="onSearch"
+          placeholder="搜索记事（输入关键词自动查近一年）"
+          placeholder-class="ph"
+        />
+        <view class="lc-clear" wx:if="{{q}}" catchtap="clearSearch">×</view>
+      </view>
+
+      <view class="lc-scope" wx:if="{{searching}}">搜索范围 {{scopeFrom}} 至 {{scopeTo}}</view>
+      <view class="err" wx:if="{{listError}}">{{listError}}</view>
+
+      <view class="empty" wx:if="{{!groups.length}}">
+        {{searching ? '没有匹配的记事' : (listFilter === 'upcoming' ? '今天及之后还没有安排' : '这个月还没有记事')}}
+      </view>
+
+      <view
+        class="lc-group {{group.day === selected ? 'on' : ''}}"
+        wx:for="{{groups}}"
+        wx:for-item="group"
+        wx:key="day"
+      >
+        <view class="lc-day-head" data-date="{{group.day}}" bindtap="jumpDay">
+          <view class="lc-day-title">
+            <text class="lc-day-label">{{group.label}}</text>
+            <text class="lc-rel {{group.isToday ? 'today' : ''}}" wx:if="{{group.rel}}">{{group.rel}}</text>
+            <text class="lc-cnt">{{group.count}} 条</text>
+          </view>
+          <view class="lc-add-btn" data-date="{{group.day}}" catchtap="jumpAdd">＋ 记一条</view>
+        </view>
+        <view class="lc-item" wx:for="{{group.items}}" wx:for-item="note" wx:key="id">
+          <view class="lc-item-main" data-date="{{group.day}}" bindtap="jumpDay">
+            <view class="lc-dot"></view>
+            <view class="lc-text">{{note.body}}</view>
+          </view>
+          <view class="lc-item-right">
+            <text class="lc-time">{{note.clock}}</text>
+            <view
+              class="lc-link"
+              data-id="{{note.id}}"
+              data-day="{{note.day}}"
+              data-body="{{note.body}}"
+              catchtap="jumpEdit"
+            >
+              编辑
+            </view>
+            <view class="lc-link danger" data-id="{{note.id}}" catchtap="remove">删除</view>
+          </view>
+        </view>
+      </view>
+    </block>
+  </view>
+</view>

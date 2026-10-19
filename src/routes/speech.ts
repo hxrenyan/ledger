@@ -46,7 +46,10 @@ export function registerSpeechRoutes(app: Hono<AppEnv>) {
     const profiles = await readAsrProfiles(db)
     const res = await transcribeChain(profiles, audio)
     if (!res.ok) throw new HttpError(502, 'asr_failed', res.error)
-    const points = await chargeSpeech(db, userId, seconds)
+    // 没认出文字不算识别成功，不扣积分。调用次数在上传前已经记下。
+    const points = res.text
+      ? await chargeSpeech(db, userId, seconds)
+      : { charged: 0, balance: await getBalance(db, userId) }
     return c.json({ text: res.text, profile: res.profile, points })
   })
 }

@@ -4,6 +4,7 @@
  */
 
 const { toId } = require('./id')
+const nav = require('./nav')
 
 const TOKEN = 'ledger.token'
 const LEDGER = 'ledger.id'
@@ -84,6 +85,7 @@ function clear() {
  * 用 navigateTo，方便返回继续浏览；不要在启动时调用。
  */
 function goLogin() {
+  if (nav.blockForUpdate()) return false
   const pages = getCurrentPages()
   const top = pages[pages.length - 1]
   if (top && top.route === 'pages/login/login') return false

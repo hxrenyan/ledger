@@ -16,6 +16,7 @@ const nav = require('../../utils/nav')
 const money = require('../../utils/money')
 const time = require('../../utils/time')
 const ui = require('../../utils/ui')
+const localOcr = require('../../utils/localOcr')
 
 const SH_OFFSET = 8 * 3600 * 1000
 
@@ -270,7 +271,8 @@ Page({
 
   /**
    * 两个识别模型（语音 ASR / 图片 OCR）都可能在后台没配，各自独立判断：
-   * 只配了语音就别在浮层里给「拍一张」，否则点下去只会收到「识别服务没配」。
+   * 服务器没配图片识别、这台手机也不能端侧认字时，别给「拍一张」。
+   * 手机能端侧认字就仍给入口；认不全再请求服务器，没配会得到明确失败。
    * 两个 status 都与账本无关，所以不带账本头。
    *
    * 「成功拉到过」记在 aiStatusOk 上：请求失败与「后台真的没配」都是 false，
@@ -292,10 +294,10 @@ Page({
     request
       .get('/api/v1/ocr/status', null, { withLedger: false })
       .then((res) => {
-        this.setAiStatus('canPhoto', modelReady(res))
+        this.setAiStatus('canPhoto', localOcr.photoAvailable(modelReady(res)))
         settled()
       })
-      .catch(() => this.setAiStatus('canPhoto', false))
+      .catch(() => this.setAiStatus('canPhoto', localOcr.photoAvailable(false)))
   },
 
   setAiStatus(key, value) {

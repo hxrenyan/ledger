@@ -24,6 +24,23 @@ function dayNames(calendar, month) {
   return names
 }
 
+function dateSummary(item) {
+  const lunar = item.calendar === 'lunar'
+  const month = lunar
+    ? (item.leap ? '闰' : '') + (LUNAR_MONTHS[item.month - 1] || '') + lunarDay(item.day)
+    : item.month + '月' + item.day + '日'
+  const year = item.year ? item.year + '年' : ''
+  return item.kind + ' · ' + (lunar ? '农历' : '阳历') + ' ' + year + month
+}
+
+function withSummary(item) {
+  return Object.assign({}, item, { summary: dateSummary(item) })
+}
+
+function sameDate(a, b) {
+  return a.kind === b.kind && a.calendar === b.calendar && a.month === b.month && a.day === b.day && String(a.year || '') === String(b.year || '') && !!a.leap === !!b.leap
+}
+
 function lunarDay(value) {
   const n = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十']
   if (value <= 10) return '初' + n[value]
@@ -43,6 +60,8 @@ Page({
     archived: false,
     quickRelations: QUICK_RELATIONS,
     tags: [],
+    dates: [],
+    editingIndex: -1,
     selected: '',
     draft: '',
     naming: false,
@@ -85,27 +104,40 @@ Page({
           this.setData(Object.assign(patch, { err: '联系人不存在' }))
           return
         }
-        const date = found.date
-        const calendar = date && date.calendar === 'lunar' ? 'lunar' : 'solar'
-        const month = date && date.month ? Number(date.month) : 1
-        const day = date && date.day ? Number(date.day) : 1
-        const label = date ? date.kind_label || date.kind || '' : ''
-        if (label && tags.indexOf(label) < 0) tags.unshift(label)
+        const rawDates = (found.dates && found.dates.length) ? found.dates : (found.date ? [found.date] : [])
+        const dates = rawDates.map(function (date, index) {
+          const calendar = date.calendar === 'lunar' ? 'lunar' : 'solar'
+          const month = date.month ? Number(date.month) : 1
+          const day = date.day ? Number(date.day) : 1
+          const label = date.kind_label || date.kind || ''
+          if (label && tags.indexOf(label) < 0) tags.unshift(label)
+          return withSummary({
+            key: 'd-' + (date.id || index),
+            kind: label,
+            calendar: calendar,
+            month: month,
+            day: day,
+            year: date.year ? String(date.year) : '',
+            leap: !!date.leap,
+          })
+        })
         this.setData(Object.assign(patch, {
           tags: tags,
+          dates: dates,
+          editingIndex: -1,
           name: found.name || '',
           relation: found.relation || '',
           archived: !!found.archived,
-          selected: label,
-          showDate: !!label,
-          calendar: calendar,
-          leap: !!(date && date.leap),
-          year: date && date.year ? String(date.year) : '',
-          yearLabel: label === '生日' ? '出生年' : '年份',
-          monthIndex: month - 1,
-          dayIndex: day - 1,
-          monthNames: calendar === 'lunar' ? LUNAR_MONTHS : solarMonths(),
-          dayNames: dayNames(calendar, month),
+          selected: '',
+          showDate: false,
+          calendar: 'solar',
+          leap: false,
+          year: '',
+          yearLabel: '年份',
+          monthIndex: 0,
+          dayIndex: 0,
+          monthNames: solarMonths(),
+          dayNames: dayNames('solar', 1),
         }))
       })
       .catch((err) => {
@@ -178,15 +210,104 @@ Page({
       })
   },
 
-  clearDate() {
+  clearComposer() {
     this.setData({
       selected: '',
       draft: '',
       naming: false,
       showDate: false,
+      editingIndex: -1,
+      year: '',
+      leap: false,
       yearLabel: '年份',
       err: '',
     })
+  },
+
+  currentDraft() {
+    const draft = String(this.data.draft || '').trim()
+    const kind = this.data.naming && draft ? draft : this.data.selected
+    if (!kind) return null
+    return {
+      key: this.data.editingIndex >= 0 ? (this.data.dates[this.data.editingIndex] || {}).key : 'n-' + Date.now(),
+      kind: kind,
+      calendar: this.data.calendar,
+      month: this.data.monthIndex + 1,
+      day: this.data.dayIndex + 1,
+      year: String(this.data.year || '').trim(),
+      leap: this.data.calendar === 'lunar' && this.data.leap,
+    }
+  },
+
+  commitDate() {
+    const item = this.currentDraft()
+    if (!item) {
+      this.setData({ err: '请先选择或填写日子名称' })
+      return false
+    }
+    const dates = this.data.dates.slice()
+    const dup = dates.some((row, index) => index !== this.data.editingIndex && sameDate(row, item))
+    if (dup) {
+      this.setData({ err: '同一日子不能重复' })
+      return false
+    }
+    if (this.data.editingIndex < 0 && dates.length >= 8) {
+      this.setData({ err: '日子最多 8 个' })
+      return false
+    }
+    const next = withSummary(item)
+    if (this.data.editingIndex < 0) dates.push(next)
+    else dates.splice(this.data.editingIndex, 1, next)
+    this.setData({
+      dates: dates,
+      selected: '',
+      draft: '',
+      naming: false,
+      showDate: false,
+      editingIndex: -1,
+      year: '',
+      leap: false,
+      yearLabel: '年份',
+      err: '',
+    })
+    return true
+  },
+
+  editDate(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const item = this.data.dates[index]
+    if (!item) return
+    const days = dayNames(item.calendar, item.month)
+    this.setData({
+      editingIndex: index,
+      selected: item.kind,
+      draft: '',
+      naming: false,
+      showDate: true,
+      calendar: item.calendar,
+      leap: !!item.leap,
+      year: item.year || '',
+      yearLabel: item.kind === '生日' ? '出生年' : '年份',
+      monthIndex: item.month - 1,
+      dayIndex: Math.min(item.day - 1, days.length - 1),
+      monthNames: item.calendar === 'lunar' ? LUNAR_MONTHS : solarMonths(),
+      dayNames: days,
+      err: '',
+    })
+  },
+
+  removeDate(e) {
+    const index = Number(e.currentTarget.dataset.index)
+    const dates = this.data.dates.slice()
+    dates.splice(index, 1)
+    let editingIndex = this.data.editingIndex
+    if (editingIndex === index) {
+      this.setData({ dates: dates })
+      this.clearComposer()
+      return
+    }
+    if (editingIndex > index) editingIndex -= 1
+    this.setData({ dates: dates, editingIndex: editingIndex })
   },
 
   pickCalendar(e) {
@@ -256,19 +377,18 @@ Page({
       this.setData({ err: '请填写日子名称，或点取消' })
       return
     }
-    const label = this.data.naming && draft ? draft : this.data.selected
-    const yearText = String(this.data.year || '').trim()
-    const date = label
-      ? {
-          kind: label,
-          calendar: this.data.calendar,
-          month: this.data.monthIndex + 1,
-          day: this.data.dayIndex + 1,
-          year: yearText ? Number(yearText) : null,
-          leap: this.data.calendar === 'lunar' && this.data.leap,
-        }
-      : null
-    const payload = { name: name, relation: String(this.data.relation || '').trim(), date: date }
+    if ((this.data.selected || (this.data.naming && draft)) && !this.commitDate()) return
+    const dates = this.data.dates.map(function (item) {
+      return {
+        kind: item.kind,
+        calendar: item.calendar,
+        month: item.month,
+        day: item.day,
+        year: item.year ? Number(item.year) : null,
+        leap: item.calendar === 'lunar' && !!item.leap,
+      }
+    })
+    const payload = { name: name, relation: String(this.data.relation || '').trim(), dates: dates }
     this.setData({ saving: true, err: '' })
     const task = this.data.isNew
       ? request.post('/api/v1/contacts', payload)

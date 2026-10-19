@@ -426,7 +426,24 @@ for (const file of jsFiles) {
 }
 
 // ---------------------------------------------------------------------------
-// 17. recorder 的全局回调不许按实例注册
+// 17. 端侧认字只能走 utils/localOcr.js
+//
+// VisionKit 的会话、超时和「字够不够」都在那一个文件里。散到页面里就会出现
+// 有的入口传了原图、有的入口把上传用的压缩图再拿去认，两边门槛还对不齐。
+// ---------------------------------------------------------------------------
+const LOCAL_OCR_UTIL = join(root, "utils", "localOcr.js");
+for (const file of jsFiles) {
+  if (file === LOCAL_OCR_UTIL) continue;
+  const src = readFileSync(file, "utf8");
+  for (const api of ["createVKSession", "createOffscreenCanvas"]) {
+    if (new RegExp(`wx\\s*\\.\\s*${api}\\s*\\(`).test(src)) {
+      err(`${rel(file)} 直接调了 wx.${api}()：端侧认字只能走 utils/localOcr.js`);
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 18. recorder 的全局回调不许按实例注册
 //
 // wx.getRecorderManager() 是全局单例，而 onStop / onError 是「后注册覆盖先注册」。
 // 浮层同时挂在明细页与智能记账整页：一旦按实例注册（this.recorder.onStop(...)），
@@ -452,7 +469,7 @@ for (const file of jsFiles) {
 }
 
 // ---------------------------------------------------------------------------
-// 18. 认图的客户端超时必须大于后端的接力预算
+// 19. 认图的客户端超时必须大于后端的接力预算
 //
 // 写反了的现象很隐蔽：后端本来会给出「哪套配置、什么原因」这种可读错误，
 // 却总被客户端抢先盖成一句笼统的「识别超时」，而且那次后端调用其实白跑了。

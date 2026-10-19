@@ -1,6 +1,9 @@
 <script setup lang="ts">
 /** 工具清单只在网页里。往后加一项，重新发布服务即可，不用发小程序。 */
-const tools = [{ to: '/tools/contacts', title: '联系人管理', desc: '就是人情里的那些人。在这里改姓名、关系和日子。' }]
+  const tools = [
+    { to: '/tools/contacts', title: '联系人管理', desc: '就是人情里的那些人。在这里改姓名、关系和日子。' },
+    { to: '/tools/calendar', title: '日历记录', desc: '按天记下要办的事，只自己看得见。换账本还在。' },
+  ]
 </script>
 
 <template>

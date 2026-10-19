@@ -48,6 +48,7 @@ function loadHomePage(): PageDef {
     '../../utils/nav': { go: noop },
     '../../utils/money': { formatYuan: () => '0.00', signedText: () => '0.00' },
     '../../utils/time': time,
+    '../../utils/localOcr': loadCjs(join(utilsDir, 'localOcr.js')),
     '../../utils/ui': { toast: noop, ok: noop, fail: noop, confirm: () => Promise.resolve(true) },
   }
   const factory = new Function('module', 'exports', 'require', 'wx', 'Page', src)

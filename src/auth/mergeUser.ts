@@ -67,6 +67,10 @@ export async function mergeUserStmts(
     params: [targetUserId, sourceUserId, ...guardParams],
   })
   stmts.push({
+    sql: `UPDATE day_notes SET user_id = ? WHERE user_id = ? AND ${guard}`,
+    params: [targetUserId, sourceUserId, ...guardParams],
+  })
+  stmts.push({
     sql: `DELETE FROM members WHERE user_id = ? AND ${guard}`,
     params: [sourceUserId, ...guardParams],
   })
@@ -308,7 +312,7 @@ async function mergeDictItems(
     if (hit) {
       stmts.push(
         {
-          sql: `UPDATE contacts SET date_item_id = ? WHERE ledger_id = ? AND date_item_id = ? AND ${guard}`,
+          sql: `UPDATE contact_dates SET item_id = ? WHERE ledger_id = ? AND item_id = ? AND ${guard}`,
           params: [hit, sourceLedgerId, row.id, ...guardParams],
         },
         {
@@ -353,16 +357,26 @@ async function mergeContacts(
           params: [hit.id, src.id, ...guardParams],
         },
         {
+          sql: `DELETE FROM contact_dates WHERE contact_id = ? AND ${guard}`,
+          params: [src.id, ...guardParams],
+        },
+        {
           sql: `DELETE FROM contacts WHERE id = ? AND ${guard}`,
           params: [src.id, ...guardParams],
         },
       )
       continue
     }
-    stmts.push({
-      sql: `UPDATE contacts SET ledger_id = ? WHERE id = ? AND ${guard}`,
-      params: [destLedgerId, src.id, ...guardParams],
-    })
+    stmts.push(
+      {
+        sql: `UPDATE contacts SET ledger_id = ? WHERE id = ? AND ${guard}`,
+        params: [destLedgerId, src.id, ...guardParams],
+      },
+      {
+        sql: `UPDATE contact_dates SET ledger_id = ? WHERE contact_id = ? AND ${guard}`,
+        params: [destLedgerId, src.id, ...guardParams],
+      },
+    )
     byName.set(src.name, src)
   }
   return stmts

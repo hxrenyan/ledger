@@ -158,7 +158,7 @@ CREATE TABLE IF NOT EXISTS attachments (
 -- dict_items（可复用的配置项）
 -- kind、name 都是字符串。ledger_id 为空表示公共字典，所有账本都能用；
 -- 有值则只属于该账本。目前 contact_date 是联系人日子标签。
--- 不建外键。联系人用 date_item_id 指向本表 id，0 表示没记。
+-- 不建外键。联系人日子在 contact_dates.item_id 指向本表 id。
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS dict_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -179,15 +179,24 @@ CREATE TABLE IF NOT EXISTS contacts (
   name TEXT NOT NULL,
   relation TEXT NOT NULL DEFAULT '',
   archived INTEGER NOT NULL DEFAULT 0,
-  created_at INTEGER NOT NULL,
-  -- 日子在 dict_items（kind=contact_date）。0 表示没记。阳历/农历只存月日，年份可空。
-  -- 名称是「生日」时用来算岁数，其它名称算周年。date_leap 只对农历闰月有意义。
-  date_item_id INTEGER NOT NULL DEFAULT 0,
-  date_calendar TEXT NOT NULL DEFAULT '',
-  date_month INTEGER,
-  date_day INTEGER,
-  date_year INTEGER,
-  date_leap INTEGER NOT NULL DEFAULT 0
+  created_at INTEGER NOT NULL
+);
+
+-- 一个人可以有多条日子。item_id 指向 dict_items（kind=contact_date）。
+-- 阳历/农历只存月日，年份可空。名称是「生日」时用来算岁数，其它名称算周年。
+-- leap 只对农历闰月有意义。按账本列出某人的日子，见 idx_contact_dates_ledger。
+CREATE TABLE IF NOT EXISTS contact_dates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ledger_id INTEGER NOT NULL,
+  contact_id INTEGER NOT NULL,
+  item_id INTEGER NOT NULL,
+  calendar TEXT NOT NULL,
+  month INTEGER NOT NULL,
+  day INTEGER NOT NULL,
+  year INTEGER,
+  leap INTEGER NOT NULL DEFAULT 0,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS gifts (
@@ -259,7 +268,7 @@ CREATE TABLE IF NOT EXISTS ai_profiles (
 
 -- ---------------------------------------------------------------------------
 -- app_configs（服务端业务配置，key 级覆盖）
--- 用途：工具页模式（tools.mode = native | h5）、小程序 AppID / AppSecret、开关与文案。改完即生效，不用发版。
+-- 用途：工具页模式（tools.mode = native | h5）、小程序关于与最低版本（miniprogram.client）、AppID / AppSecret、开关与文案。改完即生效，不用发版。
 -- 只放数据，不放可执行代码——微信禁止动态下发代码。
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS app_configs (
@@ -339,12 +348,27 @@ CREATE TABLE IF NOT EXISTS feedbacks (
 );
 
 -- ---------------------------------------------------------------------------
+-- day_notes（个人日历记事）
+-- 跟登录用户走，不跟账本。同一天可以有多条。day 是上海日历日 YYYY-MM-DD。
+-- 按人和日期查，见 idx_day_notes_user_day。不建外键。
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS day_notes (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  day TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
 -- 索引（对应列表/统计查询，不重复主键与 UNIQUE）
 -- ---------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_tx_ledger_occurred ON transactions (ledger_id, occurred_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_members_user ON members (user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ledgers_invite ON ledgers (invite_code) WHERE invite_code IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_contacts_ledger ON contacts (ledger_id, archived, name COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_contact_dates_ledger ON contact_dates (ledger_id, contact_id, sort_order, id);
 -- 账本内同名不重复。SQLite 的 UNIQUE 对 NULL 不去重，公共项另建一条部分索引。
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_items_ledger_name ON dict_items (ledger_id, kind, name) WHERE ledger_id IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_items_public_name ON dict_items (kind, name) WHERE ledger_id IS NULL;
@@ -364,3 +388,4 @@ CREATE INDEX IF NOT EXISTS idx_point_calls_user_day ON point_calls (user_id, kin
 CREATE INDEX IF NOT EXISTS idx_feedbacks_user ON feedbacks (user_id, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_feedbacks_status ON feedbacks (status, created_at, id);
 CREATE INDEX IF NOT EXISTS idx_feedbacks_recent ON feedbacks (created_at, id);
+CREATE INDEX IF NOT EXISTS idx_day_notes_user_day ON day_notes (user_id, day, created_at);

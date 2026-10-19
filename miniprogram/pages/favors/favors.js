@@ -15,21 +15,37 @@ const money = require('../../utils/money')
 const time = require('../../utils/time')
 const ui = require('../../utils/ui')
 
-/** 顶部提醒：即将到来在前，已经过去的按过了几天从少到多排在后面。 */
+/** 顶部提醒：每条即将到来的日子各一张卡；没有即将到来时，只留最近过去的那一条。 */
 function comingSoon(contacts) {
   const items = []
   ;(contacts || []).forEach((c) => {
-    if (!c || c.archived || !c.reminder) return
-    items.push({
-      id: c.id,
-      name: c.name || '',
-      relation: c.relation || '',
-      kindText: (c.date && c.date.kind_label) || '',
-      whenText: c.reminder.text || '',
-      ageText: c.reminder.age_text || '',
-      state: c.reminder.state === 'past' ? 'past' : 'upcoming',
-      days: Number(c.reminder.days) || 0,
+    if (!c || c.archived) return
+    const dates = dateRows(c)
+    const upcoming = []
+    let past = null
+    dates.forEach((date) => {
+      const reminder = date.reminder || (!date.kind && c.reminder) || null
+      if (!reminder) return
+      const card = {
+        key: c.id + '-' + (date.id || date.kind || ''),
+        id: c.id,
+        name: c.name || '',
+        relation: c.relation || '',
+        kindText: date.kind_label || date.kind || '',
+        whenText: reminder.text || '',
+        ageText: reminder.age_text || '',
+        state: reminder.state === 'past' ? 'past' : 'upcoming',
+        days: Number(reminder.days) || 0,
+      }
+      if (card.state === 'upcoming' || (reminder.text === '今天' || String(reminder.text || '').indexOf('还剩') === 0)) {
+        card.state = 'upcoming'
+        upcoming.push(card)
+      } else if (!past || card.days < past.days) {
+        past = card
+      }
     })
+    if (upcoming.length) items.push.apply(items, upcoming)
+    else if (past) items.push(past)
   })
   items.sort((a, b) => {
     if (a.state !== b.state) return a.state === 'upcoming' ? -1 : 1
@@ -45,12 +61,22 @@ function giftDaySumLabel(givenCents, receivedCents) {
   return parts.join(' · ')
 }
 
+function dateRows(c) {
+  if (c && c.dates && c.dates.length) return c.dates
+  if (c && c.date) return [Object.assign({}, c.date, { reminder: c.reminder })]
+  return []
+}
+
 function contactDateLine(c) {
-  if (!c || !c.date) return ''
-  const kind = c.date.kind_label || c.date.kind || ''
-  const label = c.date.label || ''
-  const when = c.reminder && c.reminder.text ? ' · ' + c.reminder.text : ''
-  return (kind ? kind + ' · ' : '') + label + when
+  const dates = dateRows(c)
+  if (!dates.length) return ''
+  return dates.map((date) => {
+    const kind = date.kind_label || date.kind || ''
+    const label = date.label || ''
+    const reminder = date.reminder || null
+    const when = reminder && reminder.text ? ' · ' + reminder.text : ''
+    return (kind ? kind + ' · ' : '') + label + when
+  }).join('；')
 }
 
 Page({

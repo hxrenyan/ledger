@@ -147,7 +147,44 @@ describe('联系人日子', () => {
       body: JSON.stringify({ date: null }),
     })
     expect(cleared.status).toBe(200)
-    expect((cleared.body as { date: unknown }).date).toBeNull()
+    expect((cleared.body as { date: unknown; dates: unknown[] }).date).toBeNull()
+    expect((cleared.body as { dates: unknown[] }).dates).toEqual([])
+
+    const later = addDays(soon, 10)
+    const again = await json(app, '/api/v1/contacts', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        name: '张三',
+        dates: [
+          { kind: '生日', calendar: 'solar', month, day, year: 2000 },
+          {
+            kind: '纪念日',
+            calendar: 'solar',
+            month: Number(later.slice(5, 7)),
+            day: Number(later.slice(8, 10)),
+            year: 2018,
+          },
+        ],
+      }),
+    })
+    expect(again.status).toBe(201)
+    const many = again.body as { dates: { kind: string }[]; date: { kind: string }; reminder: { text: string } }
+    expect(many.dates.map((item) => item.kind)).toEqual(['生日', '纪念日'])
+    expect(many.date.kind).toBe('生日')
+    expect(many.reminder.text).toBe('还剩 3 天')
+
+    const dup = await json(app, `/api/v1/contacts/${(again.body as { id: number }).id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({
+        dates: [
+          { kind: '生日', calendar: 'solar', month, day, year: 2000 },
+          { kind: '生日', calendar: 'solar', month, day, year: 2000 },
+        ],
+      }),
+    })
+    expect(dup.status).toBe(400)
   })
 })
 

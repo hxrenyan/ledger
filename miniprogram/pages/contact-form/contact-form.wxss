@@ -1,3 +1,48 @@
+.saved {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
+}
+
+.saved-item {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  padding: 16rpx 20rpx;
+  border-radius: 18rpx;
+  background: #f6f7fb;
+}
+
+.saved-item.on {
+  background: var(--brand-soft);
+}
+
+.saved-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 26rpx;
+}
+
+.act {
+  color: var(--brand);
+  font-weight: 600;
+  font-size: 26rpx;
+}
+
+.act.danger {
+  color: var(--expense);
+}
+
+.empty-hint {
+  margin-bottom: 12rpx;
+}
+
+.mini-btn.block {
+  margin-top: 16rpx;
+  text-align: center;
+}
+
 .sec-head {
   display: flex;
   align-items: center;

@@ -25,9 +25,21 @@ function shape(raw) {
   const given = Number(raw.given_cents) || 0
   const received = Number(raw.received_cents) || 0
   const net = received - given
-  const date = raw.date
-  const reminder = raw.reminder
-  const reminderText = reminder && reminder.text ? reminder.text : ''
+  const dates = (raw.dates && raw.dates.length) ? raw.dates : (raw.date ? [Object.assign({}, raw.date, { reminder: raw.reminder })] : [])
+  const dateLines = dates.map(function (date, index) {
+    const reminder = date.reminder || null
+    const reminderText = reminder && reminder.text ? reminder.text : ''
+    return {
+      key: String(date.id || index),
+      text: (date.kind_label || date.kind || '') + ' · ' + (date.label || ''),
+      when: reminderText,
+      age: reminder && reminder.age_text ? reminder.age_text : '',
+      hot: reminderText === '今天' || reminderText.indexOf('还剩') === 0,
+    }
+  })
+  const reminderText = dateLines.reduce(function (hit, line) {
+    return hit || (line.hot ? line.when : '')
+  }, '')
   let netText = '收支持平'
   let netClass = 'muted'
   if (net > 0) {
@@ -43,10 +55,10 @@ function shape(raw) {
     initial: (raw.name || '?').trim().slice(0, 1) || '?',
     relation: raw.relation || '',
     archived: !!raw.archived,
-    dateText: date ? (date.kind_label || '') + ' · ' + (date.label || '') : '',
+    dateText: dateLines.map(function (line) { return line.text }).join(' '),
+    dateLines: dateLines,
     reminderText: reminderText,
-    ageText: reminder && reminder.age_text ? reminder.age_text : '',
-    upcoming: reminderText === '今天' || reminderText.indexOf('还剩') === 0,
+    upcoming: !!reminderText,
     hasGifts: given > 0 || received > 0,
     givenText: '送出 ¥' + money.formatYuan(given),
     receivedText: '收到 ¥' + money.formatYuan(received),

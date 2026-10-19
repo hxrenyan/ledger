@@ -41,6 +41,16 @@ function todayISO() {
   return shanghaiDate()
 }
 
+/** 与 src/time.ts 的 addYears 同一口径。2 月 29 日加一年落到 2 月 28 日。 */
+function addYears(dateStr, years) {
+  const p = dateStr.split('-').map(Number)
+  const year = p[0] + years
+  const month = p[1]
+  const dim = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  const day = Math.min(p[2], dim)
+  return year + '-' + pad2(month) + '-' + pad2(day)
+}
+
 function addDays(dateStr, delta) {
   const p = dateStr.split('-').map(Number)
   const d = new Date(Date.UTC(p[0], p[1] - 1, p[2] + delta))
@@ -172,6 +182,7 @@ module.exports = {
   occurredAtToDate: occurredAtToDate,
   shanghaiClock: shanghaiClock,
   todayISO: todayISO,
+  addYears: addYears,
   addDays: addDays,
   addMonth: addMonth,
   daysInMonth: daysInMonth,

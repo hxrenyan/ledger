@@ -7,16 +7,18 @@ import AdminAsr from './AdminAsr.vue'
 import AdminOcr from './AdminOcr.vue'
 import AdminWechat from './AdminWechat.vue'
 import AdminTools from './AdminTools.vue'
+import AdminMiniprogram from './AdminMiniprogram.vue'
 import AdminPoints from './AdminPoints.vue'
 import AdminFeedback from './AdminFeedback.vue'
 
-type Tab = 'users' | 'ledgers' | 'points' | 'feedback' | 'ai' | 'asr' | 'ocr' | 'wechat' | 'tools'
+type Tab = 'users' | 'ledgers' | 'points' | 'feedback' | 'ai' | 'asr' | 'ocr' | 'wechat' | 'tools' | 'miniprogram'
 type UserStatus = 'all' | 'active' | 'disabled'
 type TimeSort = 'created' | 'seen'
 type TimeOrder = 'asc' | 'desc'
 type Overview = { users: number; ledgers: number; transactions: number; disabled_users: number; open_feedbacks: number }
 type UserRow = { id: number; username: string; nickname: string; disabled: boolean; created_at: number; last_seen_at: number | null; ledger_count: number }
-type LedgerRow = { id: number; name: string; owner_username: string; member_count: number; tx_count: number; created_at: number; last_seen_at: number | null }
+type LedgerMember = { id: number; username: string; nickname: string; role: string; disabled: boolean }
+type LedgerRow = { id: number; name: string; owner_username: string; member_count: number; tx_count: number; created_at: number; last_seen_at: number | null; members: LedgerMember[] }
 type Reloadable = { reload: () => Promise<void> | void }
 
 const router = useRouter()
@@ -44,6 +46,7 @@ const asrPanel = ref<Reloadable | null>(null)
 const ocrPanel = ref<Reloadable | null>(null)
 const wechatPanel = ref<Reloadable | null>(null)
 const toolsPanel = ref<Reloadable | null>(null)
+const miniprogramPanel = ref<Reloadable | null>(null)
 let userReq = 0
 let ledgerReq = 0
 let userTimer = 0
@@ -52,7 +55,7 @@ let ledgerTimer = 0
 const navGroups = [
   { title: '概览', items: [{ key: 'users', label: '用户' }, { key: 'ledgers', label: '账本' }, { key: 'points', label: '积分' }, { key: 'feedback', label: '反馈' }] },
   { title: '能力配置', items: [{ key: 'ai', label: 'AI 解析' }, { key: 'asr', label: '语音识别' }, { key: 'ocr', label: '图片识别' }] },
-  { title: '产品配置', items: [{ key: 'wechat', label: '微信登录' }, { key: 'tools', label: '工具页' }] },
+  { title: '产品配置', items: [{ key: 'wechat', label: '微信登录' }, { key: 'tools', label: '工具页' }, { key: 'miniprogram', label: '小程序' }] },
 ] as const
 const navItems: { key: Tab; label: string }[] = []
 for (const group of navGroups) {
@@ -207,6 +210,7 @@ function currentPanel() {
   if (tab.value === 'ocr') return ocrPanel.value
   if (tab.value === 'wechat') return wechatPanel.value
   if (tab.value === 'tools') return toolsPanel.value
+  if (tab.value === 'miniprogram') return miniprogramPanel.value
   return null
 }
 
@@ -251,6 +255,10 @@ function onFeedbackUpdated() {
 }
 
 function logout() { setAdminToken(''); router.replace('/admin/login') }
+
+function memberName(member: LedgerMember) {
+  return member.nickname || member.username
+}
 
 function whenAt(ms: number | null) {
   if (!ms) return '暂无'
@@ -385,7 +393,7 @@ onMounted(() => {
           <div v-else-if="ledgers.length" class="admin-table-wrap">
             <div class="admin-table ledgers">
               <div class="admin-table-head">
-                <span>账本</span><span>主账号</span><span>成员</span><span>流水</span>
+                <span>账本</span><span>用户</span><span>流水</span>
                 <button type="button" class="admin-sort" :class="{ on: ledgerSort === 'created' }" @click="toggleLedgerSort('created')">创建时间{{ sortMark(ledgerSort === 'created', ledgerOrder) }}</button>
                 <button type="button" class="admin-sort" :class="{ on: ledgerSort === 'seen' }" @click="toggleLedgerSort('seen')">最后使用时间{{ sortMark(ledgerSort === 'seen', ledgerOrder) }}</button>
               </div>
@@ -394,8 +402,15 @@ onMounted(() => {
                   <div class="admin-avatar ledger">账</div>
                   <div><strong>{{ l.name }}</strong></div>
                 </div>
-                <span>@{{ l.owner_username }}</span>
-                <span class="admin-num">{{ l.member_count }}</span>
+                <div class="ledger-users">
+                  <span v-if="!l.members.length" class="muted">无成员</span>
+                  <span v-for="m in l.members" :key="m.id" class="ledger-user" :class="{ off: m.disabled }">
+                    {{ memberName(m) }}
+                    <small v-if="m.nickname && m.nickname !== m.username">@{{ m.username }}</small>
+                    <em v-if="m.role === 'owner'">主人</em>
+                    <em v-if="m.disabled" class="off">已停用</em>
+                  </span>
+                </div>
                 <span class="admin-num">{{ l.tx_count }}</span>
                 <span class="admin-time">{{ whenAt(l.created_at) }}</span>
                 <span class="admin-time">{{ whenAt(l.last_seen_at) }}</span>
@@ -411,6 +426,7 @@ onMounted(() => {
         <AdminOcr v-else-if="tab === 'ocr'" ref="ocrPanel" />
         <AdminWechat v-else-if="tab === 'wechat'" ref="wechatPanel" />
         <AdminTools v-else-if="tab === 'tools'" ref="toolsPanel" />
+        <AdminMiniprogram v-else-if="tab === 'miniprogram'" ref="miniprogramPanel" />
       </section>
     </main>
   </div>

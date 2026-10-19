@@ -1,0 +1,32 @@
+.force-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+}
+
+.force-page .card {
+  width: 100%;
+}
+
+.title {
+  font-size: 36rpx;
+  font-weight: 650;
+  margin-bottom: 16rpx;
+}
+
+.body {
+  font-size: 28rpx;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.hint {
+  margin-top: 20rpx;
+  color: var(--muted);
+  font-size: 26rpx;
+  line-height: 1.5;
+}
+
+.btn {
+  margin-top: 28rpx;
+}

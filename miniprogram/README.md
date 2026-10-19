@@ -22,6 +22,7 @@ miniprogram/
 │   │                               （收据 / 语音的手工 multipart、认图的两条送法也在这里）
 │   ├── image.js                    拍照 / 选图 → 压到能送出去的体积（唯一允许调
 │   │                               wx.chooseMedia / wx.compressImage 的地方）
+│   ├── localOcr.js                 手机上先认字（唯一允许调 VisionKit 的地方）
 │   ├── transport.js                传输层：direct（wx.request）/ cloud（云函数）分流与降级
 │   ├── session.js                  token / 当前账本 / 用户 / 账本列表
 │   ├── appConfig.js                「页面归属表」缓存（原生 or web-view）
@@ -44,10 +45,11 @@ miniprogram/
 | `tx-form` | ✅ 记一笔：支出/收入/转账（支持一键对调账户）、算式实时求值、分类/账户直点胶囊（可就地新建分类）、今天/昨天/前天日期快捷、再记一笔（收据入口暂隐藏）。改一笔（非转账）可转成人情 | 原生 |
 | `favors` / `favor-person` / `gift-form` | ✅ 人情往来、联系人、某人明细。记人情支持常用礼金快捷胶囊、联系人/事由直点胶囊（事由可点选取消或自定义）、今天/昨天/前天日期快捷；记新的人情可选同时记明细；改一条人情可转成明细 | 原生 |
 | `assets` / `budgets` / `categories` / `recurring` | ✅ 资产在「我的」里；月预算、分类、周期记账仍从「我的」进入 | 原生 |
-| `tools` / `tool-contacts` / `contact-form` | ✅ 底部「工具」默认原生联系人管理。后台 `tools.mode=h5` 时这一栏改为 web-view 打开 `/tools`，失败退回原生。见 [docs/tools.md](../docs/tools.md) | 原生，可切 H5 |
+| `tools` / `tool-contacts` / `contact-form` / `tool-calendar` | ✅ 底部「工具」默认原生：联系人管理、日历记录。日历记事只属于自己。后台 `tools.mode=h5` 时这一栏改为 web-view 打开 `/tools`，失败退回原生。见 [docs/tools.md](../docs/tools.md) | 原生，可切 H5 |
 | `speak` / `import` | ✅ 智能记账（说话或拍一张）、账单导入（含批次撤销）。核对和导入预览里，每一行可在明细和人情之间切换；智能记账的人情行可以再打开「同时记明细」 | 原生 |
 | `feedback` | ✅ 意见反馈。只提交内容，不收集联系方式。接口仍接受可选 `contact`（最多 40 字） | 原生 |
-| `me` / `ledger` | ✅ 我的（个人资料与积分胶囊、多账本一键切换、净资产与本月预算双卡概览、2×2 功能宫格）、账本与成员 | 原生 |
+| `me` / `ledger` | ✅ 我的（个人资料与积分胶囊、多账本一键切换、净资产与本月预算双卡概览、2×2 功能宫格）、账本与成员。关于文案由后台下发 | 原生 |
+| `force-update` | ✅ 正式版低于后台最低版本时停在这里，新版本下好后自动重新进入。见 [docs/miniprogram.md](../docs/miniprogram.md) | 原生 |
 | `login` | ✅ 微信一键登录 + 账号密码 + 绑定已有账号 | 原生 |
 | `webview/webview` | ✅ 通用网页容器 | 承载长尾页 |
 

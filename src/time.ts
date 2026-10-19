@@ -40,6 +40,22 @@ export function shanghaiMonthRange(month: string): { start: number; end: number 
   return { start, end }
 }
 
+/**
+ * 同一天加上若干年。目标年没有这一天时（2 月 29 日）落到该月最后一天。
+ * 日历记事的时间范围用它判断「不超过一年」：结束日可以等于开始日的下一年同月同日。
+ */
+export function addYears(dateStr: string, years: number): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) throw new Error('日期格式应为 YYYY-MM-DD')
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const year = (y ?? 0) + years
+  const month = m ?? 1
+  const dim = new Date(Date.UTC(year, month, 0)).getUTCDate()
+  const day = Math.min(d ?? 1, dim)
+  const mm = String(month).padStart(2, '0')
+  const dd = String(day).padStart(2, '0')
+  return `${year}-${mm}-${dd}`
+}
+
 export function addDays(dateStr: string, delta: number): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) throw new Error('日期格式应为 YYYY-MM-DD')
   const [y, m, d] = dateStr.split('-').map(Number)

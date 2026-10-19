@@ -1,7 +1,7 @@
 /**
  * 工具。
  *
- * 两套界面：原生联系人管理，和内嵌的 H5。用哪一套由服务端 tools.mode 决定，
+ * 两套界面：原生工具清单（联系人、日历记录），和内嵌的 H5。用哪一套由服务端 tools.mode 决定，
  * 管理后台改完，下次进入这一栏生效。没读到、读失败、网页打不开，都留在原生。
  */
 
@@ -67,5 +67,13 @@ Page({
       return
     }
     nav.go('tool-contacts')
+  },
+
+  openCalendar() {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    nav.go('tool-calendar')
   },
 })

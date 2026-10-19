@@ -11,6 +11,7 @@
 const request = require('../../utils/request')
 const session = require('../../utils/session')
 const ui = require('../../utils/ui')
+const localOcr = require('../../utils/localOcr')
 
 /** 模型已配置即可用。会话已是微信登录时，不因 status.allowed 为 false 把入口藏掉。 */
 function modelReady(res) {
@@ -39,8 +40,8 @@ Page({
       .catch(() => this.setStatus('canSpeak', false))
     request
       .get('/api/v1/ocr/status', null, { withLedger: false })
-      .then((res) => this.setStatus('canPhoto', modelReady(res)))
-      .catch(() => this.setStatus('canPhoto', false))
+      .then((res) => this.setStatus('canPhoto', localOcr.photoAvailable(modelReady(res))))
+      .catch(() => this.setStatus('canPhoto', localOcr.photoAvailable(false)))
   },
 
   /**

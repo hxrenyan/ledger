@@ -25,8 +25,19 @@
     <view class="card">
       <view class="sec-head">
         <text class="label">日子</text>
-        <text class="clear" wx:if="{{showDate}}" bindtap="clearDate">不填</text>
-        <text class="hint" wx:else>选填</text>
+        <text class="hint">最多 8 个</text>
+      </view>
+      <view class="saved" wx:if="{{dates.length}}">
+        <view class="saved-item {{editingIndex === index ? 'on' : ''}}" wx:for="{{dates}}" wx:key="key">
+          <text class="saved-text">{{item.summary}}</text>
+          <text class="act" data-index="{{index}}" catchtap="editDate">改</text>
+          <text class="act danger" data-index="{{index}}" catchtap="removeDate">删</text>
+        </view>
+      </view>
+      <view class="hint empty-hint" wx:else>还没有日子，选一个名称后可以继续加</view>
+      <view class="sec-head date-head">
+        <text class="label">{{editingIndex >= 0 ? '修改这条' : '再加一个'}}</text>
+        <text class="clear" wx:if="{{showDate || editingIndex >= 0}}" bindtap="clearComposer">取消</text>
       </view>
       <view class="chips">
         <view
@@ -63,6 +74,7 @@
           </picker>
           <input class="input year" value="{{year}}" bindinput="onYear" maxlength="4" type="number" placeholder="{{yearLabel}}" placeholder-class="ph" />
         </view>
+        <view class="mini-btn block" bindtap="commitDate">{{editingIndex >= 0 ? '保存这条' : '加入这个日子'}}</view>
       </block>
     </view>
   </block>

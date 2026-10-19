@@ -10,6 +10,14 @@
 const config = require('../config')
 const transport = require('./transport')
 const session = require('./session')
+const nav = require('./nav')
+
+/** 只清理发起请求时的会话，跳转须服从当前版本门槛。 */
+function expireSession(token, path) {
+  if (!token || path.indexOf('/api/v1/auth/') === 0 || token !== session.getToken()) return
+  session.clear()
+  if (!nav.blockForUpdate()) wx.reLaunch({ url: '/pages/login/login' })
+}
 
 /**
  * 上传（语音转写 / 认图）的默认超时，也是 withTimeout 的兜底值。
@@ -96,8 +104,10 @@ function request(options) {
   const token = session.getToken()
   const ledgerId = session.getLedgerId()
 
+  const method = (opts.method || 'GET').toUpperCase()
   const header = Object.assign(
     { 'content-type': 'application/json', 'x-ledger-client': 'miniprogram' },
+    method === 'GET' ? { 'cache-control': 'no-cache', pragma: 'no-cache' } : {},
     token ? { authorization: 'Bearer ' + token } : {},
     withLedger && ledgerId ? { 'x-ledger-id': String(ledgerId) } : {},
     opts.header || {},
@@ -106,7 +116,7 @@ function request(options) {
   return withTimeout(
     transport.send({
       path: path,
-      method: (opts.method || 'GET').toUpperCase(),
+      method: method,
       data: opts.data || undefined,
       header: header,
       dataType: opts.dataType,
@@ -122,10 +132,7 @@ function request(options) {
       // 响应回来时可能已经登录过（或换过账号）了。这种迟到的 401 若照样
       // 清会话跳登录，现象就是「刚登录进去又被踢回登录页」，极难定位。
       // 因此只有 token 与当前存储的一致，才认定这条会话真的失效。
-      if (token && path.indexOf('/api/v1/auth/') !== 0 && token === session.getToken()) {
-        session.clear()
-        wx.reLaunch({ url: '/pages/login/login' })
-      }
+      expireSession(token, path)
       throw toError(res, '登录已过期')
     }
     if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -178,8 +185,7 @@ function upload(options) {
       timeout: opts.timeout || 120000,
       success: function (res) {
         if (res.statusCode === 401 && token) {
-          session.clear()
-          wx.reLaunch({ url: '/pages/login/login' })
+          expireSession(token, opts.path)
           reject({ code: 'unauthorized', message: '登录已过期', status: 401 })
           return
         }

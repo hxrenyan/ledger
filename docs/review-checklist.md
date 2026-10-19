@@ -33,17 +33,20 @@
 | 位置 | 接口 | 需在指引里声明 |
 |---|---|---|
 | `miniprogram/utils/image.js` | `wx.chooseMedia` | 摄像头、相册 |
+| `miniprogram/utils/localOcr.js` | `wx.createVKSession` | 不额外采集；认字在手机上完成 |
 | `miniprogram/components/ai-panel/ai-panel.js` | `wx.getRecorderManager` | 麦克风 |
 
-后台「设置 → 服务内容声明 → 用户隐私保护指引」必须勾选上述三项。另外还要说明
-**图像与语音会上传给第三方模型服务做识别**（`src/ocr/vision.ts` 走硅基流动、
-`src/speech/asr.ts` 走讯飞）—— 不声明即属违规共享用户信息。
+后台「设置 → 服务内容声明 → 用户隐私保护指引」必须勾选摄像头、相册、麦克风。
+图像默认在手机上用微信 VisionKit 认字，不出设备。只有本机没认全，或用户点
+「云端再认一次」时，照片才会上传，并由服务器交给硅基流动（`src/ocr/vision.ts`）。
+认出来的文字仍会交给文本模型整理成流水。语音仍上传给讯飞（`src/speech/asr.ts`）。
+这些共享不声明即属违规。
 
 代码侧没有 `onNeedPrivacyAuthorization` 之类的处理，这本身不算错（基础库会自动弹窗），
 但后台没配指引时真机上这两个接口会**直接调用失败**，表现是拍照记账、语音记账点不动。
 
-小程序内也没有隐私政策 / 用户协议的入口：「我的 → 关于记账」只是一个 `showModal` 弹窗，
-建议补上政策链接。
+小程序内也没有隐私政策 / 用户协议的入口：「我的 → 关于记账」仍是一个 `showModal` 弹窗，文案在管理后台「小程序」里改，
+建议补上政策链接。正式版低于后台最低版本时会停在更新页并自动重启，见 [miniprogram.md](miniprogram.md)。
 
 ### 4. 云函数开关没打开，审核版可能整个连不上
 

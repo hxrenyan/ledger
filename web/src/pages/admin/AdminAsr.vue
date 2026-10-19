@@ -115,7 +115,7 @@ async function test(item: AsrItem, event: Event) {
       method: 'POST',
       body: fd,
     })
-    if (res.ok) msg.value = `识别结果：${res.text ?? ''}`
+    if (res.ok) msg.value = res.text?.trim() ? `识别结果：${res.text}` : '没有识别出文本'
     else err.value = res.message ?? '测试失败'
   } catch (e) {
     err.value = e instanceof Error ? e.message : '测试失败'

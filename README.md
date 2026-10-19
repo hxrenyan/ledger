@@ -10,9 +10,9 @@
 - 账户、分类、收支、转账
 - 月预算、收据图
 - **人情往来**（按人记送出/收入、事由、差额；认得出人名就记人情，记的时候可以同时记明细，明细和人情也可以互转。联系人可以记阳历或农历的日子，名称自己写。见 [docs/favors.md](docs/favors.md)）
-- **工具**（小程序底部一栏。默认原生联系人管理；管理后台可切成 H5，切过去之后再加工具不用发小程序。见 [docs/tools.md](docs/tools.md)）
+- **工具**（小程序底部一栏。原生和 H5 都有联系人管理、日历记录。日历记事只属于自己。默认原生；管理后台可切成 H5。见 [docs/tools.md](docs/tools.md)）
 - **账单导入**：微信 / 支付宝 / 银行 / 通用 CSV、Excel、JSON，可选 AI 兜底解析（见 [docs/import.md](docs/import.md)）
-- **拍照记账**：拍小票 / 发票 / 支付截图 / 手写本，OCR 认字再由模型整理成流水，逐行核对后入库（见 [docs/photo.md](docs/photo.md)）
+- **拍照记账**：拍小票 / 发票 / 支付截图 / 手写本。小程序先在手机上认字，不够再上传；H5 直接上传。认出的字再由模型整理成流水，逐行核对后入库（见 [docs/photo.md](docs/photo.md)）
 - CSV 导出
 - **管理后台** `/admin`：用户/账本概览、停用账号、AI 配置、图片识别配置
 
@@ -183,7 +183,7 @@ H5 热更新可另开：`npm run dev:web`（代理 `/api` 到 3000）。
 
 小程序登录：`POST /api/v1/auth/wechat`，body `{ "code" }`。新 openid 建一个可单独使用的微信账号（201），已绑定过则直接进入合并后的账号（200）。会话里的 `user.has_password` / `user.wechat_bound` 用来决定要不要显示「绑定已有账号」。未配置 `WX_APPID` / `WX_SECRET` 时返回 503。`session_key` 不落库。
 
-绑定已有账号：小程序登录后 `POST /api/v1/me/wechat/bind`，body `{ "username", "password" }`，带当前 Bearer，不需要 `X-Ledger-Id`。密码正确后两个账号合成一个：留下被绑定账号的用户名和密码，挂上当前微信。只有自己的账本并进对方最早的那个账本（同名账户、分类、联系人合并，余额和预算相加，流水、人情、周期记账、收据都保留）。还有别人的共享账本不搬流水，只把所有者改成合并后的这个人。返回**新 token**（必须替换本地旧 token）。之后微信登录和密码登录进入同一个账号。目标账号已绑过别的微信则 409，不覆盖。
+绑定已有账号：小程序登录后 `POST /api/v1/me/wechat/bind`，body `{ "username", "password" }`，带当前 Bearer，不需要 `X-Ledger-Id`。密码正确后两个账号合成一个：留下被绑定账号的用户名和密码，挂上当前微信。只有自己的账本并进对方最早的那个账本（同名账户、分类、联系人合并，余额和预算相加，流水、人情、周期记账、收据都保留）。还有别人的共享账本不搬流水，只把所有者改成合并后的这个人。个人日历记事跟用户走，合并后都在留下的那个账号下。返回**新 token**（必须替换本地旧 token）。之后微信登录和密码登录进入同一个账号。目标账号已绑过别的微信则 409，不覆盖。
 
 web-view 会话交接：
 
@@ -199,7 +199,7 @@ web-view 会话交接：
 拍照记账（图片识别）：
 
 - `GET /api/v1/ocr/status` → `{ available }`。**免账本头但仍需登录**（`LEDGER_OPTIONAL`）。
-- `POST /api/v1/ocr/scan`：认图 → `{ text, profile, chars }`。同时接受 `multipart/form-data`（字段 `file`）与 `application/json`（`{ image_base64, mime }`）——后者是给云通道用的，`wx.cloud.callFunction` 的 event 只送 JSON。图片上限 6MB，白名单 `jpeg / png / webp / bmp / heic`。
+- `POST /api/v1/ocr/scan`：服务器认图 → `{ text, profile, chars }`。小程序先用微信 VisionKit 在手机上认，文字不够、超时或用户点「云端再认一次」才调这个接口；H5 直接调。同时接受 `multipart/form-data`（字段 `file`）与 `application/json`（`{ image_base64, mime }`）——后者是给云通道用的，`wx.cloud.callFunction` 的 event 只送 JSON。图片上限 6MB，白名单 `jpeg / png / webp / bmp / heic`。
 - `POST /api/v1/imports/receipt`：识别出的文本 → 流水行（与 `/imports/utterances` 同一条下游，只是提示词不同）。**没配 llm 时返回 `parser: 'none'` + 空 `items`**，界面据此把原文摆给用户，而不是吐出一堆错行。
 - `GET` / `PUT /api/v1/admin/ocr`、`POST /api/v1/admin/ocr/test`：图片识别配置，最多 8 套，按数组顺序接力。
 

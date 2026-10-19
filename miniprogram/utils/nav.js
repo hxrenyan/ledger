@@ -16,6 +16,7 @@ const NATIVE_PAGES = {
   tools: '/pages/tools/tools',
   'tool-contacts': '/pages/tool-contacts/tool-contacts',
   'contact-form': '/pages/contact-form/contact-form',
+  'tool-calendar': '/pages/tool-calendar/tool-calendar',
   me: '/pages/me/me',
   ledger: '/pages/ledger/ledger',
   budgets: '/pages/budgets/budgets',
@@ -27,6 +28,14 @@ const NATIVE_PAGES = {
 
 /** tabBar 页面只能 switchTab / reLaunch，navigateTo 会失败。 */
 const TAB_PAGES = { home: true, favors: true, tools: true, me: true }
+
+/** 已触发强制更新时，迟到的请求或页面回调也不能跳出更新页。 */
+function blockForUpdate() {
+  const app = typeof getApp === 'function' ? getApp() : null
+  if (!app || !app.globalData || !app.globalData.updateRequired) return false
+  app.openForceUpdate()
+  return true
+}
 
 function qs(query) {
   const parts = []
@@ -45,6 +54,7 @@ function suffix(query) {
 
 /** 直接打开原生页（web-view 容器的降级出口也用它）。 */
 function openNative(key, query, reopen) {
+  if (blockForUpdate()) return
   const url = NATIVE_PAGES[key]
   if (!url) {
     wx.showToast({ title: '页面不存在', icon: 'none' })
@@ -119,6 +129,7 @@ function go(key, query) {
 }
 
 module.exports = {
+  blockForUpdate: blockForUpdate,
   NATIVE_PAGES: NATIVE_PAGES,
   TAB_PAGES: TAB_PAGES,
   go: go,

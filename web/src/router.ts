@@ -12,7 +12,11 @@ export const router = createRouter({
       children: [
         { path: '', component: () => import('./pages/tools/ToolList.vue') },
         { path: 'contacts', component: () => import('./pages/tools/ContactsPage.vue') },
+        { path: 'contacts/:contactId/records', component: () => import('./pages/tools/FavorRecords.vue') },
+        { path: 'contacts/:contactId/gifts/new', component: () => import('./pages/tools/GiftForm.vue') },
+        { path: 'gifts/:giftId', component: () => import('./pages/tools/GiftForm.vue') },
         { path: 'contacts/:id', component: () => import('./pages/tools/ContactForm.vue') },
+        { path: 'calendar', component: () => import('./pages/tools/CalendarPage.vue') },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/admin' },

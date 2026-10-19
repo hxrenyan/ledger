@@ -2,7 +2,15 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { centsToYuan } from '@server/money.ts'
-import { api, inMiniProgram, openFavorPerson } from '../../tools/session.ts'
+import { api } from '../../tools/session.ts'
+
+type ContactDate = {
+  id?: number
+  kind_label: string
+  kind: string
+  label: string
+  reminder: { text: string; age_text: string } | null
+}
 
 type Contact = {
   id: number
@@ -13,6 +21,7 @@ type Contact = {
   received_cents: number
   net_cents: number
   date: { label: string; kind_label: string } | null
+  dates?: ContactDate[]
   reminder: { text: string; age_text: string } | null
 }
 
@@ -26,7 +35,6 @@ const relationFilter = ref('')
 const error = ref('')
 const loading = ref(true)
 const busyId = ref<number | null>(null)
-const showRecords = inMiniProgram()
 
 onMounted(load)
 
@@ -45,26 +53,46 @@ async function load() {
 
 const activeItems = computed(() => allItems.value.filter((item) => !item.archived))
 const archivedCount = computed(() => allItems.value.filter((item) => item.archived).length)
-const withDateCount = computed(() => activeItems.value.filter((item) => Boolean(item.date)).length)
+const withDateCount = computed(() => activeItems.value.filter((item) => dateList(item).length > 0).length)
 
-function isUpcoming(item: Contact) {
-  const txt = item.reminder?.text || ''
+function dateList(item: Contact): ContactDate[] {
+  if (item.dates && item.dates.length) return item.dates
+  if (!item.date) return []
+  return [{ ...item.date, kind: item.date.kind_label, reminder: item.reminder }]
+}
+
+function reminderText(date: ContactDate) {
+  return date.reminder?.text || ''
+}
+
+function isUpcomingDate(date: ContactDate) {
+  const txt = reminderText(date)
   return txt === '今天' || txt.startsWith('还剩')
 }
 
-function upcomingRank(item: Contact) {
-  const txt = item.reminder?.text || ''
+function isUpcoming(item: Contact) {
+  return dateList(item).some(isUpcomingDate)
+}
+
+function upcomingRank(date: ContactDate) {
+  const txt = reminderText(date)
   if (txt === '今天') return 0
   const m = txt.match(/还剩\s*(\d+)\s*天/)
   return m ? Number(m[1]) : 999
 }
 
-const upcomingItems = computed(() =>
-  activeItems.value
-    .filter(isUpcoming)
-    .slice()
-    .sort((a, b) => upcomingRank(a) - upcomingRank(b)),
-)
+const upcomingCards = computed(() => {
+  const cards: { key: string; contact: Contact; date: ContactDate }[] = []
+  for (const item of activeItems.value) {
+    for (const date of dateList(item)) {
+      if (!isUpcomingDate(date)) continue
+      cards.push({ key: `${item.id}-${date.id || date.kind_label}`, contact: item, date })
+    }
+  }
+  return cards.sort((a, b) => upcomingRank(a.date) - upcomingRank(b.date))
+})
+
+const upcomingPeople = computed(() => activeItems.value.filter(isUpcoming))
 
 const relations = computed(() => {
   const set = new Set<string>()
@@ -80,9 +108,9 @@ const filteredItems = computed(() => {
     filter.value === 'archived'
       ? allItems.value.filter((item) => item.archived)
       : filter.value === 'date'
-        ? activeItems.value.filter((item) => Boolean(item.date))
+        ? activeItems.value.filter((item) => dateList(item).length > 0)
         : filter.value === 'upcoming'
-          ? upcomingItems.value
+          ? activeItems.value.filter(isUpcoming)
           : activeItems.value
 
   return base.filter((item) => {
@@ -93,8 +121,7 @@ const filteredItems = computed(() => {
     const hay = [
       item.name,
       item.relation || '',
-      item.date?.kind_label || '',
-      item.date?.label || '',
+      ...dateList(item).flatMap((date) => [date.kind_label || '', date.label || '', date.reminder?.text || '']),
     ]
       .join(' ')
       .toLowerCase()
@@ -121,12 +148,8 @@ function initialOf(name: string) {
   return (name || '?').trim().slice(0, 1) || '?'
 }
 
-async function openRecords(id: number) {
-  try {
-    await openFavorPerson(id)
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : '打不开往来'
-  }
+function openRecords(id: number) {
+  void router.push(`/tools/contacts/${id}/records`)
 }
 
 async function toggleArchive(item: Contact) {
@@ -195,36 +218,36 @@ function netClass(item: Contact) {
     <button
       type="button"
       class="stat-box"
-      :class="{ on: filter === 'upcoming', highlight: upcomingItems.length > 0 }"
+      :class="{ on: filter === 'upcoming', highlight: upcomingPeople.length > 0 }"
       @click="setFilter('upcoming')"
     >
-      <span class="sk">30天内提醒</span>
-      <strong class="sv" :class="{ warn: upcomingItems.length > 0 }">{{ upcomingItems.length }}</strong>
+      <span class="sk">30天内</span>
+      <strong class="sv" :class="{ warn: upcomingPeople.length > 0 }">{{ upcomingPeople.length }}</strong>
     </button>
   </div>
 
   <!-- 近期日子提醒横幅（30天内到来） -->
-  <div v-if="!loading && upcomingItems.length && filter !== 'archived'" class="upcoming-strip">
+  <div v-if="!loading && upcomingCards.length && filter !== 'archived'" class="upcoming-strip">
     <div class="up-head">
       <span class="up-title">近期重要日子</span>
       <span class="up-hint">点卡片可直接编辑</span>
     </div>
     <div class="up-list">
       <div
-        v-for="u in upcomingItems"
-        :key="'up-' + u.id"
+        v-for="u in upcomingCards"
+        :key="u.key"
         class="up-card"
-        @click="router.push('/tools/contacts/' + u.id)"
+        @click="router.push('/tools/contacts/' + u.contact.id)"
       >
         <div class="up-top">
-          <strong>{{ u.name }}</strong>
-          <span class="up-badge" :class="{ today: u.reminder?.text === '今天' }">
-            {{ u.reminder?.text }}
+          <strong>{{ u.contact.name }}</strong>
+          <span class="up-badge" :class="{ today: u.date.reminder?.text === '今天' }">
+            {{ u.date.reminder?.text }}
           </span>
         </div>
         <div class="up-sub">
-          {{ u.date?.kind_label }} · {{ u.date?.label }}
-          <template v-if="u.reminder?.age_text"> · {{ u.reminder.age_text }}</template>
+          {{ u.date.kind_label }} · {{ u.date.label }}
+          <template v-if="u.date.reminder?.age_text"> · {{ u.date.reminder.age_text }}</template>
         </div>
       </div>
     </div>
@@ -249,13 +272,13 @@ function netClass(item: Contact) {
         有日子 ({{ withDateCount }})
       </button>
       <button
-        v-if="upcomingItems.length"
+        v-if="upcomingPeople.length"
         type="button"
         class="f-pill"
         :class="{ on: filter === 'upcoming' }"
         @click="setFilter('upcoming')"
       >
-        近期提醒 ({{ upcomingItems.length }})
+        近期 ({{ upcomingPeople.length }})
       </button>
       <button
         v-if="archivedCount"
@@ -324,16 +347,18 @@ function netClass(item: Contact) {
           </div>
 
           <!-- 日子与提醒标签 -->
-          <div v-if="item.date" class="c-date-line">
-            <span class="date-tag" :class="{ hot: isUpcoming(item) }">
-              {{ item.date.kind_label }} · {{ item.date.label }}
-            </span>
-            <span v-if="item.reminder?.text" class="rem-badge" :class="{ hot: isUpcoming(item) }">
-              {{ item.reminder.text }}
-            </span>
-            <span v-if="item.reminder?.age_text" class="age-text">
-              {{ item.reminder.age_text }}
-            </span>
+          <div v-if="dateList(item).length" class="c-dates">
+            <div v-for="date in dateList(item)" :key="date.id || date.kind_label + date.label" class="c-date-line">
+              <span class="date-tag" :class="{ hot: isUpcomingDate(date) }">
+                {{ date.kind_label }} · {{ date.label }}
+              </span>
+              <span v-if="date.reminder?.text" class="rem-badge" :class="{ hot: isUpcomingDate(date) }">
+                {{ date.reminder.text }}
+              </span>
+              <span v-if="date.reminder?.age_text" class="age-text">
+                {{ date.reminder.age_text }}
+              </span>
+            </div>
           </div>
           <div v-else class="c-no-date">未设置生日/纪念日 · 点此补充</div>
         </div>
@@ -347,7 +372,7 @@ function netClass(item: Contact) {
             编辑
           </button>
           <button
-            v-if="showRecords && !item.archived"
+            v-if="!item.archived"
             type="button"
             class="act-btn"
             @click="openRecords(item.id)"
@@ -665,12 +690,12 @@ function netClass(item: Contact) {
   font-size: 11px;
 }
 
+.c-dates { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
 .c-date-line {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 6px;
 }
 .date-tag {
   font-size: 12px;
