@@ -343,7 +343,7 @@ curl -s -X PUT $API/api/v1/admin/app-config \
 |----|-------------|--------|
 | 登录 | 用户名密码 | 微信一键登录，支持绑定已有账号 |
 | 收据 | `<input type=file>` | 拍照 / 相册，手工拼 multipart（不能用 `wx.uploadFile`，它给不对分片类型） |
-| 语音 | `MediaRecorder` | `wx.getRecorderManager`（mp3） |
+| 语音 | `MediaRecorder` | 微信同声传译插件（不上传录音） |
 | 拍照记账 | 未做 | `components/ai-panel`：拍照 → `utils/image` 压图 → `/ocr/scan` → `/imports/receipt` |
 | 账单导入 | `<input type=file>` + FileReader | `wx.chooseMessageFile` + 自建 GBK 解码表 |
 | 存账单 | 导出 CSV（含 GBK） | 未做，手机上不需要 |
@@ -352,9 +352,11 @@ curl -s -X PUT $API/api/v1/admin/app-config \
 ## 智能记账：说话或拍一张
 
 两条入口汇到同一套核对 / 提交界面（`components/ai-panel`），差别只在拿文字的
-那一步：语音走 `/speech/transcribe`，拍照走 `/ocr/scan`。
+那一步：语音用微信同声传译插件转成文字，再交给 `/imports/utterances` 整理；拍照走 `/ocr/scan`。
 
-明细页右下角 + 里的「日历记录」也按住说话，识别走同一套 `/speech/transcribe`。转写后调用 `/api/v1/day-notes/parse`，拆出日期和事情，核对后再写入个人日历。不整理成流水，也不拍照。后台没配语音识别时，这一项不出现。日期规则见 [docs/tools.md](../docs/tools.md)。
+插件要在小程序管理后台「设置 → 第三方设置 → 插件管理」添加「微信同声传译」，AppID `wx069ba97219f66d99`，版本与 `app.json` 里的 `0.3.5` 一致。没添加时按住说话会提示不可用。
+
+明细页右下角 + 里的「日历记录」也按住说话，识别走同一套插件。转写后调用 `/api/v1/day-notes/parse`，拆出日期和事情，核对后再写入个人日历。不整理成流水，也不拍照，不扣积分。日期规则见 [docs/tools.md](../docs/tools.md)。
 
 **拍照这条链路的四件事**
 

@@ -35,25 +35,27 @@ function panelHarness() {
   const request = {
     get: vi.fn().mockResolvedValue(points),
     post: vi.fn((path: string) => Promise.resolve(path.endsWith('/utterances') ? voicePreview : { parser: 'ai', items: [] })),
-    uploadBinary: vi.fn().mockResolvedValue({ text: '午饭十二元' }),
+    uploadBinary: vi.fn(),
     scanImage: vi.fn().mockResolvedValue({ text: '云端照片晚饭88元' }),
   }
   const image = { pick: vi.fn().mockResolvedValue(selected), prepare: vi.fn().mockResolvedValue({ filePath: 'prepared-photo.jpg' }) }
   const localOcr = { supported: () => true, usable: () => true, recognize: vi.fn().mockResolvedValue(localText) }
   const ui = { toast: vi.fn(), fail: vi.fn(), ok: vi.fn() }
   let confirm: (res: { confirm: boolean }) => void = () => {}
-  let start: () => void = () => {}
-  let stop: (res: unknown) => void = () => {}
+  const voice = { text: '午饭十二元' }
   const recorder = {
-    onStart: (cb: typeof start) => { start = cb },
-    onStop: (cb: typeof stop) => { stop = cb },
-    onError: vi.fn(),
-    start: vi.fn(() => start()),
-    stop: vi.fn(() => stop({ tempFilePath: 'current-voice.mp3', duration: 1000 })),
+    start: vi.fn(function (this: { onStart?: () => void }) {
+      if (typeof this.onStart === 'function') this.onStart()
+    }),
+    stop: vi.fn(function (this: { onStop?: (res: unknown) => void }) {
+      if (typeof this.onStop === 'function') this.onStop({ result: voice.text, duration: 1000 })
+    }),
   }
+  ;(globalThis as { requirePlugin?: (name: string) => unknown }).requirePlugin = () => ({
+    getRecordRecognitionManager: () => recorder,
+  })
   const wx = {
     showModal: vi.fn((options: { success: typeof confirm }) => { confirm = options.success }),
-    getRecorderManager: () => recorder,
   }
   const modules: Record<string, unknown> = {
     '../../utils/request': request, '../../utils/image': image, '../../utils/localOcr': localOcr,
@@ -69,7 +71,7 @@ function panelHarness() {
   const panel: Record<string, any> = { ...def.methods, data: structuredClone({ ...def.data, canSpeak: true, canPhoto: true }) }
   panel.setData = (patch: Record<string, unknown>) => Object.assign(panel.data, patch)
   def.lifetimes.attached.call(panel)
-  return { panel, request, image, localOcr, ui, wx, recorder, confirm: (accepted = true) => confirm({ confirm: accepted }) }
+  return { panel, request, image, localOcr, ui, wx, recorder, voice, confirm: (accepted = true) => confirm({ confirm: accepted }) }
 }
 
 beforeEach(() => vi.useFakeTimers())
@@ -102,6 +104,8 @@ describe('语音与上一轮照片隔离', () => {
     expect(wx.showModal).not.toHaveBeenCalled()
     expect(image.prepare).not.toHaveBeenCalled()
     expect(request.scanImage).not.toHaveBeenCalled()
+    expect(request.uploadBinary).not.toHaveBeenCalled()
+    expect(request.post).toHaveBeenLastCalledWith('/api/v1/imports/utterances', { text: '午饭十二元' }, { timeout: 120000 })
     expect(request.post.mock.calls.map(([path]) => path)).toEqual(['/api/v1/imports/receipt', '/api/v1/imports/utterances'])
   })
 
@@ -223,10 +227,10 @@ describe('语音与上一轮照片隔离', () => {
 
 describe('日历语音先拆日期和事情', () => {
   it('识别后核对日期和事情，再记到对应那一天', async () => {
-    const { panel, request, ui } = panelHarness()
+    const { panel, request, ui, voice } = panelHarness()
     panel.triggerEvent = vi.fn()
     panel.setData({ target: 'note' })
-    request.uploadBinary.mockResolvedValueOnce({ text: '明天下午三点开会' })
+    voice.text = '明天下午三点开会'
     request.post.mockImplementation((path: string, body: { day?: string; body?: string }) => {
       if (path.endsWith('/parse')) {
         return Promise.resolve({ items: [{ day: '2026-10-20', body: '下午三点开会', clipped: false }] })
@@ -248,9 +252,9 @@ describe('日历语音先拆日期和事情', () => {
   })
 
   it('拆分失败时整句仍放在今天，不丢这句话', async () => {
-    const { panel, request } = panelHarness()
+    const { panel, request, voice } = panelHarness()
     panel.setData({ target: 'note' })
-    request.uploadBinary.mockResolvedValueOnce({ text: '明天下午三点开会' })
+    voice.text = '明天下午三点开会'
     request.post.mockRejectedValueOnce(new Error('解析失败'))
     panel.startRecord()
     await settle()

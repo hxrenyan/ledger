@@ -443,17 +443,25 @@ for (const file of jsFiles) {
 }
 
 // ---------------------------------------------------------------------------
-// 18. recorder 的全局回调不许按实例注册
+// 18. 语音识别器的全局回调不许按实例注册
 //
-// wx.getRecorderManager() 是全局单例，而 onStop / onError 是「后注册覆盖先注册」。
-// 浮层同时挂在明细页与智能记账整页：一旦按实例注册（this.recorder.onStop(...)），
-// 后挂载的那个就把先前的覆盖掉；从整页返回（整页实例已销毁）后再录音，回调就打在
-// 已销毁的实例上 —— 另一个页面的浮层永远停在「识别中…」，不报错也不超时，
-// 只能杀掉小程序重进。
+// 微信同声传译的 getRecordRecognitionManager() 是全局单例，onStart / onStop / onError
+// 用赋值覆盖。浮层同时挂在明细页与智能记账整页：一旦按实例赋值，后挂载的那个就把
+// 先前的覆盖掉；从整页返回后再说话，回调就打在已销毁的实例上，浮层永远停在「识别中…」。
 //
-// 正确做法：走 ai-panel 里的 bindRecorder —— 模块级只挂一个回调，再转发给
-// 「本次真正发起录音」的实例（activePanel）。
+// 正确做法：只在 ai-panel 的 bindRecognition 里赋值一次，再转发给 activePanel。
+// 小程序不再使用 wx.getRecorderManager，也不再上传录音。
 // ---------------------------------------------------------------------------
+for (const file of jsFiles) {
+  if (file.startsWith(join(root, "tools"))) continue;
+  const src = readFileSync(file, "utf8");
+  if (/wx\s*\.\s*getRecorderManager\s*\(/.test(src)) {
+    err(`${rel(file)} 调了 wx.getRecorderManager()：小程序语音走微信同声传译，只能在 ai-panel 里拿识别器`);
+  }
+  if (src.includes("getRecordRecognitionManager") && !file.endsWith(join("components", "ai-panel", "ai-panel.js"))) {
+    err(`${rel(file)} 直接拿了同声传译识别器：只能在 ai-panel 的 recognitionManager 里拿`);
+  }
+}
 const RECORDER_EVENTS = ["onStop", "onError", "onStart", "onPause", "onFrameRecorded"];
 for (const file of jsFiles) {
   if (file.startsWith(join(root, "tools"))) continue;
@@ -461,8 +469,8 @@ for (const file of jsFiles) {
   for (const evt of RECORDER_EVENTS) {
     if (new RegExp(`recorder\\s*\\.\\s*${evt}\\s*\\(`).test(src)) {
       err(
-        `${rel(file)} 直接调了 recorder.${evt}()：recorder 是全局单例，回调会互相覆盖，` +
-          `必须走 ai-panel 的 bindRecorder 转发（否则另一个页面的浮层会永远停在「识别中…」）`,
+        `${rel(file)} 直接调了 recorder.${evt}()：识别器是全局单例，回调会互相覆盖，` +
+          `必须走 ai-panel 的 bindRecognition 转发（否则另一个页面的浮层会永远停在「识别中…」）`,
       );
     }
   }

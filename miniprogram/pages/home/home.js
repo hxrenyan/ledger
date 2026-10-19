@@ -205,8 +205,8 @@ Page({
       this.loadedOnce = true
       return
     }
-    // 两个识别接口只要有一次没拉成，浮层里的「拍一张 / 按住说话」就是隐身的
-    // （见 loadAiStatus）。每次回到本页补一次，成功过一次就不再重复问。
+    // 图片识别没拉成时「拍一张」会隐身（见 loadAiStatus）。每次回到本页补一次，成功过一次就不再重复问。
+    // 按住说话走微信同声传译，不靠这次查询。
     if (!this.aiStatusOk) this.loadAiStatus()
     // 账本只能在「我的 → 账本与成员」里切换（明细页不再放切换入口）。
     // 切完回到这一页时，账户、分类和筛选条件都还属于上一个账本：必须清掉筛选
@@ -272,32 +272,19 @@ Page({
   },
 
   /**
-   * 两个识别模型（语音 ASR / 图片 OCR）都可能在后台没配，各自独立判断：
-   * 服务器没配图片识别、这台手机也不能端侧认字时，别给「拍一张」。
+   * 语音走微信同声传译，不看后台有没有 ASR，canSpeak 保持打开。
+   * 图片仍看 OCR 有没有配：服务器没配、这台手机也不能端侧认字时，别给「拍一张」。
    * 手机能端侧认字就仍给入口；认不全再请求服务器，没配会得到明确失败。
-   * 两个 status 都与账本无关，所以不带账本头。
    *
    * 「成功拉到过」记在 aiStatusOk 上：请求失败与「后台真的没配」都是 false，
-   * 但前者只是这一次没问着，不该把入口永久藏起来 —— 交给 onShow 再补一次。
+   * 但前者只是这一次没问着，不该把拍照入口永久藏起来 —— 交给 onShow 再补一次。
    */
   loadAiStatus() {
-    let ok = 0
-    const settled = () => {
-      ok += 1
-      if (ok === 2) this.aiStatusOk = true
-    }
-    request
-      .get('/api/v1/speech/status', null, { withLedger: false })
-      .then((res) => {
-        this.setAiStatus('canSpeak', modelReady(res))
-        settled()
-      })
-      .catch(() => this.setAiStatus('canSpeak', false))
     request
       .get('/api/v1/ocr/status', null, { withLedger: false })
       .then((res) => {
         this.setAiStatus('canPhoto', localOcr.photoAvailable(modelReady(res)))
-        settled()
+        this.aiStatusOk = true
       })
       .catch(() => this.setAiStatus('canPhoto', localOcr.photoAvailable(false)))
   },

@@ -2,6 +2,7 @@
  * 日历语音：从一句口语里拆出日期和事情。
  *
  * 只认阳历。没说日期就落在上海当天；说了相对日、星期、几月几号，就落到对应那一天。
+ * 语音转写常丢掉「号」，或写成「周5」「下个周一」「2026-10-20」「二五年十月二十号」「20好」，这些同样认。
  * 事情是去掉日期后剩下的正文。一句里可以有多件，按日期切开。
  */
 
@@ -50,8 +51,13 @@ const WEEKDAY: Record<string, number> = {
 }
 
 const NUM = '(?:\\d{1,2}|[零〇一二两三四五六七八九十廿]{1,3})'
+/** 日、号，以及语音常把「号」听成的「好」。 */
+const DAY_MARK = '[日号好]'
+/** 四位或两位年份。中文只取「二〇二五」「二五」这种逐字数字，不含「十」。长的放前面。 */
+const YEAR = '\\d{4}|\\d{2}|[零〇一二三四五六七八九]{4}|[零〇一二三四五六七八九]{2}'
+const WEEK_NAME = '[一二三四五六日天1-7]'
 const WEEK_PREFIX =
-  '上上个星期|上上星期|上上周|上上礼拜|下下个星期|下下星期|下下周|下下礼拜|上个星期|上星期|上周|上礼拜|下个星期|下星期|下周|下礼拜|这个星期|这星期|这周|本星期|本周|这个礼拜|这礼拜|本礼拜'
+  '上上个星期|上上个礼拜|上上个周|上上星期|上上礼拜|上上周|下下个星期|下下个礼拜|下下个周|下下星期|下下礼拜|下下周|上个星期|上个礼拜|上个周|上星期|上礼拜|上周|下个星期|下个礼拜|下个周|下星期|下礼拜|下周|这个星期|这个礼拜|这个周|这星期|这礼拜|这周|本星期|本礼拜|本周'
 
 /** 句首口头语。长的放前面，避免「帮我记」先吃掉「帮我记一下」。 */
 const FILLER = /^(?:帮我记住|帮我记一下|提醒我一下|帮我记|提醒我|记一下|记得|帮我)+/
@@ -100,15 +106,19 @@ function findHits(text: string, today: string): Span[] {
     }
   }
 
-  push(new RegExp(`(\\d{4})年(${NUM})月(${NUM})[日号]`), (match) => {
+  push(new RegExp(`(?<!\\d)(${YEAR})年(${NUM})月(${NUM})${DAY_MARK}`), (match) => {
     if (lunarBefore(text, match.index)) return null
-    const year = Number(match[1])
+    const year = readYear(match[1] ?? '')
     const month = readNumber(match[2] ?? '', 12)
     const day = readNumber(match[3] ?? '', 31)
-    if (month == null || day == null) return null
+    if (year == null || month == null || day == null) return null
     return ymd(year, month, day)
   })
-  push(new RegExp(`(下下个?月|下个?月|这个?月|本月)(${NUM})[日号]`), (match) => {
+  push(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})(?!\d)/g, (match) => {
+    if (lunarBefore(text, match.index)) return null
+    return ymd(Number(match[1]), Number(match[2]), Number(match[3]))
+  })
+  push(new RegExp(`(下下个?月|下个?月|这个?月|本月)(${NUM})${DAY_MARK}`), (match) => {
     if (lunarBefore(text, match.index)) return null
     const day = readNumber(match[2] ?? '', 31)
     if (day == null) return null
@@ -116,36 +126,54 @@ function findHits(text: string, today: string): Span[] {
     const delta = word.startsWith('下下') ? 2 : word.startsWith('下') ? 1 : 0
     return shiftMonth(today, delta, day)
   })
-  push(new RegExp(`(${NUM})月(${NUM})[日号]`), (match) => {
+  push(new RegExp(`(${NUM})月(${NUM})${DAY_MARK}`), (match) => {
     if (lunarBefore(text, match.index)) return null
     const month = readNumber(match[1] ?? '', 12)
     const day = readNumber(match[2] ?? '', 31)
     if (month == null || day == null) return null
     return upcomingMonthDay(today, month, day)
   })
-  push(/大后天|大前天|后天|前天|明天|昨日|昨天|今天|今日|明日/g, (match) => {
+  // 语音经常把「号」丢掉，只留下「10月20」「十月二十」。
+  push(new RegExp(`(${NUM})月(${NUM})(?!${DAY_MARK}|[月\\d])`), (match) => {
+    if (lunarBefore(text, match.index)) return null
+    const month = readNumber(match[1] ?? '', 12)
+    const day = readNumber(match[2] ?? '', 31)
+    if (month == null || day == null) return null
+    return upcomingMonthDay(today, month, day)
+  })
+  push(/大后天|大前天|大后日|后天|后日|前天|前日|明儿个|后儿个|今儿个|前儿个|明天|明日|昨天|昨日|今天|今日|明儿|后儿|今儿|前儿/g, (match) => {
     const delta: Record<string, number> = {
       大后天: 3,
+      大后日: 3,
       后天: 2,
+      后日: 2,
+      后儿个: 2,
+      后儿: 2,
       明天: 1,
       明日: 1,
+      明儿个: 1,
+      明儿: 1,
       今天: 0,
       今日: 0,
+      今儿个: 0,
+      今儿: 0,
       昨天: -1,
       昨日: -1,
       前天: -2,
+      前日: -2,
+      前儿个: -2,
+      前儿: -2,
       大前天: -3,
     }
     return addDays(today, delta[match[0]] ?? 0)
   })
-  push(new RegExp(`(${WEEK_PREFIX})([一二三四五六日天])`, 'g'), (match) => {
-    const name = match[2] ?? ''
-    const weekday = WEEKDAY[name]
+  push(new RegExp(`(${WEEK_PREFIX})(${WEEK_NAME})`, 'g'), (match) => {
+    const weekday = readWeekday(match[2] ?? '')
     if (weekday == null) return null
     return weekdayOn(today, weekShift(match[1] ?? ''), weekday)
   })
-  push(/(?<![上下这本个])(?:星期|礼拜|周)([一二三四五六日天])/g, (match) => {
-    const weekday = WEEKDAY[match[1] ?? '']
+  push(new RegExp(`(?<![上下这本个])(?:星期|礼拜|周)(${WEEK_NAME})`, 'g'), (match) => {
+    const weekday = readWeekday(match[1] ?? '')
     if (weekday == null) return null
     return weekdayOn(today, 'upcoming', weekday)
   })
@@ -163,7 +191,7 @@ function findHits(text: string, today: string): Span[] {
     }
     return monthEnd(today, delta)
   })
-  push(new RegExp(`(?<![月\\d年月日])(${NUM})[日号]`, 'g'), (match) => {
+  push(new RegExp(`(?<![月\\d年月日])(${NUM})${DAY_MARK}(?!线)`, 'g'), (match) => {
     const day = readNumber(match[1] ?? '', 31)
     if (day == null) return null
     return upcomingDay(today, day)
@@ -199,6 +227,23 @@ function cleanBody(raw: string, mode: 'event' | 'plain'): string {
     text = text.replace(/^[，,。；;、\s]+/, '').replace(/[，,。；;、\s]+$/, '').trim()
   }
   return text
+}
+
+function readYear(raw: string): number | null {
+  if (/^\d{4}$/.test(raw)) return Number(raw)
+  if (/^\d{2}$/.test(raw)) return 2000 + Number(raw)
+  if (!/^[零〇一二三四五六七八九]{2,4}$/.test(raw) || raw.length === 3) return null
+  const digits = [...raw].map((ch) => CN_DIGIT[ch])
+  if (digits.some((n) => n == null)) return null
+  const value = Number(digits.join(''))
+  return raw.length === 2 ? 2000 + value : value
+}
+
+function readWeekday(name: string): number | null {
+  if (/^[1-6]$/.test(name)) return Number(name)
+  if (name === '7') return 0
+  const weekday = WEEKDAY[name]
+  return weekday == null ? null : weekday
 }
 
 function readNumber(raw: string, max: number): number | null {

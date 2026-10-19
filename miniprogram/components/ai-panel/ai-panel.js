@@ -2,7 +2,7 @@
  * 智能记账浮层（认得出就记下 → 逐行核对 → 提交）。
  *
  * 两条入口，汇到同一个下游：
- *   语音  按住说话 → POST /speech/transcribe → 文字
+ *   语音  按住说话 → 微信同声传译插件转成文字（不上传录音）
  *   拍照  拍一张   → 本机 VisionKit 先认字；不够再压图上传 POST /ocr/scan → 文字
  *   记账  → POST /imports/receipt 或 /imports/utterances（提示词不同：
  *          口语一句一笔；票据要区分实付金额与余额、明细与合计）
@@ -16,12 +16,8 @@
  * target=note 是明细加号里的「日历记录」：仍走上面的语音识别，
  * 再把日期和事情拆开，核对后写入对应那一天。不整理成流水，也不拍照。
  *
- * 两个可用性开关（管理员在后台配了对应模型才有）：
- *   canSpeak 语音识别（ASR）    canPhoto 图片识别（OCR）
- * 只配了其中一个时，另一个入口不显示 —— 别让人按住说话却拿到「未配置」。
- *
- * 上传都走 utils 里的手工 multipart：语音接口按 audio/*、认图接口按 image/*
- * 校验分片自己的 Content-Type，而 wx.uploadFile 不保证给对（和收据上传同一个坑）。
+ * 语音不看后台有没有 ASR。文字到手之后，记账仍走原来的整理接口，日历仍走日期拆分。
+ * canPhoto 仍是图片识别有没有配。拍照上传走 utils 里的手工 multipart。
  */
 
 const request = require('../../utils/request')
@@ -139,21 +135,19 @@ function brief(text) {
 }
 
 /**
- * wx.getRecorderManager() 是全局单例，而 onStop / onError 是「后注册覆盖先注册」。
+ * 微信同声传译的 getRecordRecognitionManager() 是全局单例，onStart / onStop / onError
+ * 用赋值覆盖。这个浮层同时挂在明细页与智能记账整页：按实例赋值会互相盖掉，
+ * 从整页返回后再说话，回调就打在已销毁的实例上，浮层永远停在「识别中…」。
  *
- * 这个浮层同时挂在明细页与智能记账整页（home / speak）。只要开过整页那一个，
- * 它的回调就把明细页那个覆盖掉；从整页返回时整页实例已销毁，之后在明细页录音，
- * 结束回调会打在**已销毁**的实例上 —— 明细页的浮层就永远停在「识别中…」，
- * 既不报错也不超时，只能杀掉小程序重进。反过来也一样。
- *
- * 所以不按实例注册：全局回调只绑这一个模块级函数，由它转发给「本次真正发起
- * 录音」的实例。注册的是同一个函数引用，多实例互相覆盖（或重复注册）都无副作用 ——
- * activePanel 被取走后立刻置空，重复调用自然被挡掉。
+ * 所以只在模块里赋值一次，再转发给这次真正按住的浮层。activePanel 取走后立刻清空。
  */
 let activePanel = null
+let recognitionBound = false
 
-function bindRecorder(manager) {
-  manager.onStart(function () {
+function bindRecognition(manager) {
+  if (recognitionBound) return
+  recognitionBound = true
+  manager.onStart = function () {
     const panel = activePanel
     // 浮层已经关了：没有面板来收这次开始，直接停，避免麦克风空录到时长上限。
     if (!panel) {
@@ -165,17 +159,32 @@ function bindRecorder(manager) {
       return
     }
     panel.onRecordStart()
-  })
-  manager.onStop(function (res) {
+  }
+  manager.onStop = function (res) {
     const panel = activePanel
     activePanel = null
     if (panel) panel.onRecorded(res)
-  })
-  manager.onError(function (err) {
+  }
+  manager.onError = function (err) {
     const panel = activePanel
     activePanel = null
     if (panel) panel.onRecordError(err)
-  })
+  }
+}
+
+function recognitionManager() {
+  if (typeof requirePlugin !== 'function') return null
+  let plugin = null
+  try {
+    plugin = requirePlugin('WechatSI')
+  } catch (e) {
+    return null
+  }
+  if (!plugin || typeof plugin.getRecordRecognitionManager !== 'function') return null
+  const manager = plugin.getRecordRecognitionManager()
+  if (!manager) return null
+  bindRecognition(manager)
+  return manager
 }
 
 Component({
@@ -246,7 +255,7 @@ Component({
 
   lifetimes: {
     attached() {
-      // 不要在页面打开时就拿录音器。正式版会按隐私接口检查麦克风，
+      // 不要在页面打开时就拿识别器。正式版会按隐私接口检查麦克风，
       // 一进明细就调用的话，每次打开都会弹错。等用户真的按住说话再拿。
       this.recorder = null
       this.timer = null
@@ -313,13 +322,10 @@ Component({
       this.syncHint()
     },
 
-    /** 提示语跟着可用入口走，免得出现「按住说话」但语音没配。 */
+    /** 提示语跟着可用入口走。语音走微信插件，不看后台有没有语音模型。 */
     syncHint() {
       if (this.data.target === 'note') {
-        const hint = this.data.canSpeak
-          ? '按住说话，说出日期和事情，例如「明天下午三点开会」'
-          : '语音识别还没配置（管理员在后台加语音识别模型即可）'
-        this.setData({ hintText: hint })
+        this.setData({ hintText: '按住说话，说出日期和事情，例如「明天下午三点开会」' })
         return
       }
       const speak = !!this.data.canSpeak
@@ -328,7 +334,7 @@ Component({
       if (speak && photo) hint = '按住说话，或拍一张小票 / 支付截图'
       else if (speak) hint = '按住说话，例如「昨天午饭 35」或「给王哥随礼 800」'
       else if (photo) hint = '拍一张小票或支付截图，认出来逐行核对后再存'
-      else hint = '识别服务还没配置（管理员在后台加语音识别或图片识别模型即可）'
+      else hint = '图片识别还没配置（管理员在后台加图片识别模型即可）'
       this.setData({ hintText: hint })
     },
 
@@ -342,7 +348,7 @@ Component({
     /**
      * onStop 迟迟不来的兜底。
      *
-     * recorder.stop() 正常都会回调 onStop；个别机型、或录音短到几乎没启动时不会，
+     * manager.stop() 正常都会回调 onStop；个别机型、或录音短到几乎没启动时不会，
      * 这时浮层就永远停在「识别中…」。这个定时器只盯「回调到没到」——
      * onRecorded 一到就把 gotStop 置上，所以上传本身耗时长并不会被它误伤。
      */
@@ -421,9 +427,9 @@ Component({
 
     ensureRecorder() {
       if (this.recorder) return this.recorder
-      this.recorder = wx.getRecorderManager()
-      bindRecorder(this.recorder)
-      return this.recorder
+      const manager = recognitionManager()
+      if (manager) this.recorder = manager
+      return manager
     },
 
     startRecord() {
@@ -432,7 +438,10 @@ Component({
       this.reset()
       const gen = this.photoGen
       this.holding = true
-      ensurePoints(1)
+      // 日历只拆日期，不扣积分，余额为 0 也能说。记账后面还要整理文字，余额至少 1 分才开录。
+      // 两种都走 ensurePoints：非微信登录会被拦住。need 为 0 时不比较余额。
+      const ready = ensurePoints(this.data.target === 'note' ? 0 : 1)
+      ready
         .then((summary) => {
           if (this.photoGen !== gen) return
           // 余额查询回来时手指已经松开，就不要再开录，否则按钮会在松手后才变状态。
@@ -440,7 +449,13 @@ Component({
             this.holding = false
             return
           }
-          // 认领这次录音：结束回调由模块级 bindRecorder 转发到这儿（见文件顶部说明）。
+          const manager = this.ensureRecorder()
+          if (!manager) {
+            this.holding = false
+            ui.toast('语音识别不可用，请先在小程序后台添加微信同声传译')
+            return
+          }
+          // 认领这次录音：结束回调由模块级 bindRecognition 转发到这儿。
           activePanel = this
           this.setData({
             state: 'recording',
@@ -449,7 +464,7 @@ Component({
             talkText: '0 · 松开结束',
             tip: '松开发送',
           })
-          this.ensureRecorder().start({ duration: MAX_SECONDS * 1000, format: 'mp3', sampleRate: 16000, encodeBitRate: 48000 })
+          manager.start({ duration: MAX_SECONDS * 1000, lang: 'zh_CN' })
           this.clearTimer()
           this.timer = setInterval(() => {
             if (this.data.state !== 'recording') return
@@ -513,49 +528,19 @@ Component({
     onRecorded(res) {
       this.gotStop = true
       this.clearStopGuard()
-      const filePath = res && res.tempFilePath
-      if (!filePath) {
+      const text = String((res && res.result) || '').trim()
+      if (!text) {
         this.setData({ state: 'idle', tip: '' })
-        ui.toast('没有录到声音')
+        ui.toast(res && res.duration && res.duration < 600 ? '说得太短了' : '没听清，再说一次')
         return
       }
-      if (res.duration && res.duration < 600) {
-        this.setData({ state: 'idle', tip: '' })
-        ui.toast('说得太短了')
+      if (this.data.target === 'note') {
+        this.prepareCalendarNote(text)
         return
       }
-      const durationMs = res.duration || this.data.seconds * 1000
-      let seconds = Math.ceil(durationMs / 1000)
-      if (seconds < 1) seconds = 1
-      if (seconds > MAX_SECONDS) seconds = MAX_SECONDS
-      const need = Math.max(1, Math.ceil(seconds / 2))
-      ensurePoints(need)
-        .then((summary) => {
-          if (!summary) {
-            this.setData({ state: 'idle', tip: '' })
-            return null
-          }
-          return request.uploadBinary({
-            path: '/api/v1/speech/transcribe',
-            filePath: filePath,
-            ext: 'mp3',
-            formData: { duration_ms: String(durationMs) },
-          })
-        })
-        .then((data) => {
-          if (!data) return null
-          const text = (data && data.text) || ''
-          if (!text.trim()) {
-            this.setData({ state: 'idle', tip: '' })
-            ui.toast('没听清，再说一次')
-            return null
-          }
-          if (this.data.target === 'note') {
-            return this.prepareCalendarNote(text)
-          }
-          this.setData({ text: brief(text), rawText: '' })
-          return request.post('/api/v1/imports/utterances', { text: text }, { timeout: PARSE_TIMEOUT_MS })
-        })
+      this.setData({ text: brief(text), rawText: '' })
+      request
+        .post('/api/v1/imports/utterances', { text: text }, { timeout: PARSE_TIMEOUT_MS })
         .then((preview) => this.applyPreview(preview, '没解析出记录，换种说法再试'))
         .catch((err) => this.onFail(err, '语音识别失败'))
     },
@@ -687,12 +672,12 @@ Component({
         })
     },
 
-    /** 录音器报错（由模块级 bindRecorder 转发过来）。 */
+    /** 识别器报错（由模块级 bindRecognition 转发过来）。 */
     onRecordError(err) {
       this.gotStop = true
       this.clearStopGuard()
       this.setData({ state: 'idle', tip: '' })
-      ui.toast((err && err.errMsg) || '录音失败')
+      ui.toast((err && (err.msg || err.errMsg)) || '录音失败')
     },
 
     // ---- 拍照 ----

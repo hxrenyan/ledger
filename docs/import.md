@@ -46,7 +46,7 @@
 | POST | `/api/v1/imports/preview` | 解析预览，**不写库**。body：`{kind:'text',text}` 或 `{kind:'rows',rows}`，可带 `filename` / `sheet` / `use_ai`。不接收原始文件 |
 | POST | `/api/v1/imports/utterances` | 自然语言预览，**不写库**。body：`{text}`。已配置 AI 时先用模型拆句，失败再退回规则。返回 `{items,parser,ai_error}`。认得出对方姓名时带上 `favor_*`，规则见 [favors.md](favors.md) |
 | GET | `/api/v1/speech/status` | 是否已有可用语音配置 |
-| POST | `/api/v1/speech/transcribe` | `multipart` 字段 `file`。只返回 `{text,profile,points}`，不保存音频。模型正常返回但没有文字时 `text` 为空，HTTP 仍是成功，不扣积分 |
+| POST | `/api/v1/speech/transcribe` | 管理端测试用。`multipart` 字段 `file`。只返回 `{text,profile,points}`，不保存音频。模型正常返回但没有文字时 `text` 为空，HTTP 仍是成功，不扣积分。小程序按住说话不走这里，改由微信同声传译插件在手机上转文字 |
 | POST | `/api/v1/imports/suggest` | AI 批量建议分类，body `{rows:[{i,note,counterparty,direction,amount_cents}]}` |
 | POST | `/api/v1/imports/commit` | 提交落库，body `{source,filename,sheet,ai_used,dedupe,rows:[…]}`，返回 `{batch_id,imported,duplicates,skipped,failed}` |
 | GET | `/api/v1/imports/batches` | 最近导入批次（`limit` 默认 20） |

@@ -66,7 +66,7 @@
 | `miniprogram/utils/localOcr.js` | 小程序端**唯一**允许调 `wx.createVKSession` / `wx.createOffscreenCanvas` 的地方。本机先认，不够再上传 |
 | `miniprogram/utils/image.js` | 小程序端**唯一**允许调 `wx.chooseMedia` / `wx.compressImage` 的地方。压缩只服务上传 |
 | `miniprogram/utils/request.js` | `scanImage()` 按通道分流；`imageLimit()` 给出对应的体积上限 |
-| `miniprogram/components/ai-panel/` | 小程序智能记账浮层：语音与拍照两条入口，共用核对与提交 |
+| `miniprogram/components/ai-panel/` | 小程序智能记账浮层：语音用微信同声传译，拍照与语音共用核对与提交 |
 | `web/src/photoSteps.ts` | H5 压图的**决策**（梯度、起始档位）。纯函数，拆出来是为了能单测 |
 | `web/src/photo.ts` | H5 压图的**执行**（canvas 重绘），与小程序那份同构 |
 | `web/src/components/ShotButton.vue` | H5 的相机入口（隐藏的 `input[type=file]`），两个 UI 处共用 |

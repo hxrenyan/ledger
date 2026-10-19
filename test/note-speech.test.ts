@@ -56,6 +56,20 @@ describe('日历语音拆日期和事情', () => {
     expect(notes('下个月底对账')).toEqual([{ day: '2026-11-30', body: '对账', clipped: false }])
   })
 
+  it('语音转写的日期写法也能落到对应那天', () => {
+    expect(notes('下个周一交周报')).toEqual([{ day: '2026-10-26', body: '交周报', clipped: false }])
+    expect(notes('周5开会')).toEqual([{ day: '2026-10-23', body: '开会', clipped: false }])
+    expect(notes('下周1交周报')).toEqual([{ day: '2026-10-26', body: '交周报', clipped: false }])
+    expect(notes('10月20开会')).toEqual([{ day: '2026-10-20', body: '开会', clipped: false }])
+    expect(notes('十月二十去医院')).toEqual([{ day: '2026-10-20', body: '去医院', clipped: false }])
+    expect(notes('20好体检')).toEqual([{ day: '2026-10-20', body: '体检', clipped: false }])
+    expect(notes('2026-10-01国庆')).toEqual([{ day: '2026-10-01', body: '国庆', clipped: false }])
+    expect(notes('二五年十月二十号聚餐')).toEqual([{ day: '2025-10-20', body: '聚餐', clipped: false }])
+    expect(notes('26年10月20日开会')).toEqual([{ day: '2026-10-20', body: '开会', clipped: false }])
+    expect(notes('明儿开会')).toEqual([{ day: '2026-10-20', body: '开会', clipped: false }])
+    expect(notes('3号线地铁')).toEqual([{ day: '2026-10-19', body: '3号线地铁', clipped: false }])
+  })
+
   it('只听到日期时留下空事情，不把日期本身当成正文', () => {
     expect(notes('明天')).toEqual([{ day: '2026-10-20', body: '', clipped: false }])
   })

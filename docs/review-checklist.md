@@ -34,12 +34,12 @@
 |---|---|---|
 | `miniprogram/utils/image.js` | `wx.chooseMedia` | 摄像头、相册 |
 | `miniprogram/utils/localOcr.js` | `wx.createVKSession` | 不额外采集；认字在手机上完成 |
-| `miniprogram/components/ai-panel/ai-panel.js` | `wx.getRecorderManager` | 麦克风 |
+| `miniprogram/components/ai-panel/ai-panel.js` | 微信同声传译 `getRecordRecognitionManager` | 麦克风 |
 
 后台「设置 → 服务内容声明 → 用户隐私保护指引」必须勾选摄像头、相册、麦克风。
 图像默认在手机上用微信 VisionKit 认字，不出设备。只有本机没认全，或用户点
 「云端再认一次」时，照片才会上传，并由服务器交给硅基流动（`src/ocr/vision.ts`）。
-认出来的文字仍会交给文本模型整理成流水。语音仍上传给讯飞（`src/speech/asr.ts`）。
+认出来的文字仍会交给文本模型整理成流水。小程序语音由微信同声传译在微信侧转成文字，不上传录音。
 这些共享不声明即属违规。
 
 代码侧没有 `onNeedPrivacyAuthorization` 之类的处理，这本身不算错（基础库会自动弹窗），
