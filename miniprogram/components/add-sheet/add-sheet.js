@@ -12,7 +12,7 @@ Component({
      * 两个都没配时整项隐藏，免得点进去只看到「未配置」。
      */
     canAi: { type: Boolean, value: true },
-    /** 语音识别是否可用。「日历记录」把说的话记进日历，没配就整项隐藏。 */
+    /** 语音识别是否可用。「日历记录」说出日期和事情后记进日历，没配就整项隐藏。 */
     canSpeak: { type: Boolean, value: true },
   },
 

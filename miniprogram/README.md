@@ -354,7 +354,7 @@ curl -s -X PUT $API/api/v1/admin/app-config \
 两条入口汇到同一套核对 / 提交界面（`components/ai-panel`），差别只在拿文字的
 那一步：语音走 `/speech/transcribe`，拍照走 `/ocr/scan`。
 
-明细页右下角 + 里的「日历记录」也按住说话，识别走同一套 `/speech/transcribe`。认出的文字记到今天的个人日历，不整理成流水，也不拍照。后台没配语音识别时，这一项不出现。
+明细页右下角 + 里的「日历记录」也按住说话，识别走同一套 `/speech/transcribe`。转写后调用 `/api/v1/day-notes/parse`，拆出日期和事情，核对后再写入个人日历。不整理成流水，也不拍照。后台没配语音识别时，这一项不出现。日期规则见 [docs/tools.md](../docs/tools.md)。
 
 **拍照这条链路的四件事**
 

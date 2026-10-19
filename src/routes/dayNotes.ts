@@ -1,5 +1,6 @@
 import type { Hono } from 'hono'
 import type { AppEnv } from '../app.ts'
+import { parseSpokenNotes } from '../calendar/noteSpeech.ts'
 import { badRequest, notFound } from '../http.ts'
 import { routeId } from '../id.ts'
 import { addYears } from '../time.ts'
@@ -83,6 +84,15 @@ export function registerDayNoteRoutes(app: Hono<AppEnv>) {
       return c.json({ from: start, to: end, days, items })
     }
     throw badRequest('请指定月份、日期或时间范围')
+  })
+
+  /** 语音转写之后先拆日期和事情，不落库。没听出日期就用上海当天。 */
+  app.post('/api/v1/day-notes/parse', async (c) => {
+    const body = await c.req.json().catch(() => ({}))
+    const text = typeof body?.text === 'string' ? body.text : ''
+    if (text.length > 4000) throw badRequest('文本过长')
+    if (!text.trim()) throw badRequest('没有可识别的内容')
+    return c.json({ items: parseSpokenNotes(text) })
   })
 
   app.post('/api/v1/day-notes', async (c) => {

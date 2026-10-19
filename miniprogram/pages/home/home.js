@@ -156,7 +156,7 @@ Page({
     showAdd: false,
     guest: false,
     showVoice: false,
-    /** tx 智能记账；note 日历记录，识别后写入今天的日历。 */
+    /** tx 智能记账；note 日历记录，认出日期和事情后再写入。 */
     voiceTarget: 'tx',
     /** 「智能记账」浮层里两个入口各自的可用性（后台配了对应模型才有） */
     canSpeak: true,

@@ -40,7 +40,7 @@ function panelHarness() {
   }
   const image = { pick: vi.fn().mockResolvedValue(selected), prepare: vi.fn().mockResolvedValue({ filePath: 'prepared-photo.jpg' }) }
   const localOcr = { supported: () => true, usable: () => true, recognize: vi.fn().mockResolvedValue(localText) }
-  const ui = { toast: vi.fn(), fail: vi.fn() }
+  const ui = { toast: vi.fn(), fail: vi.fn(), ok: vi.fn() }
   let confirm: (res: { confirm: boolean }) => void = () => {}
   let start: () => void = () => {}
   let stop: (res: unknown) => void = () => {}
@@ -69,7 +69,7 @@ function panelHarness() {
   const panel: Record<string, any> = { ...def.methods, data: structuredClone({ ...def.data, canSpeak: true, canPhoto: true }) }
   panel.setData = (patch: Record<string, unknown>) => Object.assign(panel.data, patch)
   def.lifetimes.attached.call(panel)
-  return { panel, request, image, localOcr, wx, recorder, confirm: (accepted = true) => confirm({ confirm: accepted }) }
+  return { panel, request, image, localOcr, ui, wx, recorder, confirm: (accepted = true) => confirm({ confirm: accepted }) }
 }
 
 beforeEach(() => vi.useFakeTimers())
@@ -218,5 +218,46 @@ describe('语音与上一轮照片隔离', () => {
     expect(panel.data).toMatchObject({ state: 'editing', mode: 'photo', canCloudRetry: false, ocrSource: 'cloud' })
     expect(panel.data.items[0]).toMatchObject({ amountText: '88.00', noteText: '照片晚饭' })
     expect(request.post).toHaveBeenLastCalledWith('/api/v1/imports/receipt', { text: '云端照片晚饭88元' }, { timeout: 120000 })
+  })
+})
+
+describe('日历语音先拆日期和事情', () => {
+  it('识别后核对日期和事情，再记到对应那一天', async () => {
+    const { panel, request, ui } = panelHarness()
+    panel.triggerEvent = vi.fn()
+    panel.setData({ target: 'note' })
+    request.uploadBinary.mockResolvedValueOnce({ text: '明天下午三点开会' })
+    request.post.mockImplementation((path: string, body: { day?: string; body?: string }) => {
+      if (path.endsWith('/parse')) {
+        return Promise.resolve({ items: [{ day: '2026-10-20', body: '下午三点开会', clipped: false }] })
+      }
+      if (path.endsWith('/day-notes')) return Promise.resolve({ id: 1, day: body.day, body: body.body })
+      return Promise.resolve(voicePreview)
+    })
+    panel.startRecord()
+    await settle()
+    panel.finishRecord()
+    await settle()
+    expect(panel.data.state).toBe('note')
+    expect(panel.data.noteItems[0]).toMatchObject({ day: '2026-10-20', body: '下午三点开会' })
+    expect(request.post).toHaveBeenCalledWith('/api/v1/day-notes/parse', { text: '明天下午三点开会' })
+    panel.saveNote()
+    await settle()
+    expect(request.post).toHaveBeenCalledWith('/api/v1/day-notes', { day: '2026-10-20', body: '下午三点开会' })
+    expect(ui.ok).toHaveBeenCalledWith('已记到明天')
+  })
+
+  it('拆分失败时整句仍放在今天，不丢这句话', async () => {
+    const { panel, request } = panelHarness()
+    panel.setData({ target: 'note' })
+    request.uploadBinary.mockResolvedValueOnce({ text: '明天下午三点开会' })
+    request.post.mockRejectedValueOnce(new Error('解析失败'))
+    panel.startRecord()
+    await settle()
+    panel.finishRecord()
+    await settle()
+    expect(panel.data.state).toBe('note')
+    expect(panel.data.noteItems[0].body).toBe('明天下午三点开会')
+    expect(panel.data.noteItems[0].day).toBe(time.todayISO())
   })
 })

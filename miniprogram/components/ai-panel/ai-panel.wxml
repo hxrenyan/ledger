@@ -54,18 +54,29 @@
       <view class="ap-hint">{{tip || '识别中…'}}</view>
     </view>
 
-    <!-- 日历语音记录：认出的字记到今天，不进流水 -->
+    <!-- 日历语音：先拆出日期和事情，核对后再记。不进流水 -->
     <block wx:if="{{state === 'note'}}">
-      <view class="ap-hint">记到今天的日历记录，不进流水</view>
-      <textarea
-        class="ap-ocr-input"
-        value="{{noteBody}}"
-        bindinput="onNoteInput"
-        maxlength="200"
-        auto-height
-        placeholder="识别出的记事"
-      ></textarea>
-      <view class="ap-meta">{{noteCount}}/200</view>
+      <view class="ap-hint">核对日期和事情，再记下。不进流水</view>
+      <scroll-view class="ap-rows" scroll-y>
+        <view class="ap-row" wx:for="{{noteItems}}" wx:key="key">
+          <view class="ap-row-top">
+            <picker class="ap-note-day" mode="date" value="{{item.day}}" data-i="{{index}}" bindchange="onNoteDay">
+              <view class="ap-pick">{{item.dayText}}</view>
+            </picker>
+            <view class="ap-del" wx:if="{{noteItems.length > 1}}" data-i="{{index}}" bindtap="removeNote">删除</view>
+          </view>
+          <textarea
+            class="ap-ocr-input"
+            value="{{item.body}}"
+            data-i="{{index}}"
+            bindinput="onNoteInput"
+            maxlength="200"
+            auto-height
+            placeholder="要记的事"
+          ></textarea>
+          <view class="ap-meta">{{item.count}}/200</view>
+        </view>
+      </scroll-view>
       <view class="ap-bad-reason" wx:if="{{noteError}}">{{noteError}}</view>
       <view class="ap-actions">
         <button class="btn ghost" disabled="{{noteBusy}}" bindtap="retry">重说</button>

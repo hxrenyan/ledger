@@ -14,7 +14,7 @@
  *         人情行可以打开「同时记明细」，再按所选账户和分类写一笔流水。
  *
  * target=note 是明细加号里的「日历记录」：仍走上面的语音识别，
- * 认出的文字记到今天的个人日历，不整理成流水，也不拍照。
+ * 再把日期和事情拆开，核对后写入对应那一天。不整理成流水，也不拍照。
  *
  * 两个可用性开关（管理员在后台配了对应模型才有）：
  *   canSpeak 语音识别（ASR）    canPhoto 图片识别（OCR）
@@ -91,6 +91,46 @@ function noteChars(text) {
   return Array.from(String(text || '').trim())
 }
 
+function noteDayText(day) {
+  const today = time.todayISO()
+  let rel = ''
+  if (day === today) rel = '今天'
+  else if (day === time.addDays(today, 1)) rel = '明天'
+  else if (day === time.addDays(today, 2)) rel = '后天'
+  else if (day === time.addDays(today, -1)) rel = '昨天'
+  const parts = String(day || '').split('-')
+  const label = parts.length === 3 ? Number(parts[1]) + '月' + Number(parts[2]) + '日' : day
+  return rel ? rel + ' · ' + label : label
+}
+
+let noteSeq = 1
+
+function shapeNote(item) {
+  const day = item && /^\d{4}-\d{2}-\d{2}$/.test(item.day) ? item.day : time.todayISO()
+  const chars = noteChars(item && item.body)
+  const body = chars.length > NOTE_MAX ? chars.slice(0, NOTE_MAX).join('') : chars.join('')
+  return {
+    key: (item && item.key) || 'n' + noteSeq++,
+    day: day,
+    dayText: noteDayText(day),
+    body: body,
+    count: Array.from(body).length,
+  }
+}
+
+function notesReady(items) {
+  return !!items.length && items.every((item) => item.count >= 1 && item.count <= NOTE_MAX && /^\d{4}-\d{2}-\d{2}$/.test(item.day))
+}
+
+function savedTip(items) {
+  if (items.length === 1) {
+    const rel = String(items[0].dayText || '').split(' · ')[0]
+    if (rel === '今天' || rel === '明天' || rel === '后天' || rel === '昨天') return '已记到' + rel
+    return '已记到 ' + (items[0].dayText || '日历')
+  }
+  return '已记下 ' + items.length + ' 条'
+}
+
 function brief(text) {
   const s = String(text || '')
     .replace(/\s+/g, ' ')
@@ -144,7 +184,7 @@ Component({
     scope: { type: String, value: 'tx' },
     /** 浮层标题。从加号记日历进来时是「记到日历记录」。 */
     title: { type: String, value: '智能记账' },
-    /** tx 整理成流水；note 把识别文字记进今天的日历。 */
+    /** tx 整理成流水；note 先拆日期和事情，再记进日历。 */
     target: { type: String, value: 'tx' },
     canSpeak: { type: Boolean, value: true },
     canPhoto: { type: Boolean, value: true },
@@ -177,8 +217,7 @@ Component({
     expNames: [],
     incNames: [],
     tip: '',
-    noteBody: '',
-    noteCount: 0,
+    noteItems: [],
     noteCanSave: false,
     noteError: '',
     noteBusy: false,
@@ -265,8 +304,7 @@ Component({
         tip: '',
         canCloudRetry: false,
         ocrSource: '',
-        noteBody: '',
-        noteCount: 0,
+        noteItems: [],
         noteCanSave: false,
         noteError: '',
         noteBusy: false,
@@ -279,7 +317,7 @@ Component({
     syncHint() {
       if (this.data.target === 'note') {
         const hint = this.data.canSpeak
-          ? '按住说话，记到今天的日历记录'
+          ? '按住说话，说出日期和事情，例如「明天下午三点开会」'
           : '语音识别还没配置（管理员在后台加语音识别模型即可）'
         this.setData({ hintText: hint })
         return
@@ -513,8 +551,7 @@ Component({
             return null
           }
           if (this.data.target === 'note') {
-            this.showCalendarNote(text)
-            return null
+            return this.prepareCalendarNote(text)
           }
           this.setData({ text: brief(text), rawText: '' })
           return request.post('/api/v1/imports/utterances', { text: text }, { timeout: PARSE_TIMEOUT_MS })
@@ -523,55 +560,125 @@ Component({
         .catch((err) => this.onFail(err, '语音识别失败'))
     },
 
-    /** 语音识别结果记进今天的日历，不整理成流水。 */
-    showCalendarNote(raw) {
-      const chars = noteChars(raw)
-      const clipped = chars.length > NOTE_MAX
-      const text = clipped ? chars.slice(0, NOTE_MAX).join('') : chars.join('')
+    /**
+     * 转写之后先拆日期和事情。解析接口失败时仍把整句放到今天，避免一句语音丢了。
+     * 返回 null，后面的流水整理不会接手。
+     */
+    prepareCalendarNote(raw) {
+      const gen = this.photoGen
+      this.setData({ state: 'busy', tip: '正在识别日期和事情…' })
+      return request
+        .post('/api/v1/day-notes/parse', { text: raw })
+        .then((data) => {
+          if (this.photoGen !== gen) return null
+          const items = data && Array.isArray(data.items) ? data.items : []
+          this.showCalendarNotes(items.length ? items : [{ day: time.todayISO(), body: raw }])
+          return null
+        })
+        .catch(() => {
+          if (this.photoGen !== gen) return null
+          this.showCalendarNotes([{ day: time.todayISO(), body: raw }])
+          return null
+        })
+    },
+
+    /** 核对页：每条一个日期、一件事情。空事情要补上才能记下。 */
+    showCalendarNotes(items) {
+      const noteItems = (items || []).map(shapeNote)
+      const missing = noteItems.some((item) => item.count < 1)
+      const clipped = (items || []).some((item) => item && item.clipped)
       this.setData({
         state: 'note',
-        noteBody: text,
-        noteCount: Array.from(text).length,
-        noteCanSave: text.length > 0,
-        noteError: clipped ? '超过 200 字，已截断，可再改' : '',
+        noteItems: noteItems,
+        noteCanSave: notesReady(noteItems),
+        noteError: missing ? '没听出事情，补上再记下' : clipped ? '超过 200 字，已截断，可再改' : '',
         noteBusy: false,
         tip: '',
       })
     },
 
-    onNoteInput(e) {
-      const text = String((e.detail && e.detail.value) || '')
-      const count = noteChars(text).length
+    onNoteDay(e) {
+      const index = Number(e.currentTarget.dataset.i)
+      const day = e.detail && e.detail.value
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return
+      const noteItems = this.data.noteItems.slice()
+      if (!noteItems[index]) return
+      noteItems[index] = Object.assign({}, noteItems[index], { day: day, dayText: noteDayText(day) })
       this.setData({
-        noteBody: text,
-        noteCount: count,
-        noteCanSave: count >= 1 && count <= NOTE_MAX && !this.data.noteBusy,
+        noteItems: noteItems,
+        noteCanSave: notesReady(noteItems) && !this.data.noteBusy,
         noteError: '',
+      })
+    },
+
+    onNoteInput(e) {
+      const index = Number(e.currentTarget.dataset.i)
+      const text = String((e.detail && e.detail.value) || '')
+      const noteItems = this.data.noteItems.slice()
+      if (!noteItems[index]) return
+      const count = noteChars(text).length
+      noteItems[index] = Object.assign({}, noteItems[index], { body: text, count: count })
+      this.setData({
+        noteItems: noteItems,
+        noteCanSave: notesReady(noteItems) && !this.data.noteBusy,
+        noteError: '',
+      })
+    },
+
+    removeNote(e) {
+      if (this.data.noteBusy) return
+      const index = Number(e.currentTarget.dataset.i)
+      const noteItems = this.data.noteItems.slice()
+      noteItems.splice(index, 1)
+      if (!noteItems.length) {
+        this.setData({ state: 'idle', noteItems: [], noteError: '', noteCanSave: false, tip: '' })
+        return
+      }
+      const missing = noteItems.some((item) => item.count < 1)
+      this.setData({
+        noteItems: noteItems,
+        noteCanSave: notesReady(noteItems),
+        noteError: missing ? '没听出事情，补上再记下' : '',
       })
     },
 
     saveNote() {
       if (this._savingNote || this.data.noteBusy) return
-      const text = noteChars(this.data.noteBody).join('')
-      if (!text || Array.from(text).length > NOTE_MAX) {
-        this.setData({ noteError: '正文须为 1–200 字', noteCanSave: false })
+      const ready = (this.data.noteItems || []).map((item) => ({
+        day: item.day,
+        dayText: item.dayText,
+        body: noteChars(item.body).join(''),
+      }))
+      if (!ready.length || ready.some((item) => !/^\d{4}-\d{2}-\d{2}$/.test(item.day) || !item.body || [...item.body].length > NOTE_MAX)) {
+        this.setData({ noteError: '每条都要有日期，正文 1–200 字', noteCanSave: false })
         return
       }
       const gen = this.photoGen
       this._savingNote = true
       this.setData({ noteBusy: true, noteCanSave: false, noteError: '' })
-      request
-        .post('/api/v1/day-notes', { day: time.todayISO(), body: text })
+      const left = ready.slice()
+      const step = () => {
+        if (!left.length) return null
+        const item = left[0]
+        return request.post('/api/v1/day-notes', { day: item.day, body: item.body }).then(() => {
+          left.shift()
+          if (this.photoGen === gen && left.length) this.setData({ noteItems: left.map(shapeNote) })
+          return step()
+        })
+      }
+      step()
         .then(() => {
           if (this.photoGen !== gen) return
-          ui.ok('已记到日历')
+          ui.ok(savedTip(ready))
           this.triggerEvent('close')
         })
         .catch((err) => {
           if (this.photoGen !== gen) return
+          const noteItems = (this.data.noteItems || []).map(shapeNote)
           this.setData({
+            noteItems: noteItems,
             noteError: (err && err.message) || '保存失败',
-            noteCanSave: true,
+            noteCanSave: notesReady(noteItems),
           })
         })
         .then(() => {

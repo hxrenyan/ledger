@@ -288,6 +288,15 @@
   min-width: 0;
 }
 
+.ap-note-day {
+  flex: 1;
+  min-width: 0;
+}
+
+.ap-note-day .ap-pick {
+  text-align: left;
+}
+
 .ap-switch {
   display: flex;
   gap: 12rpx;
