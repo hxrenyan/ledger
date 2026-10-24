@@ -40,9 +40,9 @@ npm run db:migrate
 | `transactions` | 自增整数 | 流水；金额整数分；`import_batch_id` 归属导入批次（手工录入为空） |
 | `budgets` | 自增整数 | 月预算。`category_id = 0` 表示不限分类的总预算 |
 | `attachments` | `transaction_id` | 收据图，一笔流水一张。主键即流水自增 id |
-| `dict_items` | 自增整数 | 可复用配置。`kind`、`name` 是字符串。`ledger_id` 为空是公共字典，有值则只属于该账本。同名不重复，见 `idx_dict_items_ledger_name` / `idx_dict_items_public_name` |
-| `contacts` | 自增整数 | 人情联系人。日子不写在这张表上 |
-| `contact_dates` | 自增整数 | 联系人的日子，一个人可以有多条。`item_id` 指向日子标签；再记阳历/农历、月日、可选年份、农历闰月。按账本和人列出，见 `idx_contact_dates_ledger` |
+| `dict_items` | 自增整数 | 可复用配置。账本、账号字段都空是公共项；仅 `ledger_id` 有值归账本，仅 `user_id` 有值归账号。按范围唯一，见对应索引 |
+| `contacts` | 自增整数 | 人情联系人，`user_id` 是账本主人账号；日子不写在这张表上 |
+| `contact_dates` | 自增整数 | 联系人的日子，按主人账号和人列出，见 `idx_contact_dates_user` |
 | `gifts` | 自增整数 | 人情往来 |
 | `recurrences` | 自增整数 | 周期记账（只支持收入 / 支出） |
 | `import_batches` | 自增整数 | 账单导入批次台账（回溯 / 撤销） |
@@ -57,5 +57,25 @@ npm run db:migrate
 | `day_notes` | 自增整数 | 个人日历记事。跟用户走，不跟账本。按 `user_id, day` 查某月或某一天，见 `idx_day_notes_user_day` |
 
 新环境只用 `schema.sql`。线上已有数据只追加 `sql/migrations/`，不要对生产库重跑全量 schema。
+
+## 联系人归属迁移
+
+`2026-10-21-contact-owner.sql` 把旧联系人及日子按原账本的 `owner_id` 归入主人账号，并把联系人日子标签从账本范围转为账号范围。联系人 ID、日子和礼金记录保留；同一主人多个旧账本的同名日子标签合并。礼金仍保留原账本，不迁到主人私有范围。
+
+启动时不会自动执行这次归属转换，旧库继续按账本使用联系人及标签，新库按账号范围建表。暂缓切换时不要运行 `npm run db:migrate`；确认切换后先停旧后端并备份，再显式执行该命令，最后启动新后端。旧后端不能读写迁移后的联系人字段，不能与新后端共用迁移后的数据库。
+
+执行前先备份数据库文件。迁移后检查主人映射、日期关联和金额仍挂在原账本：
+
+```sql
+SELECT c.id, c.user_id, l.owner_id FROM contacts c
+LEFT JOIN ledgers l ON l.owner_id = c.user_id WHERE l.id IS NULL;
+SELECT d.id FROM contact_dates d
+LEFT JOIN contacts c ON c.id = d.contact_id WHERE c.id IS NULL OR c.user_id != d.user_id;
+SELECT g.ledger_id, g.contact_id, g.amount_cents FROM gifts g
+LEFT JOIN contacts c ON c.id = g.contact_id WHERE c.id IS NULL;
+EXPLAIN QUERY PLAN SELECT * FROM contacts WHERE user_id = 1 ORDER BY archived, name COLLATE NOCASE;
+```
+
+前两项应无记录；第三项用于核对联系人可解析，礼金金额仍由 `gifts.ledger_id` 隔离；计划应使用 `idx_contacts_user`。如果校验失败，停止应用新版本并从迁移前备份恢复，再修复异常数据后重试。`npm run db:migrate` 可重复执行，不要在正式数据上手工反向改列。
 
 导入与 AI 配置的字段语义见 [docs/import.md](../docs/import.md)。

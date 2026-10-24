@@ -1,4 +1,5 @@
 import type { Db, Stmt } from '../db/types.ts'
+import { hasDbColumn } from '../contacts.ts'
 
 const WECHAT = 'wechat'
 
@@ -22,6 +23,11 @@ export async function mergeUserStmts(
       params: [targetUserId, WECHAT, openid, sourceUserId],
     },
   ]
+
+  if (await hasDbColumn(db, 'contacts', 'user_id')) {
+    stmts.push(...(await mergeDictItems(db, sourceUserId, targetUserId, guard, guardParams, 'user_id')))
+    stmts.push(...(await mergeContacts(db, sourceUserId, targetUserId, guard, guardParams)))
+  }
 
   const targetOwned = await db.all<{ id: number }>(
     `SELECT id FROM ledgers WHERE owner_id = ? ORDER BY created_at ASC, id ASC`,
@@ -96,8 +102,9 @@ async function foldLedgerStmts(
   stmts.push(...categories.stmts)
   stmts.push(...(await mergeBudgets(db, sourceLedgerId, destLedgerId, categories.map, guard, guardParams)))
   stmts.push(...(await mergeDictItems(db, sourceLedgerId, destLedgerId, guard, guardParams)))
-  const contacts = await mergeContacts(db, sourceLedgerId, destLedgerId, guard, guardParams)
-  stmts.push(...contacts)
+  if (!(await hasDbColumn(db, 'contacts', 'user_id'))) {
+    stmts.push(...(await mergeContacts(db, sourceLedgerId, destLedgerId, guard, guardParams, 'ledger_id')))
+  }
 
   stmts.push(
     {
@@ -291,18 +298,19 @@ async function mergeBudgets(
 
 async function mergeDictItems(
   db: Db,
-  sourceLedgerId: number,
-  destLedgerId: number,
+  sourceScopeId: number,
+  destScopeId: number,
   guard: string,
   guardParams: unknown[],
+  scope: 'ledger_id' | 'user_id' = 'ledger_id',
 ): Promise<Stmt[]> {
   const source = await db.all<{ id: number; kind: string; name: string }>(
-    `SELECT id, kind, name FROM dict_items WHERE ledger_id = ? ORDER BY id ASC`,
-    [sourceLedgerId],
+    `SELECT id, kind, name FROM dict_items WHERE ${scope} = ? ORDER BY id ASC`,
+    [sourceScopeId],
   )
   const dest = await db.all<{ id: number; kind: string; name: string }>(
-    `SELECT id, kind, name FROM dict_items WHERE ledger_id = ?`,
-    [destLedgerId],
+    `SELECT id, kind, name FROM dict_items WHERE ${scope} = ?`,
+    [destScopeId],
   )
   const byKey = new Map(dest.map((row) => [`${row.kind}\n${row.name}`, row.id]))
   const stmts: Stmt[] = []
@@ -312,19 +320,19 @@ async function mergeDictItems(
     if (hit) {
       stmts.push(
         {
-          sql: `UPDATE contact_dates SET item_id = ? WHERE ledger_id = ? AND item_id = ? AND ${guard}`,
-          params: [hit, sourceLedgerId, row.id, ...guardParams],
+          sql: `UPDATE contact_dates SET item_id = ? WHERE item_id = ? AND ${guard}`,
+          params: [hit, row.id, ...guardParams],
         },
         {
-          sql: `DELETE FROM dict_items WHERE id = ? AND ledger_id = ? AND ${guard}`,
-          params: [row.id, sourceLedgerId, ...guardParams],
+          sql: `DELETE FROM dict_items WHERE id = ? AND ${scope} = ? AND ${guard}`,
+          params: [row.id, sourceScopeId, ...guardParams],
         },
       )
       continue
     }
     stmts.push({
-      sql: `UPDATE dict_items SET ledger_id = ? WHERE id = ? AND ledger_id = ? AND ${guard}`,
-      params: [destLedgerId, row.id, sourceLedgerId, ...guardParams],
+      sql: `UPDATE dict_items SET ${scope} = ? WHERE id = ? AND ${scope} = ? AND ${guard}`,
+      params: [destScopeId, row.id, sourceScopeId, ...guardParams],
     })
     byKey.set(key, row.id)
   }
@@ -333,18 +341,19 @@ async function mergeDictItems(
 
 async function mergeContacts(
   db: Db,
-  sourceLedgerId: number,
-  destLedgerId: number,
+  sourceUserId: number,
+  destUserId: number,
   guard: string,
   guardParams: unknown[],
+  scope: 'user_id' | 'ledger_id' = 'user_id',
 ): Promise<Stmt[]> {
   const destRows = await db.all<IdRow & { name: string }>(
-    `SELECT id, name FROM contacts WHERE ledger_id = ? ORDER BY archived ASC, created_at ASC`,
-    [destLedgerId],
+    `SELECT id, name FROM contacts WHERE ${scope} = ? ORDER BY archived ASC, created_at ASC`,
+    [destUserId],
   )
   const sourceRows = await db.all<IdRow & { name: string }>(
-    `SELECT id, name FROM contacts WHERE ledger_id = ? ORDER BY archived ASC, created_at ASC`,
-    [sourceLedgerId],
+    `SELECT id, name FROM contacts WHERE ${scope} = ? ORDER BY archived ASC, created_at ASC`,
+    [sourceUserId],
   )
   const byName = indexBy(destRows, (row) => row.name)
   const stmts: Stmt[] = []
@@ -357,8 +366,16 @@ async function mergeContacts(
           params: [hit.id, src.id, ...guardParams],
         },
         {
-          sql: `DELETE FROM contact_dates WHERE contact_id = ? AND ${guard}`,
-          params: [src.id, ...guardParams],
+          sql: `DELETE FROM contact_dates WHERE contact_id = ? AND ${guard} AND EXISTS (
+                  SELECT 1 FROM contact_dates d WHERE d.contact_id = ?
+                  AND d.item_id = contact_dates.item_id AND d.calendar = contact_dates.calendar
+                  AND d.month = contact_dates.month AND d.day = contact_dates.day
+                  AND d.year IS contact_dates.year AND d.leap = contact_dates.leap)`,
+          params: [src.id, ...guardParams, hit.id],
+        },
+        {
+          sql: `UPDATE contact_dates SET contact_id = ?, ${scope} = ? WHERE contact_id = ? AND ${guard}`,
+          params: [hit.id, destUserId, src.id, ...guardParams],
         },
         {
           sql: `DELETE FROM contacts WHERE id = ? AND ${guard}`,
@@ -369,12 +386,12 @@ async function mergeContacts(
     }
     stmts.push(
       {
-        sql: `UPDATE contacts SET ledger_id = ? WHERE id = ? AND ${guard}`,
-        params: [destLedgerId, src.id, ...guardParams],
+        sql: `UPDATE contacts SET ${scope} = ? WHERE id = ? AND ${guard}`,
+        params: [destUserId, src.id, ...guardParams],
       },
       {
-        sql: `UPDATE contact_dates SET ledger_id = ? WHERE contact_id = ? AND ${guard}`,
-        params: [destLedgerId, src.id, ...guardParams],
+        sql: `UPDATE contact_dates SET ${scope} = ? WHERE contact_id = ? AND ${guard}`,
+        params: [destUserId, src.id, ...guardParams],
       },
     )
     byName.set(src.name, src)

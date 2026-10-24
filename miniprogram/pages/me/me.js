@@ -3,8 +3,8 @@
  *
  * 这一页承担三件事：
  *   1. 个人资料、当前账本快速切换、净资产与预算概览；
- *   2. 入口导航（资产、账本、预算、分类、周期、智能记账、导入导出）；
- *   3. 账号：微信绑定已有账号（POST /me/wechat/bind，会返回**新 token**，必须替换）、退出登录。
+ *   2. 入口导航（资产、账本、预算、分类、周期、导入导出）；
+ *   3. 账号：退出登录。
  */
 
 const request = require('../../utils/request')
@@ -113,7 +113,6 @@ Page({
     initial: '',
     username: '',
     wechatBound: false,
-    hasPassword: false,
     ledgerName: '',
     ledgerRoleText: '',
     ledgerCount: 0,
@@ -135,7 +134,6 @@ Page({
         initial: '登',
         username: '',
         wechatBound: false,
-        hasPassword: false,
         ledgerName: '登录后查看',
         ledgerRoleText: '',
         ledgerCount: 0,
@@ -176,7 +174,6 @@ Page({
       initial: nickname.slice(0, 1),
       username: user.username || '',
       wechatBound: !!user.wechat_bound,
-      hasPassword: !!user.has_password,
       ledgerName: ledger ? ledger.name : '未选择',
       ledgerRoleText: ledger ? (ledger.role === 'owner' ? '我的账本' : '共享账本') : '',
       ledgerCount: allLedgers.length,
@@ -294,26 +291,6 @@ Page({
       return
     }
     nav.go(e.currentTarget.dataset.key)
-  },
-
-  /** 微信账号 + 已有密码账号合并：成功后服务端会换一个新 token 回来。 */
-  bindAccount() {
-    ui.prompt({ title: '已有账号的用户名', placeholder: '用户名' }).then((username) => {
-      if (username == null || !username) return
-      ui.prompt({ title: '密码', placeholder: '密码' }).then((password) => {
-        if (password == null) return
-        ui.withLoading('合并中', () =>
-          request.post('/api/v1/me/wechat/bind', { username: username, password: password }),
-        )
-          .then((body) => {
-            // 必须换上新 token：合并后本地的旧 token 指向的是被并掉的那个用户。
-            session.apply(body)
-            ui.ok('已合并')
-            this.refreshMe()
-          })
-          .catch((err) => ui.fail(err, '合并失败'))
-      })
-    })
   },
 
   exportBook() {

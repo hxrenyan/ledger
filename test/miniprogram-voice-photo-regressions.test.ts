@@ -228,26 +228,27 @@ describe('语音与上一轮照片隔离', () => {
 describe('日历语音先拆日期和事情', () => {
   it('识别后核对日期和事情，再记到对应那一天', async () => {
     const { panel, request, ui, voice } = panelHarness()
+    const tomorrow = time.addDays(time.todayISO(), 1)
     panel.triggerEvent = vi.fn()
     panel.setData({ target: 'note' })
     voice.text = '明天下午三点开会'
-    request.post.mockImplementation((path: string, body: { day?: string; body?: string }) => {
+    request.post.mockImplementation(((path: string, body: { day?: string; body?: string }) => {
       if (path.endsWith('/parse')) {
-        return Promise.resolve({ items: [{ day: '2026-10-20', body: '下午三点开会', clipped: false }] })
+        return Promise.resolve({ items: [{ day: tomorrow, body: '下午三点开会', clipped: false }] })
       }
       if (path.endsWith('/day-notes')) return Promise.resolve({ id: 1, day: body.day, body: body.body })
       return Promise.resolve(voicePreview)
-    })
+    }) as any)
     panel.startRecord()
     await settle()
     panel.finishRecord()
     await settle()
     expect(panel.data.state).toBe('note')
-    expect(panel.data.noteItems[0]).toMatchObject({ day: '2026-10-20', body: '下午三点开会' })
+    expect(panel.data.noteItems[0]).toMatchObject({ day: tomorrow, body: '下午三点开会' })
     expect(request.post).toHaveBeenCalledWith('/api/v1/day-notes/parse', { text: '明天下午三点开会' })
     panel.saveNote()
     await settle()
-    expect(request.post).toHaveBeenCalledWith('/api/v1/day-notes', { day: '2026-10-20', body: '下午三点开会' })
+    expect(request.post).toHaveBeenCalledWith('/api/v1/day-notes', { day: tomorrow, body: '下午三点开会' })
     expect(ui.ok).toHaveBeenCalledWith('已记到明天')
   })
 

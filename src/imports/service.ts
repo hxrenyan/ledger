@@ -1,3 +1,4 @@
+import { contactStorageScope } from '../contacts.ts'
 /**
  * 导入业务编排：预览 → 提交 → 撤销。
  *
@@ -520,8 +521,8 @@ export async function listBatches(db: Db, ledgerId: number, limit = 20): Promise
 
 /** 撤销一次导入：删掉该批次流水并回滚余额。 */
 export async function undoBatch(db: Db, ledgerId: number, batchId: number): Promise<{ removed: number }> {
-  const batch = await db.first<{ id: number; status: string }>(
-    `SELECT id, status FROM import_batches WHERE id = ? AND ledger_id = ?`,
+  const batch = await db.first<{ id: number; status: string; created_at: number }>(
+    `SELECT id, status, created_at FROM import_batches WHERE id = ? AND ledger_id = ?`,
     [batchId, ledgerId],
   )
   if (!batch) throw badRequest('导入批次不存在')
@@ -542,22 +543,30 @@ export async function undoBatch(db: Db, ledgerId: number, batchId: number): Prom
     stmts.push({ sql: `DELETE FROM transactions WHERE ledger_id = ? AND id IN (${chunk.map(() => '?').join(',')})`, params: [ledgerId, ...chunk] })
     await db.batch(stmts)
   }
-  const touched = await db.all<{ contact_id: number }>(
-    `SELECT DISTINCT contact_id FROM gifts WHERE ledger_id = ? AND import_batch_id = ?`,
-    [ledgerId, batchId],
+  const scope = await contactStorageScope(db, ledgerId)
+  const createdContacts = await db.all<{ id: number }>(
+    `SELECT DISTINCT c.id FROM gifts g JOIN contacts c ON c.id = g.contact_id
+     WHERE g.ledger_id = ? AND g.import_batch_id = ? AND c.${scope.column} = ?
+       AND c.created_at = ? AND c.relation = ''`,
+    [ledgerId, batchId, scope.id, batch.created_at],
   )
-  await db.run(`DELETE FROM gifts WHERE ledger_id = ? AND import_batch_id = ?`, [ledgerId, batchId])
-  const contactIds = touched.map((r) => r.contact_id).filter(Boolean)
-  if (contactIds.length) {
-    await db.run(
-      `DELETE FROM contacts
-       WHERE ledger_id = ? AND relation = '' AND note = ''
-         AND id IN (${contactIds.map(() => '?').join(',')})
-         AND id NOT IN (SELECT contact_id FROM gifts WHERE ledger_id = ?)`,
-      [ledgerId, ...contactIds, ledgerId],
-    )
+  const stmts: Stmt[] = [
+    { sql: `DELETE FROM gifts WHERE ledger_id = ? AND import_batch_id = ?`, params: [ledgerId, batchId] },
+  ]
+  if (createdContacts.length) {
+    stmts.push({
+      sql: `DELETE FROM contacts WHERE ${scope.column} = ? AND relation = '' AND created_at = ?
+            AND id IN (${createdContacts.map(() => '?').join(',')})
+            AND NOT EXISTS (SELECT 1 FROM gifts WHERE contact_id = contacts.id)
+            AND NOT EXISTS (SELECT 1 FROM contact_dates WHERE contact_id = contacts.id)`,
+      params: [scope.id, batch.created_at, ...createdContacts.map((row) => row.id)],
+    })
   }
-  await db.run(`UPDATE import_batches SET status = 'undone', undone_at = ? WHERE id = ?`, [Date.now(), batchId])
+  stmts.push({
+    sql: `UPDATE import_batches SET status = 'undone', undone_at = ? WHERE id = ?`,
+    params: [Date.now(), batchId],
+  })
+  await db.batch(stmts)
   return { removed: idList.length }
 }
 
@@ -913,10 +922,11 @@ async function writeBatchGifts(
 ): Promise<number> {
   const favors = rows.filter((row) => row.favor)
   if (!favors.length) return 0
+  const scope = await contactStorageScope(db, ledgerId)
   const names = [...new Set(favors.map((row) => row.favor!.contact))]
   const existing = await db.all<{ id: number; name: string }>(
-    `SELECT id, name FROM contacts WHERE ledger_id = ? AND archived = 0 AND name IN (${names.map(() => '?').join(',')})`,
-    [ledgerId, ...names],
+    `SELECT id, name FROM contacts WHERE ${scope.column} = ? AND archived = 0 AND name IN (${names.map(() => '?').join(',')})`,
+    [scope.id, ...names],
   )
   const map = new Map(existing.map((row) => [row.name, row.id]))
   const create: Stmt[] = []
@@ -925,16 +935,16 @@ async function writeBatchGifts(
     if (map.has(name)) continue
     creating.push(name)
     create.push({
-      sql: `INSERT INTO contacts (ledger_id, name, relation, archived, created_at) VALUES (?, ?, '', 0, ?)`,
-      params: [ledgerId, name, now],
+      sql: `INSERT INTO contacts (${scope.column}, name, relation, archived, created_at) VALUES (?, ?, '', 0, ?)`,
+      params: [scope.id, name, now],
     })
   }
   try {
     if (create.length) await db.batch(create)
     if (creating.length) {
       const createdRows = await db.all<{ id: number; name: string }>(
-        `SELECT id, name FROM contacts WHERE ledger_id = ? AND archived = 0 AND created_at = ? AND name IN (${creating.map(() => '?').join(',')})`,
-        [ledgerId, now, ...creating],
+        `SELECT id, name FROM contacts WHERE ${scope.column} = ? AND archived = 0 AND created_at = ? AND name IN (${creating.map(() => '?').join(',')})`,
+        [scope.id, now, ...creating],
       )
       for (const row of createdRows) map.set(row.name, row.id)
     }
@@ -955,14 +965,15 @@ async function writeBatchGifts(
   } catch (error) {
     if (creating.length) {
       const createdRows = await db.all<{ id: number }>(
-        `SELECT id FROM contacts WHERE ledger_id = ? AND archived = 0 AND created_at = ? AND name IN (${creating.map(() => '?').join(',')})`,
-        [ledgerId, now, ...creating],
+        `SELECT id FROM contacts WHERE ${scope.column} = ? AND archived = 0 AND created_at = ? AND name IN (${creating.map(() => '?').join(',')})`,
+        [scope.id, now, ...creating],
       )
       if (createdRows.length) {
         await db.run(
-          `DELETE FROM contacts WHERE ledger_id = ? AND id IN (${createdRows.map(() => '?').join(',')})
-           AND id NOT IN (SELECT contact_id FROM gifts WHERE ledger_id = ?)`,
-          [ledgerId, ...createdRows.map((row) => row.id), ledgerId],
+          `DELETE FROM contacts WHERE ${scope.column} = ? AND id IN (${createdRows.map(() => '?').join(',')})
+           AND NOT EXISTS (SELECT 1 FROM gifts WHERE contact_id = contacts.id)
+           AND NOT EXISTS (SELECT 1 FROM contact_dates WHERE contact_id = contacts.id)`,
+          [scope.id, ...createdRows.map((row) => row.id)],
         )
       }
     }

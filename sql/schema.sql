@@ -156,13 +156,14 @@ CREATE TABLE IF NOT EXISTS attachments (
 
 -- ---------------------------------------------------------------------------
 -- dict_items（可复用的配置项）
--- kind、name 都是字符串。ledger_id 为空表示公共字典，所有账本都能用；
--- 有值则只属于该账本。目前 contact_date 是联系人日子标签。
+-- ledger_id、user_id 都为空表示公共字典。联系人日子标签用 user_id 归账号；
+-- 其他私有字典用 ledger_id 归账本，两个范围不能同时有值。
 -- 不建外键。联系人日子在 contact_dates.item_id 指向本表 id。
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS dict_items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   ledger_id INTEGER,
+  user_id INTEGER,
   kind TEXT NOT NULL,
   name TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0,
@@ -175,7 +176,7 @@ CREATE TABLE IF NOT EXISTS dict_items (
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS contacts (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  ledger_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
   name TEXT NOT NULL,
   relation TEXT NOT NULL DEFAULT '',
   archived INTEGER NOT NULL DEFAULT 0,
@@ -184,10 +185,10 @@ CREATE TABLE IF NOT EXISTS contacts (
 
 -- 一个人可以有多条日子。item_id 指向 dict_items（kind=contact_date）。
 -- 阳历/农历只存月日，年份可空。名称是「生日」时用来算岁数，其它名称算周年。
--- leap 只对农历闰月有意义。按账本列出某人的日子，见 idx_contact_dates_ledger。
+-- leap 只对农历闰月有意义。联系人及日子归账号，按当前账本主人读取。
 CREATE TABLE IF NOT EXISTS contact_dates (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  ledger_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
   contact_id INTEGER NOT NULL,
   item_id INTEGER NOT NULL,
   calendar TEXT NOT NULL,
@@ -367,11 +368,12 @@ CREATE TABLE IF NOT EXISTS day_notes (
 CREATE INDEX IF NOT EXISTS idx_tx_ledger_occurred ON transactions (ledger_id, occurred_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_members_user ON members (user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ledgers_invite ON ledgers (invite_code) WHERE invite_code IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_contacts_ledger ON contacts (ledger_id, archived, name COLLATE NOCASE);
-CREATE INDEX IF NOT EXISTS idx_contact_dates_ledger ON contact_dates (ledger_id, contact_id, sort_order, id);
--- 账本内同名不重复。SQLite 的 UNIQUE 对 NULL 不去重，公共项另建一条部分索引。
+CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts (user_id, archived, name COLLATE NOCASE);
+CREATE INDEX IF NOT EXISTS idx_contact_dates_user ON contact_dates (user_id, contact_id, sort_order, id);
+-- 每个范围内同名字典不重复，公共项另建部分索引。
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_items_ledger_name ON dict_items (ledger_id, kind, name) WHERE ledger_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_items_public_name ON dict_items (kind, name) WHERE ledger_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_items_user_name ON dict_items (user_id, kind, name) WHERE user_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_items_public_name ON dict_items (kind, name) WHERE ledger_id IS NULL AND user_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_gifts_contact ON gifts (contact_id, ledger_id, occurred_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_gifts_ledger_occurred ON gifts (ledger_id, occurred_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_recurrences_next ON recurrences (ledger_id, enabled, next_at);

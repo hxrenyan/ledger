@@ -4,6 +4,7 @@ import { badRequest, notFound } from '../http.ts'
 import { parseOptionalId, routeId } from '../id.ts'
 import { assertAmountCents, centsToYuan } from '../money.ts'
 import { balanceStmts, type TxMoney } from '../balance.ts'
+import { contactStorageScope } from '../contacts.ts'
 import { dateTimeToOccurredAt, dateToOccurredAt, occurredAtToDate, shanghaiDayRange, shanghaiMonth, shanghaiMonthRange } from '../time.ts'
 
 const RECEIPT_MAX = 512 * 1024
@@ -222,6 +223,7 @@ type FavorExport = {
 
 /** 当前账本的全部人情往来，按发生时间从早到晚。金额是元。 */
 async function loadFavorExport(db: AppEnv['Variables']['db'], ledgerId: number): Promise<FavorExport[]> {
+  const scope = await contactStorageScope(db, ledgerId)
   const gifts = await db.all<{
     kind: string
     amount_cents: number
@@ -233,9 +235,10 @@ async function loadFavorExport(db: AppEnv['Variables']['db'], ledgerId: number):
     `SELECT g.kind, g.amount_cents, g.occurred_at, g.note, g.occasion, p.name AS contact_name
      FROM gifts g
      LEFT JOIN contacts p ON p.id = g.contact_id
+       AND p.${scope.column} = ?
      WHERE g.ledger_id = ?
      ORDER BY g.occurred_at ASC, g.created_at ASC`,
-    [ledgerId],
+    [scope.id, ledgerId],
   )
   return gifts.map((gift) => {
     const item: FavorExport = {

@@ -32,6 +32,7 @@ export type AppEnv = {
     adminToken: string
     userId: number
     ledgerId: number
+    ledgerOwnerId: number
     memberRole: string
     isAdmin: boolean
     /** 测试注入。生产请求是 null，登录时再读后台配置或环境变量。 */
@@ -196,12 +197,14 @@ export function createApp(cfg: AppConfig) {
     // 用 400 而不是 401：这里用户已经通过鉴权，只是请求没带账本，语义上不是「未登录」。
     // 用 401 会让客户端误判成掉登录，把用户踢回登录页。
     if (ledgerId == null) throw badRequest('缺少账本')
-    const row = await c.get('db').first<{ role: string }>(
-      `SELECT role FROM members WHERE ledger_id = ? AND user_id = ?`,
+    const row = await c.get('db').first<{ role: string; owner_id: number }>(
+      `SELECT m.role, l.owner_id FROM members m JOIN ledgers l ON l.id = m.ledger_id
+       WHERE m.ledger_id = ? AND m.user_id = ?`,
       [ledgerId, userId],
     )
     if (!row) throw forbidden()
     c.set('ledgerId', ledgerId)
+    c.set('ledgerOwnerId', row.owner_id)
     c.set('memberRole', row.role)
     const seenAt = Date.now()
     await c.get('db').run(

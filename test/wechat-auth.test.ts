@@ -283,12 +283,12 @@ describe('小程序登录与绑定已有账号', () => {
       [wxLedger],
     )
     const aliceContact = await db.first<{ id: number }>(
-      `INSERT INTO contacts (ledger_id, name, relation, archived, created_at) VALUES (?, '张三', '同事', 0, 1) RETURNING id`,
-      [aliceLedger],
+      `INSERT INTO contacts (user_id, name, relation, archived, created_at) VALUES (?, '张三', '同事', 0, 1) RETURNING id`,
+      [alice.user.id],
     )
     const wxContact = await db.first<{ id: number }>(
-      `INSERT INTO contacts (ledger_id, name, relation, archived, created_at) VALUES (?, '张三', '', 0, 2) RETURNING id`,
-      [wxLedger],
+      `INSERT INTO contacts (user_id, name, relation, archived, created_at) VALUES (?, '张三', '', 0, 2) RETURNING id`,
+      [shadow.user.id],
     )
     const gift = await db.first<{ id: number }>(
       `INSERT INTO gifts (ledger_id, contact_id, kind, amount_cents, occasion, occurred_at, note, created_by, created_at, updated_at)
@@ -333,7 +333,7 @@ describe('小程序登录与绑定已有账号', () => {
       ledger_id: aliceLedger,
       current_cents: 8000,
     })
-    expect(await db.first(`SELECT COUNT(*) AS n FROM contacts WHERE ledger_id = ? AND name = '张三'`, [aliceLedger])).toEqual({ n: 1 })
+    expect(await db.first(`SELECT COUNT(*) AS n FROM contacts WHERE user_id = ? AND name = '张三'`, [alice.user.id])).toEqual({ n: 1 })
     expect(await db.first(`SELECT ledger_id, contact_id, created_by FROM gifts WHERE id = ?`, [gift.id])).toEqual({
       ledger_id: aliceLedger,
       contact_id: aliceContact.id,

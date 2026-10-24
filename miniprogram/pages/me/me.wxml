@@ -92,20 +92,6 @@
           <view class="nav-desc">房租固定收支</view>
         </view>
       </view>
-      <view class="nav-item" data-key="speak" bindtap="go">
-        <view class="nav-ico green">智</view>
-        <view class="nav-main">
-          <view class="nav-name">智能记账</view>
-          <view class="nav-desc">语音 / 拍照识别</view>
-        </view>
-      </view>
-      <view class="nav-item" data-key="import" bindtap="go">
-        <view class="nav-ico orange">导</view>
-        <view class="nav-main">
-          <view class="nav-name">账单导入</view>
-          <view class="nav-desc">表格批量导入</view>
-        </view>
-      </view>
     </view>
   </view>
 
@@ -119,20 +105,20 @@
       <view class="arrow">{{ledgerName}} ›</view>
     </view>
 
+    <view class="link-row" data-key="import" bindtap="go">
+      <view class="row-left">
+        <view class="row-title">账单导入</view>
+        <view class="row-sub">选择账单文件或粘贴内容，批量导入</view>
+      </view>
+      <view class="arrow">导入 ›</view>
+    </view>
+
     <view class="link-row" bindtap="exportBook">
       <view class="row-left">
         <view class="row-title">导出账单备份</view>
         <view class="row-sub">复制或转发 JSON 账单与人情数据</view>
       </view>
       <view class="arrow">导出 ›</view>
-    </view>
-
-    <view class="link-row" wx:if="{{wechatBound && !hasPassword}}" bindtap="bindAccount">
-      <view class="row-left">
-        <view class="row-title">绑定已有账号</view>
-        <view class="row-sub">将原密码账号的账本合并到当前微信</view>
-      </view>
-      <view class="arrow">去合并 ›</view>
     </view>
 
     <view class="link-row" wx:if="{{!guest}}" bindtap="openFeedback">

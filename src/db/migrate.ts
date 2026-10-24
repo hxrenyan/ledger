@@ -5,6 +5,7 @@ import { randomInviteCode } from '../seed.ts'
 import type { Db } from './types.ts'
 import { grantMissingSignups } from '../points/wallet.ts'
 import { upgradeSchema } from './upgrade.ts'
+import { hasDbColumn } from '../contacts.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 
@@ -12,8 +13,14 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '../..')
 export async function ensureMigrated(db: Db) {
   const schema = readFileSync(join(root, 'sql/schema.sql'), 'utf8')
   const idx = schema.search(/CREATE (UNIQUE )?INDEX/i)
-  const tablesSql = idx >= 0 ? schema.slice(0, idx) : schema
+  let tablesSql = idx >= 0 ? schema.slice(0, idx) : schema
   const indexSql = idx >= 0 ? schema.slice(idx) : ''
+  const legacyContacts = await hasDbColumn(db, 'contacts', 'ledger_id')
+  if (legacyContacts) {
+    // 极旧库可能尚无日子表，按既有联系人范围从权威 schema 补表，不改联系人归属。
+    tablesSql = tablesSql.replace(/CREATE TABLE IF NOT EXISTS contact_dates \([\s\S]*?\);/,
+      (definition) => definition.replace('user_id INTEGER NOT NULL', 'ledger_id INTEGER NOT NULL'))
+  }
   await db.exec(tablesSql)
   const addedBalance = await ensureColumn(db, 'accounts', 'current_cents', 'INTEGER NOT NULL DEFAULT 0')
   await ensureColumn(db, 'users', 'disabled', 'INTEGER NOT NULL DEFAULT 0')
@@ -24,7 +31,14 @@ export async function ensureMigrated(db: Db) {
   await ensureColumn(db, 'transactions', 'excluded', 'INTEGER NOT NULL DEFAULT 0')
   await ensureColumn(db, 'transactions', 'import_batch_id', 'INTEGER')
   await ensureColumn(db, 'point_entries', 'biz_key', 'TEXT')
-  if (indexSql.trim()) await db.exec(indexSql)
+  const contactOwnerScoped = await hasDbColumn(db, 'contacts', 'user_id')
+  const dictOwnerScoped = await hasDbColumn(db, 'dict_items', 'user_id')
+  for (const statement of indexSql.split(';')) {
+    if (!statement.trim()) continue
+    if (!contactOwnerScoped && /idx_(contacts_user|contact_dates_user)/i.test(statement)) continue
+    if (!dictOwnerScoped && /idx_dict_items_(user_name|public_name)/i.test(statement)) continue
+    await db.exec(statement)
+  }
   await backfillInviteCodes(db)
   if (addedBalance) await backfillBalances(db)
   await upgradeSchema(db)

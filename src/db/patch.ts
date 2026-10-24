@@ -1,5 +1,6 @@
 import type { Db } from './types.ts'
 import { upgradeSchema } from './upgrade.ts'
+import { hasDbColumn } from '../contacts.ts'
 
 /** 给缺列、缺表的旧库补结构。新库的全量建表走 sql/schema.sql。 */
 export async function patchSchema(db: Db) {
@@ -49,8 +50,14 @@ export async function patchSchema(db: Db) {
   // 旧版本索引定义没有把账本条件放进联合键；这里重建一次，避免旧库继续走全表过滤。
   await db.run(`DROP INDEX IF EXISTS idx_tx_ledger_occurred`)
   await db.run(`CREATE INDEX IF NOT EXISTS idx_tx_ledger_occurred ON transactions (ledger_id, occurred_at, created_at)`)
-  await db.run(`DROP INDEX IF EXISTS idx_contacts_ledger`)
-  await db.run(`CREATE INDEX IF NOT EXISTS idx_contacts_ledger ON contacts (ledger_id, archived, name COLLATE NOCASE)`)
+  if (await hasDbColumn(db, 'contacts', 'user_id')) {
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_contacts_user ON contacts (user_id, archived, name COLLATE NOCASE)`)
+    await db.run(`CREATE INDEX IF NOT EXISTS idx_contact_dates_user ON contact_dates (user_id, contact_id, sort_order, id)`)
+  }
+  if (await hasDbColumn(db, 'dict_items', 'user_id')) {
+    await db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_items_user_name ON dict_items (user_id, kind, name) WHERE user_id IS NOT NULL`)
+    await db.run(`CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_items_public_name ON dict_items (kind, name) WHERE ledger_id IS NULL AND user_id IS NULL`)
+  }
   await db.run(`DROP INDEX IF EXISTS idx_gifts_contact`)
   await db.run(`CREATE INDEX IF NOT EXISTS idx_gifts_contact ON gifts (contact_id, ledger_id, occurred_at, created_at)`)
   await db.run(`CREATE INDEX IF NOT EXISTS idx_gifts_ledger_occurred ON gifts (ledger_id, occurred_at, created_at)`)

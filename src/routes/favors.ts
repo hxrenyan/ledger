@@ -12,6 +12,7 @@ import {
   type Ymd,
 } from '../calendar/contactDate.ts'
 import { CONTACT_DATE_KIND, ensureDictItem } from '../dicts.ts'
+import { contactStorageScope, type ContactStorageScope } from '../contacts.ts'
 import { badRequest, notFound } from '../http.ts'
 import { parseOptionalId, routeId } from '../id.ts'
 import { assertAmountCents } from '../money.ts'
@@ -57,19 +58,20 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
   app.get('/api/v1/contacts', async (c) => {
     const db = c.get('db')
     const ledgerId = c.get('ledgerId')
+    const scope = await contactStorageScope(db, ledgerId)
     const rows = await db.all<ContactRow & { given_cents: number; received_cents: number }>(
       `SELECT c.id, c.name, c.relation, c.archived,
               COALESCE(SUM(CASE WHEN g.kind = 'give' THEN g.amount_cents ELSE 0 END), 0) AS given_cents,
               COALESCE(SUM(CASE WHEN g.kind = 'receive' THEN g.amount_cents ELSE 0 END), 0) AS received_cents
        FROM contacts c
-       LEFT JOIN gifts g ON g.contact_id = c.id
-       WHERE c.ledger_id = ?
+       LEFT JOIN gifts g ON g.contact_id = c.id AND g.ledger_id = ?
+       WHERE c.${scope.column} = ?
        GROUP BY c.id
        ORDER BY c.archived ASC, c.name COLLATE NOCASE ASC`,
-      [ledgerId],
+      [ledgerId, scope.id],
     )
     const today = todayYmd()
-    const byContact = groupDates(await loadContactDates(db, ledgerId))
+    const byContact = groupDates(await loadContactDates(db, scope))
     return c.json({
       items: rows.map((r) => {
         const given = Number(r.given_cents) || 0
@@ -85,15 +87,19 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
   })
 
   app.post('/api/v1/contacts', async (c) => {
+    const db = c.get('db')
     const body = await c.req.json().catch(() => ({}))
-    const saved = await upsertContact(c.get('db'), c.get('ledgerId'), null, body)
+    const scope = await contactStorageScope(db, c.get('ledgerId'))
+    const saved = await upsertContact(db, scope, null, body)
     return c.json(saved, 201)
   })
 
   app.patch('/api/v1/contacts/:id', async (c) => {
+    const db = c.get('db')
+    const scope = await contactStorageScope(db, c.get('ledgerId'))
     const saved = await upsertContact(
-      c.get('db'),
-      c.get('ledgerId'),
+      db,
+      scope,
       routeId(c.req.param('id'), '联系人'),
       await c.req.json().catch(() => ({})),
     )
@@ -101,8 +107,9 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
   })
 
   app.get('/api/v1/gifts', async (c) => {
+    const scope = await contactStorageScope(c.get('db'), c.get('ledgerId'))
     const contactId = c.req.query('contact_id')
-    const params: unknown[] = [c.get('ledgerId')]
+    const params: unknown[] = [c.get('ledgerId'), scope.id]
     let extra = ''
     if (contactId) {
       extra = ' AND g.contact_id = ?'
@@ -112,7 +119,7 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
       `SELECT g.id, g.contact_id, g.kind, g.amount_cents, g.occasion, g.occurred_at, g.note, g.created_at, g.updated_at,
               c.name AS contact_name
        FROM gifts g JOIN contacts c ON c.id = g.contact_id
-       WHERE g.ledger_id = ? ${extra}
+       WHERE g.ledger_id = ? AND c.${scope.column} = ? ${extra}
        ORDER BY g.occurred_at DESC, g.created_at DESC`,
       params,
     )
@@ -120,12 +127,13 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
   })
 
   app.get('/api/v1/gifts/:id', async (c) => {
+    const scope = await contactStorageScope(c.get('db'), c.get('ledgerId'))
     const row = await c.get('db').first<GiftRow & { contact_name: string }>(
       `SELECT g.id, g.contact_id, g.kind, g.amount_cents, g.occasion, g.occurred_at, g.note, g.created_at, g.updated_at,
               c.name AS contact_name
        FROM gifts g JOIN contacts c ON c.id = g.contact_id
-       WHERE g.id = ? AND g.ledger_id = ?`,
-      [routeId(c.req.param('id'), '往来'), c.get('ledgerId')],
+       WHERE g.id = ? AND g.ledger_id = ? AND c.${scope.column} = ?`,
+      [routeId(c.req.param('id'), '往来'), c.get('ledgerId'), scope.id],
     )
     if (!row) throw notFound('往来记录不存在')
     return c.json(shapeGift(row))
@@ -292,26 +300,29 @@ function parseOneDate(raw: unknown, today: Ymd): ContactDate {
   }
 }
 
-async function loadContactDates(db: AppEnv['Variables']['db'], ledgerId: number, contactId?: number) {
+async function loadContactDates(db: AppEnv['Variables']['db'], scope: ContactStorageScope, contactId?: number) {
+  const dateNameJoin = scope.ownerScoped
+    ? 'di.ledger_id IS NULL AND (di.user_id IS NULL OR di.user_id = d.user_id)'
+    : '(di.ledger_id IS NULL OR di.ledger_id = d.ledger_id)'
   if (contactId != null) {
     return db.all<DateRow>(
       `SELECT d.id, d.contact_id, d.item_id, d.calendar, d.month, d.day, d.year, d.leap, di.name AS date_name
        FROM contact_dates d
        LEFT JOIN dict_items di ON di.id = d.item_id AND di.kind = ?
-         AND (di.ledger_id IS NULL OR di.ledger_id = d.ledger_id)
-       WHERE d.ledger_id = ? AND d.contact_id = ?
+         AND ${dateNameJoin}
+       WHERE d.${scope.column} = ? AND d.contact_id = ?
        ORDER BY d.sort_order ASC, d.id ASC`,
-      [CONTACT_DATE_KIND, ledgerId, contactId],
+      [CONTACT_DATE_KIND, scope.id, contactId],
     )
   }
   return db.all<DateRow>(
     `SELECT d.id, d.contact_id, d.item_id, d.calendar, d.month, d.day, d.year, d.leap, di.name AS date_name
      FROM contact_dates d
      LEFT JOIN dict_items di ON di.id = d.item_id AND di.kind = ?
-       AND (di.ledger_id IS NULL OR di.ledger_id = d.ledger_id)
-     WHERE d.ledger_id = ?
+       AND ${dateNameJoin}
+     WHERE d.${scope.column} = ?
      ORDER BY d.contact_id ASC, d.sort_order ASC, d.id ASC`,
-    [CONTACT_DATE_KIND, ledgerId],
+    [CONTACT_DATE_KIND, scope.id],
   )
 }
 
@@ -325,34 +336,37 @@ function groupDates(rows: DateRow[]) {
   return map
 }
 
-async function dateCols(db: AppEnv['Variables']['db'], ledgerId: number, dates: ContactDate[]) {
+async function dateCols(db: AppEnv['Variables']['db'], scope: ContactStorageScope, dates: ContactDate[]) {
   const cols = []
+  const dictScope = scope.ownerScoped
+    ? { userId: scope.ownerId }
+    : { ledgerId: scope.ledgerId }
   for (const date of dates) {
-    const item = await ensureDictItem(db, ledgerId, CONTACT_DATE_KIND, date.kind)
+    const item = await ensureDictItem(db, dictScope, CONTACT_DATE_KIND, date.kind)
     cols.push({ ...date, itemId: item.id })
   }
   return cols
 }
 
 function replaceDateStmts(
-  ledgerId: number,
+  scope: ContactStorageScope,
   contactId: number,
   cols: Awaited<ReturnType<typeof dateCols>>,
   now: number,
 ) {
   const stmts: { sql: string; params: unknown[] }[] = [
     {
-      sql: `DELETE FROM contact_dates WHERE ledger_id = ? AND contact_id = ?`,
-      params: [ledgerId, contactId],
+      sql: `DELETE FROM contact_dates WHERE ${scope.column} = ? AND contact_id = ?`,
+      params: [scope.id, contactId],
     },
   ]
   cols.forEach((col, index) => {
     stmts.push({
       sql: `INSERT INTO contact_dates
-              (ledger_id, contact_id, item_id, calendar, month, day, year, leap, sort_order, created_at)
+              (${scope.column}, contact_id, item_id, calendar, month, day, year, leap, sort_order, created_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       params: [
-        ledgerId,
+        scope.id,
         contactId,
         col.itemId,
         col.calendar,
@@ -370,7 +384,7 @@ function replaceDateStmts(
 
 async function upsertContact(
   db: AppEnv['Variables']['db'],
-  ledgerId: number,
+  scope: ContactStorageScope,
   id: number | null,
   body: Record<string, unknown>,
 ) {
@@ -381,47 +395,47 @@ async function upsertContact(
   if (!id) {
     if (!name) throw badRequest('姓名须为 1–32 字')
     const existing = await db.first<ContactRow>(
-      `${CONTACT_SQL} WHERE ledger_id = ? AND name = ? AND archived = 0`,
-      [ledgerId, name],
+      `${CONTACT_SQL} WHERE ${scope.column} = ? AND name = ? AND archived = 0`,
+      [scope.id, name],
     )
     if (existing) {
       if (datesPatch === undefined) {
-        const dates = await loadContactDates(db, ledgerId, existing.id)
+        const dates = await loadContactDates(db, scope, existing.id)
         return shapeContact(existing, dates, today)
       }
-      const cols = await dateCols(db, ledgerId, datesPatch)
+      const cols = await dateCols(db, scope, datesPatch)
       const nextRel = body.relation != null ? relation : existing.relation
       const now = Date.now()
       await db.batch([
         {
-          sql: `UPDATE contacts SET relation = ? WHERE id = ? AND ledger_id = ?`,
-          params: [nextRel, existing.id, ledgerId],
+          sql: `UPDATE contacts SET relation = ? WHERE id = ? AND ${scope.column} = ?`,
+          params: [nextRel, existing.id, scope.id],
         },
-        ...replaceDateStmts(ledgerId, existing.id, cols, now),
+        ...replaceDateStmts(scope, existing.id, cols, now),
       ])
       return shapeContact(
         { ...existing, relation: nextRel },
-        await loadContactDates(db, ledgerId, existing.id),
+        await loadContactDates(db, scope, existing.id),
         today,
       )
     }
     const now = Date.now()
-    const cols = await dateCols(db, ledgerId, datesPatch ?? [])
+    const cols = await dateCols(db, scope, datesPatch ?? [])
     const inserted = await db.batch([
       {
-        sql: `INSERT INTO contacts (ledger_id, name, relation, archived, created_at) VALUES (?, ?, ?, 0, ?)`,
-        params: [ledgerId, name, relation, now],
+        sql: `INSERT INTO contacts (${scope.column}, name, relation, archived, created_at) VALUES (?, ?, ?, 0, ?)`,
+        params: [scope.id, name, relation, now],
       },
       ...cols.map((col, index) => ({
         sql: `INSERT INTO contact_dates
-                (ledger_id, contact_id, item_id, calendar, month, day, year, leap, sort_order, created_at)
+                (${scope.column}, contact_id, item_id, calendar, month, day, year, leap, sort_order, created_at)
               SELECT ?, c.id, ?, ?, ?, ?, ?, ?, ?, ?
               FROM contacts c
-              WHERE c.ledger_id = ? AND c.name = ? AND c.created_at = ?
+              WHERE c.${scope.column} = ? AND c.name = ? AND c.created_at = ?
               ORDER BY c.id DESC
               LIMIT 1`,
         params: [
-          ledgerId,
+          scope.id,
           col.itemId,
           col.calendar,
           col.month,
@@ -430,7 +444,7 @@ async function upsertContact(
           col.leap ? 1 : 0,
           index,
           now,
-          ledgerId,
+          scope.id,
           name,
           now,
         ],
@@ -440,11 +454,11 @@ async function upsertContact(
     if (createdId == null) throw new Error('联系人创建失败')
     return shapeContact(
       { id: createdId, name, relation, archived: 0 },
-      await loadContactDates(db, ledgerId, createdId),
+      await loadContactDates(db, scope, createdId),
       today,
     )
   }
-  const row = await db.first<ContactRow>(`${CONTACT_SQL} WHERE id = ? AND ledger_id = ?`, [id, ledgerId])
+  const row = await db.first<ContactRow>(`${CONTACT_SQL} WHERE id = ? AND ${scope.column} = ?`, [id, scope.id])
   if (!row) throw notFound('联系人不存在')
   const nextName = name || row.name
   const nextRel = body.relation != null ? relation : row.relation
@@ -452,18 +466,18 @@ async function upsertContact(
   const now = Date.now()
   const stmts: { sql: string; params: unknown[] }[] = [
     {
-      sql: `UPDATE contacts SET name = ?, relation = ?, archived = ? WHERE id = ? AND ledger_id = ?`,
-      params: [nextName, nextRel, archived, id, ledgerId],
+      sql: `UPDATE contacts SET name = ?, relation = ?, archived = ? WHERE id = ? AND ${scope.column} = ?`,
+      params: [nextName, nextRel, archived, id, scope.id],
     },
   ]
   if (datesPatch !== undefined) {
-    const cols = await dateCols(db, ledgerId, datesPatch)
-    stmts.push(...replaceDateStmts(ledgerId, id, cols, now))
+    const cols = await dateCols(db, scope, datesPatch)
+    stmts.push(...replaceDateStmts(scope, id, cols, now))
   }
   await db.batch(stmts)
   return shapeContact(
     { id, name: nextName, relation: nextRel, archived },
-    await loadContactDates(db, ledgerId, id),
+    await loadContactDates(db, scope, id),
     today,
   )
 }
@@ -471,6 +485,7 @@ async function upsertContact(
 async function upsertGift(c: Context<AppEnv>, id: number | null, body: Record<string, unknown>) {
   const db = c.get('db')
   const ledgerId = c.get('ledgerId')
+  const scope = await contactStorageScope(db, ledgerId)
   const kind = body.kind === 'give' || body.kind === 'receive' ? body.kind : null
   if (!kind) throw badRequest('类型须为 give（送出）或 receive（收入）')
   const amount = assertAmountCents(body.amount_cents)
@@ -485,8 +500,8 @@ async function upsertGift(c: Context<AppEnv>, id: number | null, body: Record<st
 
   const contactId = routeId(body.contact_id, '联系人')
   const contact = await db.first<{ id: number; name: string }>(
-    `SELECT id, name FROM contacts WHERE id = ? AND ledger_id = ?`,
-    [contactId, ledgerId],
+    `SELECT id, name FROM contacts WHERE id = ? AND ${scope.column} = ?`,
+    [contactId, scope.id],
   )
   if (!contact) throw badRequest('联系人不存在')
 
@@ -588,6 +603,7 @@ async function readAlsoTransaction(
 async function transactionToGift(c: Context<AppEnv>, txId: number, body: Record<string, unknown>) {
   const db = c.get('db')
   const ledgerId = c.get('ledgerId')
+  const scope = await contactStorageScope(db, ledgerId)
   const tx = await db.first<TxMoney & { note: string; has_receipt: number }>(
     `SELECT kind, amount_cents, account_id, to_account_id, note, has_receipt
      FROM transactions WHERE id = ? AND ledger_id = ?`,
@@ -603,8 +619,8 @@ async function transactionToGift(c: Context<AppEnv>, txId: number, body: Record<
   const occurredAt = typeof body.date === 'string' ? dateToOccurredAt(body.date) : Date.now()
   const contactId = routeId(body.contact_id, '联系人')
   const contact = await db.first<{ id: number; name: string }>(
-    `SELECT id, name FROM contacts WHERE id = ? AND ledger_id = ?`,
-    [contactId, ledgerId],
+    `SELECT id, name FROM contacts WHERE id = ? AND ${scope.column} = ?`,
+    [contactId, scope.id],
   )
   if (!contact) throw badRequest('联系人不存在')
 

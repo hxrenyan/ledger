@@ -233,7 +233,7 @@
   color: var(--brand);
 }
 
-/* 2x2 功能宫格 */
+/* 功能宫格，末行单项铺满。 */
 .sec-title {
   font-size: 26rpx;
   font-weight: 600;
@@ -258,6 +258,10 @@
   background: #f7f8fb;
 }
 
+.nav-item:last-child:nth-child(odd) {
+  width: 100%;
+}
+
 .nav-ico {
   width: 68rpx;
   height: 68rpx;
@@ -277,11 +281,6 @@
 .nav-ico.purple {
   background: #f3ecff;
   color: #7048e8;
-}
-
-.nav-ico.green {
-  background: #e6f6ec;
-  color: #1f9d55;
 }
 
 .nav-ico.orange {

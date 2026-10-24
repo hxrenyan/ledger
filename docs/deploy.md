@@ -59,7 +59,9 @@ npm run build:web
 docker build --platform linux/amd64 -t ledger:sealos .
 ```
 
-有新增表时，先看 `sql/migrations/`。进程启动会套用 `sql/schema.sql` 里的建表语句，并给旧库补已写在代码里的列。迁移脚本本身不会在启动时自动跑，需要的话先对 `/data/ledger.db` 执行 `npm run db:migrate`，再换镜像。
+有新增表时，先看 `sql/migrations/`。进程启动会套用 `sql/schema.sql` 里的建表语句，并给旧库补已写在代码里的列。迁移脚本本身不会在启动时自动跑。
+
+联系人归属暂不自动迁移。先发后端时，旧库保留 `contacts.ledger_id` 和 `contact_dates.ledger_id`，联系人、日子和日子标签继续按当前账本读写；新库或已手动迁移的库按账本主人账号共用联系人。此阶段不要执行 `npm run db:migrate`，该命令会包含 `2026-10-21-contact-owner.sql`。确认切换账号范围后，先停止旧后端、备份 `/data/ledger.db`，再执行迁移并启动新后端；旧后端不支持迁移后的字段。验证联系人、共享账本、日子及礼金数据后再恢复访问。回滚旧后端须一并恢复迁移前数据库备份。具体校验见 [sql/README.md](../sql/README.md#联系人归属迁移)。
 
 ### 2. 推到腾讯云
 

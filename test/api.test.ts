@@ -91,6 +91,9 @@ describe('migrate old sqlite', () => {
       INSERT INTO users (id, username, password_hash, wx_openid, wx_unionid, nickname, disabled, created_at)
       VALUES ('u1', 'old', 'hash', 'openid', 'union', '旧', 0, 1);
 
+      CREATE TABLE ledgers (id TEXT PRIMARY KEY, name TEXT NOT NULL, owner_id TEXT NOT NULL, created_at INTEGER NOT NULL);
+      INSERT INTO ledgers (id, name, owner_id, created_at) VALUES ('l1', '旧账本', 'u1', 1);
+
       CREATE TABLE contacts (
         id TEXT PRIMARY KEY,
         ledger_id TEXT NOT NULL,

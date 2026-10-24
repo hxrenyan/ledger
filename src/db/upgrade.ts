@@ -1,4 +1,4 @@
-import type { Db } from './types.ts'
+import type { Db, Stmt } from './types.ts'
 
 /**
  * 旧库收成 schema.sql 的形状。新库上全部是空操作。
@@ -35,15 +35,18 @@ async function moveContactDates(db: Db) {
   if (!(await tableExists(db, 'contacts')) || !(await tableExists(db, 'contact_dates'))) return
   const cols = await columnNames(db, 'contacts')
   if (!cols.includes('date_item_id')) return
+  const scopeColumn = cols.includes('user_id') ? 'user_id' : 'ledger_id'
+  const dateCols = await columnNames(db, 'contact_dates')
+  if (!dateCols.includes(scopeColumn)) return
   await db.run(
     `INSERT INTO contact_dates
-       (ledger_id, contact_id, item_id, calendar, month, day, year, leap, sort_order, created_at)
-     SELECT ledger_id, id, date_item_id, date_calendar, date_month, date_day, date_year, date_leap, 0, created_at
+       (${scopeColumn}, contact_id, item_id, calendar, month, day, year, leap, sort_order, created_at)
+     SELECT ${scopeColumn}, id, date_item_id, date_calendar, date_month, date_day, date_year, date_leap, 0, created_at
      FROM contacts
      WHERE date_item_id > 0 AND date_month IS NOT NULL AND date_day IS NOT NULL
        AND NOT EXISTS (
          SELECT 1 FROM contact_dates d
-         WHERE d.ledger_id = contacts.ledger_id AND d.contact_id = contacts.id
+         WHERE d.${scopeColumn} = contacts.${scopeColumn} AND d.contact_id = contacts.id
        )`,
   )
   await dropColumn(db, 'contacts', 'date_item_id')
@@ -52,6 +55,80 @@ async function moveContactDates(db: Db) {
   await dropColumn(db, 'contacts', 'date_day')
   await dropColumn(db, 'contacts', 'date_year')
   await dropColumn(db, 'contacts', 'date_leap')
+}
+
+/** 保留联系人和日期 ID，仅将原账本归属转为主人账号；整批失败时回滚。 */
+export async function upgradeContactScope(db: Db) {
+  const contacts = await columnNames(db, 'contacts')
+  const dates = await columnNames(db, 'contact_dates')
+  const dicts = await columnNames(db, 'dict_items')
+  const stmts: Stmt[] = []
+  if (contacts.includes('ledger_id')) {
+    const orphan = await db.first(
+      `SELECT c.id FROM contacts c LEFT JOIN ledgers l ON l.id = c.ledger_id
+       WHERE l.id IS NULL OR l.owner_id IS NULL LIMIT 1`,
+    )
+    if (orphan) throw new Error('联系人存在无主账本，无法迁移')
+  }
+  if (dates.includes('ledger_id')) {
+    const orphan = await db.first(
+      `SELECT d.id FROM contact_dates d LEFT JOIN contacts c ON c.id = d.contact_id
+       WHERE c.id IS NULL LIMIT 1`,
+    )
+    if (orphan) throw new Error('联系人日子找不到联系人，无法迁移')
+  }
+  if (dicts.length && !dicts.includes('user_id')) {
+    stmts.push(
+      { sql: `ALTER TABLE dict_items ADD COLUMN user_id INTEGER` },
+      { sql: `DROP INDEX IF EXISTS idx_dict_items_public_name` },
+    )
+  }
+  if (contacts.includes('ledger_id')) {
+    stmts.push(
+      { sql: `DROP INDEX IF EXISTS idx_contacts_ledger` },
+      { sql: `ALTER TABLE contacts RENAME COLUMN ledger_id TO user_id` },
+      { sql: `UPDATE contacts SET user_id = (SELECT owner_id FROM ledgers WHERE id = contacts.user_id)` },
+    )
+  }
+  if (dates.includes('ledger_id')) {
+    stmts.push(
+      { sql: `DROP INDEX IF EXISTS idx_contact_dates_ledger` },
+      { sql: `ALTER TABLE contact_dates RENAME COLUMN ledger_id TO user_id` },
+      { sql: `UPDATE contact_dates SET user_id = (SELECT user_id FROM contacts WHERE id = contact_dates.contact_id)` },
+    )
+  }
+  if (dicts.length) {
+    const legacy = await db.first<{ n: number }>(
+      `SELECT COUNT(*) AS n FROM dict_items WHERE kind = 'contact_date' AND ledger_id IS NOT NULL`,
+    )
+    if (legacy?.n) {
+      const orphan = await db.first(
+        `SELECT id FROM dict_items WHERE kind = 'contact_date' AND ledger_id IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM ledgers WHERE id = dict_items.ledger_id AND owner_id IS NOT NULL) LIMIT 1`,
+      )
+      if (orphan) throw new Error('联系人日子标签存在无主账本，无法迁移')
+      stmts.push(
+        { sql: `DROP INDEX IF EXISTS idx_dict_items_public_name` },
+        { sql: `UPDATE dict_items SET user_id = (SELECT owner_id FROM ledgers WHERE id = dict_items.ledger_id),
+                ledger_id = NULL WHERE kind = 'contact_date' AND ledger_id IS NOT NULL` },
+        { sql: `UPDATE contact_dates SET item_id = (
+                  SELECT MIN(d.id) FROM dict_items d JOIN dict_items old
+                  ON d.user_id = old.user_id AND d.kind = old.kind AND d.name = old.name
+                  WHERE old.id = contact_dates.item_id)
+                WHERE item_id IN (SELECT id FROM dict_items WHERE user_id IS NOT NULL)` },
+      )
+      if (contacts.includes('date_item_id')) {
+        stmts.push({ sql: `UPDATE contacts SET date_item_id = (
+          SELECT MIN(d.id) FROM dict_items d JOIN dict_items old
+          ON d.user_id = old.user_id AND d.kind = old.kind AND d.name = old.name
+          WHERE old.id = contacts.date_item_id)
+          WHERE date_item_id IN (SELECT id FROM dict_items WHERE user_id IS NOT NULL)` })
+      }
+      stmts.push({ sql: `DELETE FROM dict_items WHERE user_id IS NOT NULL AND id NOT IN
+        (SELECT MIN(id) FROM dict_items WHERE user_id IS NOT NULL GROUP BY user_id, kind, name)` })
+    }
+  }
+  if (stmts.length) await db.batch(stmts)
 }
 
 async function mergeLegacyProfiles(db: Db) {

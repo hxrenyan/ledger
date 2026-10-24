@@ -199,9 +199,9 @@ describe('日子字典', () => {
     expect(info.find((col) => col.name === 'ledger_id')?.notnull).toBe(0)
     expect(info.find((col) => col.name === 'kind')?.type).toBe('TEXT')
     expect(info.find((col) => col.name === 'name')?.type).toBe('TEXT')
-    const listed = await listDictItems(db, 7, 'contact_date')
+    const listed = await listDictItems(db, { userId: 7 }, 'contact_date')
     expect(listed.map((item) => item.name)).toEqual(['生日'])
-    const reused = await ensureDictItem(db, 7, 'contact_date', '生日')
+    const reused = await ensureDictItem(db, { userId: 7 }, 'contact_date', '生日')
     expect(reused.id).toBe(listed[0].id)
   })
 
