@@ -1,0 +1,76 @@
+.settings-page { padding-top: 16rpx; }
+
+.section-title {
+  margin: 12rpx 8rpx 16rpx;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.setting-row,
+.section-heading,
+.action-row {
+  display: flex;
+  align-items: center;
+}
+
+.section-heading { justify-content: space-between; }
+.section-heading .section-title { margin-bottom: 16rpx; }
+.drag-tip { font-size: 22rpx; color: var(--muted); margin-right: 8rpx; }
+.preference-card { padding: 20rpx 24rpx; }
+.setting-copy { flex: 1; min-width: 0; }
+.setting-title { font-size: 27rpx; font-weight: 500; }
+.setting-desc { font-size: 22rpx; color: var(--muted); margin-top: 6rpx; }
+.compact-switch { transform: scale(0.78); transform-origin: center right; flex: none; }
+
+.action-card { padding: 0 20rpx; overflow: visible; }
+
+/* 拖动位移计算使用同一行高 96rpx，边框计入高度。 */
+.action-row {
+  position: relative;
+  height: 96rpx;
+  box-sizing: border-box;
+  gap: 16rpx;
+  border-bottom: 1rpx solid var(--line);
+  background: #fff;
+}
+
+.action-row:last-child { border-bottom-color: transparent; }
+.action-row.dragging {
+  z-index: 2;
+  border-radius: 16rpx;
+  box-shadow: 0 8rpx 28rpx rgba(40, 52, 90, 0.16);
+  background: #f4f6ff;
+}
+.action-hidden { color: var(--muted); }
+
+.action-icon {
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 16rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.action-icon.expense { background: #ffe9e8; color: #e5484d; }
+.action-icon.gift { background: #fff2e0; color: #d97706; }
+.action-icon.brand { background: #eef0ff; color: #3b5bdb; }
+.action-icon.voice { background: #e7f6ee; color: #0f9f6e; }
+.action-icon.plain { background: #eef1f5; color: #556070; }
+
+.drag-handle {
+  width: 64rpx;
+  height: 88rpx;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 7rpx;
+}
+.handle-line { width: 28rpx; height: 3rpx; border-radius: 2rpx; background: #a4a8b2; }
+.setting-hint { margin: 12rpx 8rpx 0; font-size: 23rpx; line-height: 1.7; color: var(--muted); }

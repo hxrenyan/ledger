@@ -50,18 +50,22 @@ Sealos 应用管理的最低档：
 
 ## 改完代码后重新发布
 
-在仓库根目录执行。镜像标签固定为 `latest`，拉取策略是 `Always`，每次新建 Pod 都会向腾讯云核对并拉取该标签的当前内容。
+在仓库根目录执行。发布镜像按版本打标签，例如 `v1.2.0`；同一标签只对应一次发布，不覆盖已发布版本。修复重发使用新版本号，例如 `v1.2.1`。保留历史版本镜像，并在发版记录中保存版本标签、Git 提交号和镜像摘要，供回滚使用。后端单独发版时使用独立的新版本号，并记录与小程序版本的对应关系。
+
+以下 `v1.2.0` 仅为示例，执行前替换为本次实际版本。现有拉取策略沿用线上配置。
 
 ### 1. 构建网页和镜像
 
 ```bash
+RELEASE_VERSION=v1.2.0
+RELEASE_IMAGE="ccr.ccs.tencentyun.com/ledger-qqhzy/ledger:${RELEASE_VERSION}"
 npm run build:web
-docker build --platform linux/amd64 -t ledger:sealos .
+docker build --platform linux/amd64 -t "$RELEASE_IMAGE" .
 ```
 
 有新增表时，先看 `sql/migrations/`。进程启动会套用 `sql/schema.sql` 里的建表语句，并给旧库补已写在代码里的列。迁移脚本本身不会在启动时自动跑。
 
-联系人归属暂不自动迁移。先发后端时，旧库保留 `contacts.ledger_id` 和 `contact_dates.ledger_id`，联系人、日子和日子标签继续按当前账本读写；新库或已手动迁移的库按账本主人账号共用联系人。此阶段不要执行 `npm run db:migrate`，该命令会包含 `2026-10-21-contact-owner.sql`。确认切换账号范围后，先停止旧后端、备份 `/data/ledger.db`，再执行迁移并启动新后端；旧后端不支持迁移后的字段。验证联系人、共享账本、日子及礼金数据后再恢复访问。回滚旧后端须一并恢复迁移前数据库备份。具体校验见 [sql/README.md](../sql/README.md#联系人归属迁移)。
+线上库已在 2026-10-26 完成联系人归属切换：联系人、日子和日子标签按账本主人账号共用，礼金仍留在原账本。迁移前备份是 `/data/ledger.db.bak-20261026`。进程启动仍不会自动跑 `sql/migrations/`；已经切过的库再执行 `npm run db:migrate` 会跳过这次归属转换。不要把不认识 `contacts.user_id` 的旧后端指到这份库。若要退回迁移前，先停服务，再用该备份覆盖 `/data/ledger.db` 并删掉旁边的 `-wal`、`-shm`，然后启动对应的旧后端。校验方式见 [sql/README.md](../sql/README.md#联系人归属迁移)。
 
 ### 2. 推到腾讯云
 
@@ -71,12 +75,13 @@ docker build --platform linux/amd64 -t ledger:sealos .
 docker login ccr.ccs.tencentyun.com
 ```
 
-然后推送。标签固定用 `latest`：
+然后推送本次版本（沿用上一步同一终端中的变量）：
 
 ```bash
-docker tag ledger:sealos ccr.ccs.tencentyun.com/ledger-qqhzy/ledger:latest
-docker push ccr.ccs.tencentyun.com/ledger-qqhzy/ledger:latest
+docker push "$RELEASE_IMAGE"
 ```
+
+记录推送输出中的镜像摘要，确认仓库保留此前发布的版本，避免清理仍需回滚的镜像。
 
 仓库 `ledger` 第一次推送时会自动建出来。
 
@@ -92,14 +97,19 @@ kubectl -n ns-7aie87ej patch statefulset ledger --type json -p '[
 ]'
 ```
 
-### 3. 让线上重新拉取
+### 3. 更新到指定版本
 
-镜像名没变，StatefulSet 不会自己滚动。重启后新 Pod 会按 `Always` 拉取 `latest`，`/data` 上的库还在：
+发布前记录当前容器名、镜像标签以及 Pod 实际镜像摘要。下面读取现有单容器应用的容器名，再更新镜像；镜像字段变化会触发 StatefulSet 更新，无需另行执行滚动重启。`/data` 上的库仍保留。
 
 ```bash
-kubectl -n ns-7aie87ej rollout restart statefulset/ledger
-kubectl -n ns-7aie87ej rollout status statefulset/ledger
+kubectl --context 7aie87ej@sealos -n ns-7aie87ej get statefulset ledger -o jsonpath='{.spec.template.spec.containers[*].name}{"\n"}{.spec.template.spec.containers[*].image}{"\n"}'
+kubectl --context 7aie87ej@sealos -n ns-7aie87ej get pod ledger-0 -o jsonpath='{.status.containerStatuses[*].imageID}{"\n"}'
+LEDGER_CONTAINER=$(kubectl --context 7aie87ej@sealos -n ns-7aie87ej get statefulset ledger -o jsonpath='{.spec.template.spec.containers[0].name}')
+kubectl --context 7aie87ej@sealos -n ns-7aie87ej set image statefulset/ledger "${LEDGER_CONTAINER}=${RELEASE_IMAGE}"
+kubectl --context 7aie87ej@sealos -n ns-7aie87ej rollout status statefulset/ledger
 ```
+
+若此前部署使用可覆盖标签，首次切换前先记录实际摘要并确保对应镜像仍在仓库可拉取，作为首次版本发布的回滚基线。
 
 ### 4. 检查
 
@@ -108,5 +118,23 @@ curl -sS https://ledger-7aie87ej.sealosbja.site/api/health
 ```
 
 健康检查应返回 `{"ok":true,"service":"ledger"}`。首页应是 200。确认新 Pod 已经用腾讯云镜像起来之后，再在控制台删除旧的 `ledger-registry`。
+
+### 5. 回滚到历史版本
+
+先确认目标版本可读取当前数据库，且与已发布的小程序兼容。应用镜像回滚不会自动回滚数据库；本次仅新增的记分表可以保留，恢复整库需单独评估备份后新增数据的损失。
+
+以下 `v1.1.0` 是示例，执行前替换为已验证的目标版本，并与发版记录中的镜像摘要核对：
+
+```bash
+ROLLBACK_VERSION=v1.1.0
+ROLLBACK_IMAGE="ccr.ccs.tencentyun.com/ledger-qqhzy/ledger:${ROLLBACK_VERSION}"
+LEDGER_CONTAINER=$(kubectl --context 7aie87ej@sealos -n ns-7aie87ej get statefulset ledger -o jsonpath='{.spec.template.spec.containers[0].name}')
+kubectl --context 7aie87ej@sealos -n ns-7aie87ej set image statefulset/ledger "${LEDGER_CONTAINER}=${ROLLBACK_IMAGE}"
+kubectl --context 7aie87ej@sealos -n ns-7aie87ej rollout status statefulset/ledger
+kubectl --context 7aie87ej@sealos -n ns-7aie87ej get pod ledger-0 -o jsonpath='{.spec.containers[*].image}{"\n"}{.status.containerStatuses[*].imageID}{"\n"}'
+curl --fail --silent --show-error https://ledger-7aie87ej.sealosbja.site/api/health
+```
+
+随后验证新旧小程序关键流程、H5 和后台，并在对应发版记录写明回滚时间、原因、目标版本、摘要和验证结果。若首次版本发布需退回此前未版本化的镜像，使用已保存且可拉取的 `仓库地址@sha256:摘要` 作为 `ROLLBACK_IMAGE`。
 
 发布失败时看 `kubectl -n ns-7aie87ej logs pod/ledger-0`。退出码 139 是原生模块崩了，先确认镜像是 `linux/amd64`，并且用的是 musl 版 `better-sqlite3`。

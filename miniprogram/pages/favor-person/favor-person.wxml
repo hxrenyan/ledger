@@ -33,6 +33,7 @@
       <view class="grow">
         <view class="title">{{item.occasion}}</view>
         <view class="muted">{{item.dateLabel}} · {{item.kindText}}<text wx:if="{{item.note}}"> · {{item.note}}</text></view>
+        <view class="muted" wx:if="{{showRecorder}}">记录人：{{item.recorder}}</view>
       </view>
       <view class="amount {{item.kind === 'give' ? 'expense' : 'income'}}">{{item.amountText}}</view>
     </view>

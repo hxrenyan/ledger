@@ -14,11 +14,12 @@ Page({
   data: {
     guest: false,
     webviewSrc: '',
+    announcements: [],
   },
 
   onShow() {
     const guest = !session.getToken()
-    this.setData({ guest: guest })
+    this.setData({ guest: guest, announcements: getApp().globalData.announcements || [] })
     if (guest) {
       this.setData({ webviewSrc: '' })
       return
@@ -67,6 +68,10 @@ Page({
       return
     }
     nav.go('tool-contacts')
+  },
+
+  openScore() {
+    nav.go('score')
   },
 
   openCalendar() {

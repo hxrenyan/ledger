@@ -1,0 +1,45 @@
+.floating-area {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 20;
+  pointer-events: none;
+}
+
+.floating-actions {
+  width: 112rpx;
+  height: 112rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 16rpx;
+  pointer-events: auto;
+}
+
+/* 提高选择器优先级，避免微信原生 button 默认宽度把圆形按钮拉伸。 */
+.floating-actions .add-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  flex: none;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  color: #fff;
+  background: var(--brand, #3b5bdb);
+  box-shadow: 0 12rpx 32rpx rgba(59, 91, 219, 0.25);
+  line-height: 1;
+}
+
+.floating-actions .add-button::after {
+  border: 0;
+}
+
+.floating-actions .add-button {
+  width: 112rpx;
+  height: 112rpx;
+  border-radius: 50%;
+  font-size: 60rpx;
+}

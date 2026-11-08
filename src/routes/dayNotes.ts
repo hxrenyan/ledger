@@ -3,7 +3,7 @@ import type { AppEnv } from '../app.ts'
 import { parseSpokenNotes } from '../calendar/noteSpeech.ts'
 import { badRequest, notFound } from '../http.ts'
 import { routeId } from '../id.ts'
-import { addYears } from '../time.ts'
+import { addYears, shanghaiDate } from '../time.ts'
 
 /** 一条记事的正文上限。按字符数算，空格先去掉。 */
 const BODY_MAX = 200
@@ -21,6 +21,38 @@ type NoteRow = {
  * 记事本身只按 user_id 读写，换账本内容不变。
  */
 export function registerDayNoteRoutes(app: Hono<AppEnv>) {
+  /** 历史目录只返回当前用户截至上海今天的年月统计，不读取正文。 */
+  app.get('/api/v1/day-notes/history', async (c) => {
+    c.header('Cache-Control', 'no-store')
+    const asOf = shanghaiDate()
+    const months = await c.get('db').all<{
+      month: string; count: number; recorded_days: number; first_day: string; last_day: string
+    }>(
+      `SELECT substr(day, 1, 7) AS month, COUNT(*) AS count,
+              COUNT(DISTINCT day) AS recorded_days, MIN(day) AS first_day, MAX(day) AS last_day
+       FROM day_notes WHERE user_id = ? AND day <= ?
+       GROUP BY substr(day, 1, 7) ORDER BY month DESC`,
+      [c.get('userId'), asOf],
+    )
+    const years: { year: number; count: number; recorded_days: number; months: typeof months }[] = []
+    let totalCount = 0
+    let recordedDays = 0
+    for (const month of months) {
+      const year = Number(month.month.slice(0, 4))
+      let group = years[years.length - 1]
+      if (!group || group.year !== year) {
+        group = { year, count: 0, recorded_days: 0, months: [] }
+        years.push(group)
+      }
+      group.months.push(month)
+      group.count += month.count
+      group.recorded_days += month.recorded_days
+      totalCount += month.count
+      recordedDays += month.recorded_days
+    }
+    return c.json({ as_of: asOf, total_count: totalCount, recorded_days: recordedDays, years })
+  })
+
   app.get('/api/v1/day-notes', async (c) => {
     c.header('Cache-Control', 'no-store')
     const month = c.req.query('month') ?? ''

@@ -178,7 +178,17 @@ function main() {
 
   for (const file of files) {
     const full = join(migrationsDir, file);
-    const sql = readFileSync(full, "utf8");
+    let sql = readFileSync(full, "utf8");
+    // 新表迁移从唯一权威 schema 提取定义及对应索引，避免维护第二份 DDL。
+    const schemaTables = sql.match(/^--\s*@schema-tables\s+([\w, ]+)$/m);
+    if (schemaTables) {
+      const names = schemaTables[1].split(',').map((name) => name.trim());
+      const schema = readFileSync(join(root, 'sql/schema.sql'), 'utf8');
+      const definitions = schema.split(';').map((part) => part.replace(/^\s*--.*$/gm, '').trim())
+        .filter((part) => names.some((name) => new RegExp(String.raw`^CREATE TABLE IF NOT EXISTS ${name}\b|^CREATE (?:UNIQUE )?INDEX IF NOT EXISTS \w+ ON ${name}\b`, 'i').test(part)));
+      if (definitions.filter((part) => /^CREATE TABLE/i.test(part)).length !== names.length) throw new Error('schema 缺少迁移表');
+      sql = definitions.join(';') + ';';
+    }
     const typeGate = sql.match(whenColumnTypeRe);
     if (typeGate) {
       const actual = columnType(db, typeGate[1], typeGate[2]);

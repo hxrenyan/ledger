@@ -9,6 +9,7 @@
 
 .as-sheet {
   width: 100%;
+  box-sizing: border-box;
   background: #fff;
   border-radius: 36rpx 36rpx 0 0;
   padding: 32rpx 32rpx calc(32rpx + env(safe-area-inset-bottom));

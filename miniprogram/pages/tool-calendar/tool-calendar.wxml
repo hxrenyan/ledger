@@ -40,9 +40,10 @@
       </view>
 
       <view class="cal-actions">
+        <view class="pill-btn today-btn" catchtap="openHistory">历史</view>
         <view class="pill-btn today-btn" wx:if="{{showBack}}" catchtap="backToday">回今天</view>
         <view class="pill-btn fold-btn" catchtap="toggleCal">
-          <text>{{calOpen ? '收起日历' : '展开日历'}}</text>
+          <text>{{calOpen ? '收起' : '展开'}}</text>
           <view class="caret {{calOpen ? 'open' : ''}}"></view>
         </view>
       </view>
@@ -104,7 +105,7 @@
     <view wx:if="{{loading && !items.length}}" class="day-loading">加载中…</view>
     <view wx:if="{{!items.length && !adding && !loading}}" class="empty-day" catchtap="startAdd">这天还没有记事，点此记一条 ＋</view>
     <!-- 列表单独渲染，不放进 wx:else。否则保存后数据已经写上，列表仍可能不出来。 -->
-    <view class="note {{editingId === note.id ? 'on' : ''}}" wx:for="{{items}}" wx:for-item="note" wx:key="id">
+    <view id="day-note-{{note.id}}" class="note {{editingId === note.id ? 'on' : ''}} {{highlightedId === note.id ? 'history-highlight' : ''}}" wx:for="{{items}}" wx:for-item="note" wx:key="id">
       <block wx:if="{{editingId === note.id}}">
         <template
           is="noteEditor"
@@ -207,5 +208,68 @@
         </view>
       </view>
     </block>
+  </view>
+</view>
+
+<!-- 目录拥有独立的滚动与预览状态，关闭后不改变日历或草稿。 -->
+<view wx:if="{{history.open}}" class="history-mask" catchtap="closeHistory" catchtouchmove="swallowHistoryTouch">
+  <view class="history-sheet" catchtap="swallowHistoryTouch">
+    <view class="history-head">
+      <view>
+        <view class="history-title">历史</view>
+        <view class="history-sub" wx:if="{{history.summary.as_of}}">截至 {{history.summary.as_of}} · {{history.summary.total_count}} 条 · {{history.summary.recorded_days}} 个记录日</view>
+      </view>
+      <button class="history-link" bindtap="closeHistory">关闭</button>
+    </view>
+    <scroll-view class="history-scroll" scroll-y="{{true}}" scroll-into-view="{{history.anchor}}" bindscroll="rememberHistoryScroll">
+      <view class="history-content">
+        <view class="history-status" wx:if="{{history.loading}}">正在整理历史年月…</view>
+        <view class="history-status" wx:elif="{{history.error}}">
+          <view>{{history.error}}</view><button class="history-link" bindtap="refreshHistory">重试目录</button>
+        </view>
+        <view class="history-status" wx:elif="{{!history.summary.years.length}}">
+          <view>暂时没有历史记录</view>
+          <view class="history-sub">未来安排仍在日历中查看</view>
+          <button class="history-link" bindtap="closeHistory">回日历</button>
+        </view>
+        <block wx:else>
+          <view class="history-year" wx:for="{{history.summary.years}}" wx:for-item="year" wx:key="year">
+            <view class="history-year-title" data-year="{{year.year}}" bindtap="selectHistoryYear">
+              <text>{{history.year === year.year ? '▾' : '▸'}} {{year.year}} 年</text>
+              <text class="history-sub">{{year.count}} 条 · {{year.monthCount}} 个月</text>
+            </view>
+            <view class="history-months" wx:if="{{history.year === year.year}}">
+              <button class="history-month {{history.month === month.month ? 'selected' : ''}}" wx:for="{{year.months}}" wx:for-item="month" wx:key="month" data-month="{{month.month}}" bindtap="selectHistoryMonth">
+                <text>{{month.month}}</text><text class="history-sub">{{month.count}} 条 / {{month.recorded_days}} 天</text>
+              </button>
+            </view>
+          </view>
+          <view class="history-notice" wx:if="{{history.notice}}">{{history.notice}}</view>
+          <button class="history-link" bindtap="refreshHistory">刷新目录</button>
+          <view id="history-preview" class="history-preview">
+            <view class="history-title">{{history.monthText}} · {{history.total}} 条</view>
+            <view class="history-nav">
+              <button class="history-link" disabled="{{!history.older || history.navigating}}" data-direction="older" bindtap="stepHistory">更早有记录的月份</button>
+              <button class="history-link" disabled="{{!history.newer || history.navigating}}" data-direction="newer" bindtap="stepHistory">更新有记录的月份</button>
+            </view>
+            <view class="history-status" wx:if="{{history.previewLoading}}">正在加载这个月的记事…</view>
+            <view class="history-status" wx:elif="{{history.previewError}}">
+              <view>{{history.previewError}}</view><button class="history-link" bindtap="retryHistoryPreview">重试记事</button>
+            </view>
+            <block wx:else>
+              <view class="history-day" wx:for="{{history.groups}}" wx:for-item="group" wx:key="day">
+                <view class="history-day-title">{{group.label}} · {{group.count}} 条</view>
+                <view class="history-note" id="history-note-{{note.id}}" wx:for="{{group.items}}" wx:for-item="note" wx:key="id">
+                  <view class="history-body">{{note.body}}</view>
+                  <button class="history-link history-view" disabled="{{history.navigating || busy}}" data-id="{{note.id}}" bindtap="viewHistoryDay">{{history.navigating ? '正在打开…' : '查看当天'}}</button>
+                </view>
+              </view>
+              <view class="history-sub history-status">已显示 {{history.shown < history.total ? history.shown : history.total}} / {{history.total}} 条</view>
+              <button wx:if="{{history.shown < history.total}}" class="history-more" bindtap="moreHistory">继续查看本月</button>
+            </block>
+          </view>
+        </block>
+      </view>
+    </scroll-view>
   </view>
 </view>

@@ -96,6 +96,7 @@ Page({
     kindFilter: 'all', // all | give | receive
     hasGiftFilter: false,
     groups: [],
+    showRecorder: false,
     empty: false,
     emptyText: '',
     // 联系人与筛选
@@ -115,6 +116,7 @@ Page({
   },
 
   onShow() {
+    this.setData({ showRecorder: session.showRecorder(this.memberCount) })
     if (!session.getToken()) {
       this.setData({
         guest: true,
@@ -145,6 +147,7 @@ Page({
     this.setData({ loading: true })
     return Promise.all([request.get('/api/v1/gifts'), request.get('/api/v1/contacts')])
       .then((res) => {
+        this.memberCount = res[0] && res[0].member_count
         const gifts = (res[0] && res[0].items) || []
         const contacts = (res[1] && res[1].items) || []
         this.gifts = gifts.map((g) => this.decorate(g))
@@ -170,6 +173,7 @@ Page({
         this.setData({
           loading: false,
           contactEmpty: !this.contacts.length,
+          showRecorder: session.showRecorder(this.memberCount),
           soon: comingSoon(contacts),
         })
         this.applyContactFilter()
@@ -195,6 +199,7 @@ Page({
       amountText: (g.kind === 'give' ? '-' : '+') + money.formatYuan(g.amount_cents),
       occasion: g.occasion || '',
       note: g.note || '',
+      recorder: g.created_by_name || '未知记录人',
     }
   },
 

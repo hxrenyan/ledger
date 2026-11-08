@@ -365,6 +365,40 @@ CREATE TABLE IF NOT EXISTS day_notes (
 -- ---------------------------------------------------------------------------
 -- 索引（对应列表/统计查询，不重复主键与 UNIQUE）
 -- ---------------------------------------------------------------------------
+-- 临时记分：成员、玩家和当前分数在 JSON 中；历史独立分页。
+CREATE TABLE IF NOT EXISTS score_rooms (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_id INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  state_json TEXT NOT NULL CHECK(json_valid(state_json)),
+  rev INTEGER NOT NULL DEFAULT 1,
+  invite_code TEXT NOT NULL,
+  invite_token TEXT NOT NULL UNIQUE,
+  created_at INTEGER NOT NULL,
+  last_activity_at INTEGER NOT NULL,
+  ended_at INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS score_entries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  room_id INTEGER NOT NULL,
+  player_id TEXT NOT NULL,
+  player_name TEXT NOT NULL,
+  delta INTEGER NOT NULL,
+  score_after INTEGER NOT NULL,
+  from_player_id TEXT,
+  from_player_name TEXT,
+  from_score_after INTEGER,
+  created_by INTEGER NOT NULL,
+  request_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE(room_id, created_by, request_id)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_score_rooms_invite_active ON score_rooms(invite_code) WHERE ended_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_score_entries_room_id ON score_entries(room_id, id);
+CREATE INDEX IF NOT EXISTS idx_score_rooms_ended ON score_rooms(ended_at, last_activity_at);
+
 CREATE INDEX IF NOT EXISTS idx_tx_ledger_occurred ON transactions (ledger_id, occurred_at, created_at);
 CREATE INDEX IF NOT EXISTS idx_members_user ON members (user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ledgers_invite ON ledgers (invite_code) WHERE invite_code IS NOT NULL;

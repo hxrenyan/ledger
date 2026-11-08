@@ -49,14 +49,23 @@ export function registerTransactionRoutes(app: Hono<AppEnv>) {
       extra += ' AND note LIKE ?'
       params.push(`%${q}%`)
     }
-    const rows = await c.get('db').all<TxRow>(
-      `SELECT id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note, has_receipt, excluded, created_at, updated_at
+    const db = c.get('db')
+    const membership = await db.first<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM members WHERE ledger_id = ?`, [c.get('ledgerId')],
+    )
+    const rows = await db.all<TxRow & { created_by_name: string }>(
+      `SELECT id, account_id, to_account_id, category_id, kind, amount_cents, occurred_at, note, has_receipt, excluded, created_at, updated_at,
+              (SELECT COALESCE(NULLIF(TRIM(u.nickname), ''), u.username) FROM users u WHERE u.id = transactions.created_by) AS created_by_name
        FROM transactions
        WHERE ledger_id = ? AND occurred_at >= ? AND occurred_at < ? ${extra}
        ORDER BY occurred_at DESC, created_at DESC`,
       params,
     )
-    return c.json({ month, items: rows.map(shape) })
+    return c.json({
+      month,
+      member_count: Number(membership?.count) || 0,
+      items: rows.map((row) => ({ ...shape(row), created_by_name: row.created_by_name || '未知记录人' })),
+    })
   })
 
   app.get('/api/v1/transactions/:id', async (c) => {

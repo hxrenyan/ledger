@@ -242,6 +242,15 @@
   gap: 16rpx;
 }
 
+.empty-actions .btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  margin: 0;
+  text-align: center;
+}
+
 .empty-actions .btn + .btn {
   margin-top: 0;
 }

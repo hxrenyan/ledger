@@ -1,0 +1,2 @@
+-- 从 sql/schema.sql 提取指定表及索引，幂等创建，不复制建表定义。
+-- @schema-tables score_rooms,score_entries

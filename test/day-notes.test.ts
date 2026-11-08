@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mergeUserStmts } from '../src/auth/mergeUser.ts'
 import { createApp } from '../src/app.ts'
 import { ensureMigrated } from '../src/db/migrate.ts'
@@ -41,6 +41,68 @@ async function register(app: ReturnType<typeof createApp>, username: string) {
 }
 
 describe('个人日历记事', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it('历史目录按上海今天统计完整年月，跳过空月并隔离用户', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 25, 16, 0))
+    const { app, db } = await setup()
+    const owner = await register(app, 'history_owner')
+    const mate = await register(app, 'history_mate')
+    const invite = await db.first<{ invite_code: string }>('SELECT invite_code FROM ledgers WHERE id = ?', [owner.ledgerId])
+    await json(app, '/api/v1/ledgers/join', {
+      method: 'POST', headers: mate.headers(), body: JSON.stringify({ code: invite?.invite_code }),
+    })
+    const dates = ['2011-01-01', '2024-02-29', '2024-03-05', '2024-03-18', '2024-03-18', '2026-10-26', '2026-10-27', '2027-01-01']
+    await db.batch(dates.map((day) => ({
+      sql: 'INSERT INTO day_notes (user_id, day, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+      params: [owner.userId, day, '个人正文', 1, 1],
+    })))
+    const response = await app.request('/api/v1/day-notes/history', { headers: owner.headers() })
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('no-store')
+    const summary = await response.json() as Record<string, any>
+    expect(summary).toEqual({
+      as_of: '2026-10-26', total_count: 6, recorded_days: 5,
+      years: [
+        { year: 2026, count: 1, recorded_days: 1, months: [
+          { month: '2026-10', count: 1, recorded_days: 1, first_day: '2026-10-26', last_day: '2026-10-26' },
+        ] },
+        { year: 2024, count: 4, recorded_days: 3, months: [
+          { month: '2024-03', count: 3, recorded_days: 2, first_day: '2024-03-05', last_day: '2024-03-18' },
+          { month: '2024-02', count: 1, recorded_days: 1, first_day: '2024-02-29', last_day: '2024-02-29' },
+        ] },
+        { year: 2011, count: 1, recorded_days: 1, months: [
+          { month: '2011-01', count: 1, recorded_days: 1, first_day: '2011-01-01', last_day: '2011-01-01' },
+        ] },
+      ],
+    })
+    const empty = await json(app, '/api/v1/day-notes/history?user_id=' + owner.userId, { headers: mate.headers(owner.ledgerId) })
+    expect(empty.body).toEqual({ as_of: '2026-10-26', total_count: 0, recorded_days: 0, years: [] })
+    const another = await json(app, '/api/v1/ledgers', { method: 'POST', headers: owner.headers(), body: JSON.stringify({ name: '另一本' }) })
+    expect((await json(app, '/api/v1/day-notes/history', { headers: owner.headers(another.body.id) })).body).toEqual(summary)
+    expect((await json(app, '/api/v1/day-notes/history')).status).toBe(401)
+    expect((await json(app, '/api/v1/day-notes/history', { headers: { authorization: `Bearer ${owner.token}` } })).status).toBe(400)
+    expect((await json(app, '/api/v1/day-notes/history', { headers: owner.headers(mate.ledgerId) })).status).toBe(403)
+    const plan = await db.all<{ detail: string }>(
+      `EXPLAIN QUERY PLAN SELECT substr(day, 1, 7), COUNT(*), COUNT(DISTINCT day), MIN(day), MAX(day)
+       FROM day_notes WHERE user_id = ? AND day <= ? GROUP BY substr(day, 1, 7) ORDER BY 1 DESC`,
+      [owner.userId, '2026-10-26'],
+    )
+    expect(plan.some((row) => row.detail.includes('idx_day_notes_user_day'))).toBe(true)
+  })
+
+  it('未来记事不进入目录，补记与删除后立即重新统计', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(Date.UTC(2026, 9, 26, 0))
+    const { app } = await setup()
+    const owner = await register(app, 'history_changes')
+    await json(app, '/api/v1/day-notes', { method: 'POST', headers: owner.headers(), body: JSON.stringify({ day: '2026-10-27', body: '明天' }) })
+    expect((await json(app, '/api/v1/day-notes/history', { headers: owner.headers() })).body.years).toEqual([])
+    const note = await json(app, '/api/v1/day-notes', { method: 'POST', headers: owner.headers(), body: JSON.stringify({ day: '2001-03-01', body: '补记' }) })
+    expect((await json(app, '/api/v1/day-notes/history', { headers: owner.headers() })).body.total_count).toBe(1)
+    await json(app, `/api/v1/day-notes/${note.body.id}`, { method: 'DELETE', headers: owner.headers() })
+    expect((await json(app, '/api/v1/day-notes/history', { headers: owner.headers() })).body.years).toEqual([])
+  })
+
   it('只属于自己，换账本还在，同账本的人看不到', async () => {
     const { app, db } = await setup()
     const owner = await register(app, 'owner')
@@ -275,5 +337,7 @@ describe('个人日历记事', () => {
       [dropped.userId],
     )
     expect(Number(orphan?.n)).toBe(0)
+    const history = await json(app, '/api/v1/day-notes/history', { headers: kept.headers() })
+    expect(history.body.total_count).toBe(2)
   })
 })

@@ -1,0 +1,5 @@
+<movable-area class="floating-area" style="width: {{width}}px; height: {{height}}px;">
+  <movable-view class="floating-actions" direction="all" x="{{x}}" y="{{y}}" inertia="{{false}}" animation="{{false}}" out-of-bounds="{{false}}" bindchange="changePosition" bindtouchstart="startTouch" bindtouchmove="moveTouch" bindtouchend="endTouch" bindtouchcancel="endTouch">
+    <button class="add-button" bindtap="add" aria-label="添加记录，可拖动">＋</button>
+  </movable-view>
+</movable-area>

@@ -129,6 +129,14 @@
       <view class="arrow">›</view>
     </view>
 
+    <view class="link-row" data-key="settings" bindtap="go">
+      <view class="row-left">
+        <view class="row-title">设置</view>
+        <view class="row-sub">记录人展示、明细加号入口与排序</view>
+      </view>
+      <view class="arrow">›</view>
+    </view>
+
     <view class="link-row" bindtap="about">
       <view class="row-left">
         <view class="row-title">关于记账</view>

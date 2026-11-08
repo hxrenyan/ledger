@@ -286,11 +286,12 @@ Page({
   },
 
   go(e) {
-    if (!session.getToken()) {
+    const key = e.currentTarget.dataset.key
+    if (key !== 'settings' && !session.getToken()) {
       session.goLogin()
       return
     }
-    nav.go(e.currentTarget.dataset.key)
+    nav.go(key)
   },
 
   exportBook() {

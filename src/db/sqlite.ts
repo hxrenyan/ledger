@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import Database from 'better-sqlite3'
-import { insertedId, type Db, type Stmt } from './types.ts'
+import { BatchConflict, insertedId, type Db, type Stmt } from './types.ts'
 
 /**
  * 预编译语句缓存上限。语句的原生内存只在 JS 回收包装对象时才释放，
@@ -47,6 +47,7 @@ export function createSqliteDb(path: string): Db {
       const tx = raw.transaction(() => {
         return list.map((s) => {
           const info = prepare(s.sql).run(...(s.params ?? []))
+          if (s.expectChanges !== undefined && info.changes !== s.expectChanges) throw new BatchConflict('条件写入冲突')
           return { lastId: insertedId(s.sql, info.changes, Number(info.lastInsertRowid)) }
         })
       })

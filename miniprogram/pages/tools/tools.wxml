@@ -1,5 +1,8 @@
 <web-view wx:if="{{webviewSrc}}" src="{{webviewSrc}}" binderror="onWebError"></web-view>
 <view wx:else class="page">
+  <view class="card" wx:for="{{announcements}}" wx:key="id">
+    <view class="tool-name">{{item.title}}</view><view class="muted">{{item.body}}</view>
+  </view>
   <view class="card guest-card" wx:if="{{guest}}">
     <view class="guest-title">登录后使用工具</view>
     <view class="muted">联系人和日子跟当前账本走。日历记事只属于自己</view>
@@ -11,7 +14,7 @@
       <view class="tool-ico">人</view>
       <view class="tool-main">
         <view class="tool-name">联系人管理</view>
-        <view class="muted">改姓名、关系和日子。人情里的人也会出现在这里</view>
+        <view class="muted">改姓名、关系和重要日子</view>
       </view>
       <view class="arrow">›</view>
     </view>
@@ -24,4 +27,9 @@
       <view class="arrow">›</view>
     </view>
   </block>
+  <view class="card tool-card" bindtap="openScore">
+    <view class="tool-ico">分</view>
+    <view class="tool-main"><view class="tool-name">记分</view><view class="muted">创建临时房间，邀请朋友一起加减分</view></view>
+    <view class="arrow">›</view>
+  </view>
 </view>

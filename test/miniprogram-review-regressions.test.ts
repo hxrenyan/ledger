@@ -247,7 +247,8 @@ function updateApp(request = {}) {
     switchTab: vi.fn(({ url }: { url: string }) => { pages.splice(0, pages.length, { route: url.slice(1) }) }),
     reLaunch: vi.fn(({ url }: { url: string }) => { pages.splice(0, pages.length, { route: url.slice(1) }) }),
   }
-  const app = instance(loadDefinition('miniprogram/app.js', { './config': {}, './utils/session': {}, './utils/request': request },
+  const app = instance(loadDefinition('miniprogram/app.js', { './config': {}, './utils/session': {}, './utils/request': request,
+    './utils/heartbeat': { createHeartbeat: () => ({ subscribe: vi.fn(), start: vi.fn(), stop: vi.fn() }) } },
     wx, undefined, pages))
   app.globalData = { ...app.globalData }
   app.bindUpdateManager()

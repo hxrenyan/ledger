@@ -6,6 +6,7 @@ import { createApp } from './app.ts'
 import { ensureMigrated } from './db/migrate.ts'
 import { createSqliteDb } from './db/sqlite.ts'
 import { loadEnv } from './env.ts'
+import { cleanupScore } from './score/service.ts'
 
 loadEnv()
 
@@ -21,6 +22,8 @@ if (process.env.NODE_ENV === 'production' && !jwtSecret) {
 
 const db = createSqliteDb(dbPath)
 await ensureMigrated(db)
+await cleanupScore(db)
+setInterval(() => { void cleanupScore(db).catch((err) => console.error('记分清理失败', err)) }, 60000).unref()
 
 const app = createApp({
   db,

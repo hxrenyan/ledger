@@ -2,25 +2,9 @@
   <view class="as-sheet" catchtap="noop">
     <view class="as-title">记点什么</view>
     <view class="as-grid">
-      <view class="as-item" data-type="tx" bindtap="pick">
-        <view class="as-ico expense">−</view>
-        <view class="as-label">记一笔</view>
-      </view>
-      <view class="as-item" data-type="gift" bindtap="pick">
-        <view class="as-ico gift">礼</view>
-        <view class="as-label">记人情</view>
-      </view>
-      <view class="as-item" wx:if="{{canAi}}" data-type="speak" bindtap="pick">
-        <view class="as-ico brand">智</view>
-        <view class="as-label">智能记账</view>
-      </view>
-      <view class="as-item" wx:if="{{canSpeak}}" data-type="note" bindtap="pick">
-        <view class="as-ico voice">语</view>
-        <view class="as-label">日历记录</view>
-      </view>
-      <view class="as-item" data-type="import" bindtap="pick">
-        <view class="as-ico plain">导</view>
-        <view class="as-label">账单导入</view>
+      <view class="as-item" wx:for="{{items}}" wx:key="type" data-type="{{item.type}}" bindtap="pick">
+        <view class="as-ico {{item.color}}">{{item.icon}}</view>
+        <view class="as-label">{{item.label}}</view>
       </view>
     </view>
     <view class="as-cancel" bindtap="close">取消</view>

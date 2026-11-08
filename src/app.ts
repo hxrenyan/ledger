@@ -23,6 +23,8 @@ import { registerPointRoutes } from './routes/points.ts'
 import { registerFeedbackRoutes } from './routes/feedback.ts'
 import { registerDayNoteRoutes } from './routes/dayNotes.ts'
 import { registerWebviewRoutes } from './routes/webview.ts'
+import { registerScoreRoutes } from './routes/score.ts'
+import { registerHeartbeatRoutes } from './routes/heartbeat.ts'
 import type { WechatCodeExchange } from './auth/wechat.ts'
 
 export type AppEnv = {
@@ -57,7 +59,8 @@ export type AppConfig = {
  */
 /** 没登录也要读：工具页模式、关于文案、是否必须更新。 */
 function isOpenAppRead(method: string, path: string) {
-  return method === 'GET' && (path === '/api/v1/app/tools' || path === '/api/v1/app/client')
+  return (method === 'POST' && path === '/api/v1/app/heartbeat') ||
+    (method === 'GET' && ['/api/v1/app/tools', '/api/v1/app/client', '/api/v1/app/announcements'].includes(path))
 }
 
 const LEDGER_OPTIONAL = new Set([
@@ -188,7 +191,7 @@ export function createApp(cfg: AppConfig) {
       path.startsWith('/api/v1/auth/') ||
       path.startsWith('/api/v1/admin') ||
       isOpenAppRead(c.req.method, path) ||
-      LEDGER_OPTIONAL.has(path)
+      LEDGER_OPTIONAL.has(path) || path.startsWith('/api/v1/score/')
     ) {
       return next()
     }
@@ -231,6 +234,8 @@ export function createApp(cfg: AppConfig) {
   registerFeedbackRoutes(app)
   registerDayNoteRoutes(app)
   registerWebviewRoutes(app)
+  registerScoreRoutes(app)
+  registerHeartbeatRoutes(app)
   registerAdminRoutes(app)
 
   return app

@@ -154,6 +154,8 @@ Page({
 
     // 交互
     showAdd: false,
+    addItems: [],
+    showRecorder: false,
     guest: false,
     showVoice: false,
     /** tx 智能记账；note 日历记录，认出日期和事情后再写入。 */
@@ -192,6 +194,7 @@ Page({
   },
 
   onShow() {
+    this.setData({ showRecorder: session.showRecorder(this.memberCount) })
     if (!session.getToken()) {
       this.setData({ guest: true, loading: false, empty: true, showAdd: false, showVoice: false })
       return
@@ -325,6 +328,7 @@ Page({
       request.get('/api/v1/stats/overview?month=' + month),
     ])
       .then((res) => {
+        this.memberCount = res[0] && res[0].member_count
         const items = (res[0] && res[0].items) || []
         const monthly = res[1] || {}
         const overview = res[2] || {}
@@ -342,6 +346,7 @@ Page({
           empty: !filtered.length,
           hasFilter: hasFilter,
           groups: this.groupByDay(filtered),
+          showRecorder: session.showRecorder(res[0] && res[0].member_count),
           incomeText: money.formatYuan(monthly.income_cents),
           expenseText: money.formatYuan(monthly.expense_cents),
           netText: (net > 0 ? '+' : '') + money.formatYuan(monthly.net_cents),
@@ -380,6 +385,7 @@ Page({
       clock: timeText(t.occurred_at),
       amountText: money.signedText(t.kind, t.amount_cents),
       note: t.note || '',
+      recorder: t.created_by_name || '未知记录人',
       category: t.category_id ? categoryMap[t.category_id] || '未命名分类' : '',
       account: accountMap[t.account_id] || '',
       toAccount: t.to_account_id ? accountMap[t.to_account_id] || '' : '',
@@ -779,7 +785,16 @@ Page({
       session.goLogin()
       return
     }
-    this.setData({ showAdd: true })
+    const items = session.availableAddActions(this.data.canAi, this.data.canSpeak)
+    if (!items.length) {
+      wx.showToast({ title: '所选入口暂不可用，请到设置调整', icon: 'none' })
+      return
+    }
+    if (items.length === 1) {
+      this.runAddAction(items[0].type)
+      return
+    }
+    this.setData({ showAdd: true, addItems: items })
   },
 
   closeAdd() {
@@ -788,6 +803,16 @@ Page({
 
   onAddSelect(e) {
     const type = e.detail.type
+    if (!session.availableAddActions(this.data.canAi, this.data.canSpeak).some((item) => item.type === type)) return
+    this.runAddAction(type)
+  },
+
+  runAddAction(type) {
+    if (!session.getToken()) {
+      session.goLogin()
+      return
+    }
+    this.setData({ showAdd: false })
     if (type === 'tx') nav.go('tx-form', {})
     else if (type === 'gift') nav.go('gift-form', {})
     else if (type === 'speak') this.setData({ showVoice: true, voiceTarget: 'tx' })

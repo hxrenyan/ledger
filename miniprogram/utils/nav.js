@@ -18,6 +18,8 @@ const NATIVE_PAGES = {
   'contact-form': '/pages/contact-form/contact-form',
   'tool-calendar': '/pages/tool-calendar/tool-calendar',
   me: '/pages/me/me',
+  settings: '/pages/settings/settings',
+  score: '/pages/score/score',
   ledger: '/pages/ledger/ledger',
   budgets: '/pages/budgets/budgets',
   categories: '/pages/categories/categories',

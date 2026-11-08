@@ -156,6 +156,15 @@ function buildGroups(shapedItems, q, today, listFilter, searching) {
   })
 }
 
+function historyState() {
+  return {
+    open: false, loading: false, previewLoading: false, navigating: false,
+    summary: { as_of: '', total_count: 0, recorded_days: 0, years: [] },
+    year: 0, month: '', monthText: '', groups: [], shown: 30, total: 0,
+    error: '', previewError: '', notice: '', older: '', newer: '', anchor: '',
+  }
+}
+
 Page({
   data: {
     month: '',
@@ -188,6 +197,8 @@ Page({
     busy: false,
     loading: true,
     error: '',
+    history: historyState(),
+    highlightedId: 0,
   },
 
   onLoad() {
@@ -199,6 +210,9 @@ Page({
       session.goLogin()
       return
     }
+    const account = session.getToken()
+    if (this._historyAccount && this._historyAccount !== account) this.resetHistory()
+    this._historyAccount = account
     const today = time.todayISO()
     const month = this.data.month || time.shanghaiMonth()
     const selected = dayInMonth(month, this.data.selected, today)
@@ -212,6 +226,207 @@ Page({
       showBack: month !== today.slice(0, 7) || selected !== today,
     })
     this.load(month, selected)
+    if (this.data.history.open) this.refreshHistory()
+  },
+
+  onUnload() {
+    this.closeHistory()
+    clearTimeout(this._highlightTimer)
+    clearTimeout(this._historyScrollTimer)
+  },
+
+  onHide() { if (this.data.history.open) this.closeHistory() },
+
+  patchHistory(patch) {
+    this.setData({ history: Object.assign({}, this.data.history, patch) })
+  },
+
+  resetHistory() {
+    this._historyTicket = (this._historyTicket || 0) + 1
+    this._previewTicket = (this._previewTicket || 0) + 1
+    this._historyItems = []
+    this._historyAnchor = ''
+    this._historyShown = 30
+    this.setData({ history: historyState() })
+  },
+
+  openHistory() {
+    const account = session.getToken()
+    if (this._historyAccount && this._historyAccount !== account) this.resetHistory()
+    this._historyAccount = account
+    this.patchHistory({ open: true })
+    return this.refreshHistory()
+  },
+
+  closeHistory() {
+    this._historyTicket = (this._historyTicket || 0) + 1
+    this._previewTicket = (this._previewTicket || 0) + 1
+    this.patchHistory({ open: false, loading: false, previewLoading: false, navigating: false })
+  },
+
+  swallowHistoryTouch() {},
+
+  historyCurrent(ticket, preview) {
+    if (this._historyAccount !== session.getToken()) { this.resetHistory(); return false }
+    return this.data.history.open
+      && ticket === (preview ? this._previewTicket : this._historyTicket)
+  },
+
+  async refreshHistory(reconciled) {
+    const ticket = this._historyTicket = (this._historyTicket || 0) + 1
+    this._previewTicket = (this._previewTicket || 0) + 1
+    this.patchHistory({ loading: true, previewLoading: false, navigating: false, error: '', previewError: '', groups: [] })
+    try {
+      const summary = await request.request({ path: '/api/v1/day-notes/history' })
+      if (!this.historyCurrent(ticket, false)) return
+      summary.years = summary.years.map(function (year) { return Object.assign({}, year, { monthCount: year.months.length }) })
+      const months = summary.years.reduce(function (all, year) { return all.concat(year.months) }, [])
+      const oldMonth = this.data.history.month
+      const preferred = oldMonth || this.data.month
+      const target = months.find(function (m) { return m.month === preferred })
+        || months.find(function (m) { return m.month.slice(0, 4) === preferred.slice(0, 4) }) || months[0]
+      this.patchHistory({ summary: summary, loading: false,
+        notice: oldMonth && !months.some(function (m) { return m.month === oldMonth }) ? '原月份已无历史记录，已显示最近记录' : '' })
+      if (target) return this.selectHistoryMonth(target.month, reconciled === true, true)
+      this._historyItems = []
+      this.patchHistory({ month: '', year: 0, monthText: '', total: 0, groups: [], older: '', newer: '', anchor: '' })
+    } catch (err) {
+      if (this.historyCurrent(ticket, false)) this.patchHistory({ loading: false, error: err.message || '目录加载失败' })
+    }
+  },
+
+  async selectHistoryMonth(value, reconciled, restore) {
+    if (this.data.history.navigating) return
+    const month = typeof value === 'string' ? value : value.currentTarget.dataset.month
+    const summary = this.data.history.summary
+    const months = summary.years.reduce(function (all, year) { return all.concat(year.months) }, [])
+    const index = months.findIndex(function (m) { return m.month === month })
+    if (index < 0 || !this.data.history.open || this.data.history.loading) return
+    const same = month === this.data.history.month
+    if (!same) { this._historyAnchor = ''; this._historyShown = 30 }
+    const ticket = this._previewTicket = (this._previewTicket || 0) + 1
+    this._historyItems = []
+    this.patchHistory({ month: month, monthText: time.monthLabel(month), year: Number(month.slice(0, 4)),
+      shown: restore && same ? this._historyShown || 30 : 30, total: months[index].count,
+      groups: [], previewError: '', previewLoading: true, anchor: '',
+      older: months[index + 1] ? months[index + 1].month : '', newer: months[index - 1] ? months[index - 1].month : '' })
+    try {
+      const body = await request.request({ path: '/api/v1/day-notes?month=' + encodeURIComponent(month) })
+      if (!this.historyCurrent(ticket, true)) return
+      const items = (body.items || []).filter(function (item) { return item.day.slice(0, 7) === month && item.day <= summary.as_of })
+      const days = new Set(items.map(function (item) { return item.day })).size
+      if (items.length !== months[index].count || days !== months[index].recorded_days) {
+        if (!reconciled) return this.refreshHistory(true)
+        this.patchHistory({ notice: '记录有更新，点击刷新目录' })
+      }
+      items.sort(function (a, b) { return a.day === b.day ? a.created_at - b.created_at || a.id - b.id : a.day < b.day ? 1 : -1 })
+      this._historyItems = items
+      this.patchHistory({ total: items.length, previewLoading: false })
+      this.renderHistory()
+      const anchor = restore && this._historyAnchor
+      this.patchHistory({ anchor: anchor && items.some(function (item) { return 'history-note-' + item.id === anchor }) ? anchor : restore && !anchor ? '' : 'history-preview' })
+    } catch (err) {
+      if (this.historyCurrent(ticket, true)) this.patchHistory({ previewLoading: false, previewError: err.message || '记事加载失败' })
+    }
+  },
+
+  selectHistoryYear(e) {
+    const year = Number(e.currentTarget.dataset.year)
+    if (this.data.history.year === year) { this.patchHistory({ year: 0 }); return }
+    const group = this.data.history.summary.years.find(function (item) { return item.year === year })
+    if (group && group.months.length) return this.selectHistoryMonth(group.months[0].month)
+  },
+
+  stepHistory(e) {
+    const month = this.data.history[e.currentTarget.dataset.direction]
+    if (month) return this.selectHistoryMonth(month)
+  },
+
+  retryHistoryPreview() { return this.selectHistoryMonth(this.data.history.month) },
+
+  renderHistory() {
+    const items = (this._historyItems || []).slice(0, this.data.history.shown)
+    const counts = {}
+    ;(this._historyItems || []).forEach(function (item) { counts[item.day] = (counts[item.day] || 0) + 1 })
+    const groups = []
+    items.forEach(function (item) {
+      let group = groups[groups.length - 1]
+      if (!group || group.day !== item.day) {
+        group = { day: item.day, label: time.dateLabel(item.day), count: counts[item.day], items: [] }
+        groups.push(group)
+      }
+      group.items.push(item)
+    })
+    this.patchHistory({ groups: groups })
+  },
+
+  moreHistory() {
+    this._historyShown = this.data.history.shown + 30
+    this.patchHistory({ shown: this._historyShown })
+    this.renderHistory()
+  },
+
+  rememberHistoryScroll() {
+    if (this._historyScrollTimer) return
+    const self = this
+    this._historyScrollTimer = setTimeout(function () {
+      self._historyScrollTimer = null
+      if (!self.data.history.open || self.data.history.loading || self.data.history.previewLoading) return
+      const ticket = self._previewTicket
+      self.createSelectorQuery().selectAll('.history-note').boundingClientRect().select('.history-scroll').boundingClientRect().exec(function (rects) {
+        if (!self.historyCurrent(ticket, true)) return
+        const viewport = rects[1]
+        const first = viewport && (rects[0] || []).find(function (rect) { return rect.bottom > viewport.top && rect.top < viewport.bottom })
+        self._historyAnchor = first ? first.id : ''
+        self._historyShown = self.data.history.shown
+      })
+    }, 120)
+  },
+
+  async viewHistoryDay(e) {
+    if (this._saving || this.data.history.navigating) { this.patchHistory({ notice: '请等待当前保存或加载结束' }); return }
+    const id = Number(e.currentTarget.dataset.id)
+    const item = (this._historyItems || []).find(function (note) { return note.id === id })
+    if (!item) return
+    this.patchHistory({ navigating: true, previewError: '' })
+    const ticket = this._previewTicket
+    const editor = this._editSession || 0
+    const draft = this.data.draft
+    try {
+      if (draft.trim() && !await ui.confirm('放弃未保存的修改并查看当天？', '查看历史记录')) return
+      if (!this.historyCurrent(ticket, true) || this._saving || editor !== (this._editSession || 0)) return
+      if (this.data.draft !== draft) { this.patchHistory({ notice: '草稿已更新，请重新确认后查看' }); return }
+      const body = await request.request({ path: '/api/v1/day-notes?day=' + encodeURIComponent(item.day) })
+      if (!this.historyCurrent(ticket, true) || this._saving || editor !== (this._editSession || 0)) return
+      if (this.data.draft !== draft) { this.patchHistory({ notice: '草稿已更新，请重新确认后查看' }); return }
+      if (!(body.items || []).some(function (note) { return note.id === id })) {
+        const refresh = this.refreshHistory()
+        const refreshTicket = this._historyTicket
+        await refresh
+        if (this.historyCurrent(refreshTicket, false)) this.patchHistory({ notice: '这条记事已不存在，目录已刷新' })
+        return
+      }
+      this._historyAnchor = 'history-note-' + id
+      this._historyShown = this.data.history.shown
+      this._searchTicket = (this._searchTicket || 0) + 1
+      this._searchKey = ''; this._pendingKey = ''; this._searchItems = []
+      this.setData({ q: '', searching: false, listFilter: 'all', listOpen: true })
+      this.cancelEdit()
+      this.setData({ month: item.day.slice(0, 7), monthText: time.monthLabel(item.day.slice(0, 7)), selected: item.day,
+        dayTitle: time.dateLabel(item.day), dayRel: relativeLabel(item.day, this.data.today || time.todayISO()),
+        showBack: item.day !== (this.data.today || time.todayISO()), items: shapeItems(body.items), highlightedId: id })
+      this._monthItems = null
+      this.closeHistory()
+      this.load(undefined, undefined, true)
+      wx.nextTick(function () { wx.pageScrollTo({ selector: '#day-note-' + id, duration: 240 }) })
+      clearTimeout(this._highlightTimer)
+      const self = this
+      this._highlightTimer = setTimeout(function () { self.setData({ highlightedId: 0 }) }, 2400)
+    } catch (err) {
+      if (this.historyCurrent(ticket, true)) this.patchHistory({ previewError: err.message || '当天记事加载失败，请重试' })
+    } finally {
+      if (this.historyCurrent(ticket, true)) this.patchHistory({ navigating: false })
+    }
   },
 
   onPullDownRefresh() {
@@ -692,6 +907,7 @@ Page({
         }
       }
       ui.ok(editingId ? '已保存' : '已记下')
+      if (self.data.history.open) self.refreshHistory()
       // 只刷新列表，不能让旧提交覆盖另一个编辑会话的提示。
       return self.load(undefined, undefined, true)
     }).catch(function (err) {
@@ -711,6 +927,7 @@ Page({
     ui.confirm('删除这条记事？', '删除').then(function (ok) {
       if (!ok) return
       request.request({ path: '/api/v1/day-notes/' + id, method: 'DELETE' }).then(function () {
+        if (self.data.history.open) self.refreshHistory()
         if (self._fresh) delete self._fresh[id]
         if (self.data.editingId === id) {
           self.setData({

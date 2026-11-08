@@ -105,6 +105,7 @@
             <text class="occasion-badge" wx:if="{{g.occasion}}">{{g.occasion}}</text>
           </view>
           <view class="muted gift-sub">{{g.kindText}}<text wx:if="{{g.note}}"> · {{g.note}}</text></view>
+          <view class="muted gift-sub" wx:if="{{showRecorder}}">记录人：{{g.recorder}}</view>
         </view>
         <view class="gift-right">
           <view class="amount {{g.kind === 'give' ? 'expense' : 'income'}}">{{g.amountText}}</view>
@@ -165,4 +166,4 @@
   </block>
 </view>
 
-<view class="fab" bindtap="addGift">+</view>
+<floating-actions id="floatingActions" bind:add="addGift" />

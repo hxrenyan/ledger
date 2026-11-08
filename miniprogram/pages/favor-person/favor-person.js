@@ -25,6 +25,7 @@ Page({
     netClass: 'income',
     hint: '',
     items: [],
+    showRecorder: false,
     loading: true,
   },
 
@@ -67,11 +68,13 @@ Page({
             amountYuan: money.formatYuan(g.amount_cents),
             occasion: g.occasion || '未写事由',
             note: g.note || '',
+            recorder: g.created_by_name || '未知记录人',
           }
         })
         const net = received - given
         this.setData({
           loading: false,
+          showRecorder: session.showRecorder(res[0] && res[0].member_count),
           found: !!me,
           name: me ? me.name : items.length ? '' : '这位联系人',
           relation: me && me.relation ? me.relation : '',

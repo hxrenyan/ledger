@@ -10,8 +10,11 @@
 | [photo.md](photo.md) | 拍照记账：本机识别、云端重试、语音切换与积分规则 |
 | [favors.md](favors.md) | 人情往来：人名识别、导入默认、明细互转、改联系人、自定义日子 |
 | [tools.md](tools.md) | 小程序「工具」：原生与 H5 两套，后台切换；能力已对齐，页面仍是两份 |
-| [miniprogram.md](miniprogram.md) | 小程序我的与登录、关于文案、正式版强制更新；管理后台账本页列出成员 |
+| [calendar-history-directory-plan.md](calendar-history-directory-plan.md) | 日历年月目录设计与验收：历史汇总、月份正文预览、定位与验证 |
+| [miniprogram.md](miniprogram.md) | 小程序我的与登录、设置页（记录人、加号入口显示与排序、单项直达）、可拖动加号、关于文案、正式版强制更新；管理后台账本页列出成员 |
+| [miniprogram-releases/README.md](miniprogram-releases/README.md) | 小程序历次发版记录、版本兼容性、验证结果与发版模板 |
 | [dicts.md](dicts.md) | 可复用的公共、账本和账号标签，目前用于联系人日子 |
+| [score.md](score.md) | 临时记分、两表结构、邀请、单个有效房间、通用心跳接口与验收 |
 | [points.md](points.md) | 微信用户积分：进入发放、识别扣费、管理后台手动分配。看广告未做 |
 | [moderation.md](moderation.md) | 本地违禁词检查：规则、打分、配置、词库格式、性能。尚未接入业务 |
 | [review-checklist.md](review-checklist.md) | 提审前自查：会驳回的项、隐私声明、域名与云函数开关 |

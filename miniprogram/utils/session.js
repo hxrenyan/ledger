@@ -57,6 +57,7 @@ function apply(body) {
   if (!body) return
   if (body.token) wx.setStorageSync(TOKEN, body.token)
   if (body.user) wx.setStorageSync(USER, body.user)
+  notifyIdentityChanged()
   if (Array.isArray(body.ledgers)) {
     wx.setStorageSync(LEDGERS, body.ledgers)
     const preferred = toId(body.ledger_id)
@@ -70,6 +71,67 @@ function apply(body) {
   }
 }
 
+/** 展示偏好按账号保存在本机，不随退出登录清除。 */
+function recorderPreference() {
+  const user = getUser()
+  return wx.getStorageSync('ledger.showRecorder.' + (user ? user.id : 'guest')) !== false
+}
+
+function setRecorderPreference(value) {
+  const user = getUser()
+  wx.setStorageSync('ledger.showRecorder.' + (user ? user.id : 'guest'), !!value)
+}
+
+function showRecorder(memberCount) {
+  return Number(memberCount) > 1 && recorderPreference()
+}
+
+/** 加号入口使用固定类型，缓存只保存顺序和启用状态。 */
+const ADD_ACTIONS = [
+  { type: 'tx', label: '记一笔', icon: '−', color: 'expense' },
+  { type: 'gift', label: '记人情', icon: '礼', color: 'gift' },
+  { type: 'speak', label: '智能记账', icon: '智', color: 'brand' },
+  { type: 'note', label: '日历记录', icon: '语', color: 'voice' },
+  { type: 'import', label: '账单导入', icon: '导', color: 'plain' },
+]
+
+function normalizeAddActions(raw) {
+  const result = []
+  const seen = {}
+  ;(Array.isArray(raw) ? raw : []).forEach((item) => {
+    const action = item && ADD_ACTIONS.find((entry) => entry.type === item.type)
+    if (!action || seen[action.type]) return
+    seen[action.type] = true
+    result.push(Object.assign({}, action, { enabled: item.enabled !== false }))
+  })
+  ADD_ACTIONS.forEach((action) => {
+    if (!seen[action.type]) result.push(Object.assign({}, action, { enabled: true }))
+  })
+  if (!result.some((item) => item.enabled)) result[0].enabled = true
+  return result
+}
+
+function addActionPreference() {
+  const user = getUser()
+  return normalizeAddActions(wx.getStorageSync('ledger.addActions.' + (user ? user.id : 'guest')))
+}
+
+function setAddActionPreference(items) {
+  const user = getUser()
+  wx.setStorageSync('ledger.addActions.' + (user ? user.id : 'guest'),
+    normalizeAddActions(items).map((item) => ({ type: item.type, enabled: item.enabled })))
+}
+
+function availableAddActions(canAi, canSpeak) {
+  return addActionPreference().filter((item) => item.enabled &&
+    (item.type !== 'speak' || canAi) && (item.type !== 'note' || canSpeak))
+}
+
+function notifyIdentityChanged() {
+  const app = typeof getApp === 'function' ? getApp() : null
+  if (app && typeof app.heartbeatContextChanged === 'function') app.heartbeatContextChanged()
+}
+
 function clear() {
   ;[TOKEN, LEDGER, USER, LEDGERS].forEach((k) => {
     try {
@@ -78,6 +140,7 @@ function clear() {
       /* ignore */
     }
   })
+  notifyIdentityChanged()
 }
 
 /**
@@ -101,6 +164,12 @@ function ensure() {
 
 module.exports = {
   getToken,
+  recorderPreference,
+  addActionPreference,
+  setAddActionPreference,
+  availableAddActions,
+  setRecorderPreference,
+  showRecorder,
   getLedgerId,
   getUser,
   isWechat,

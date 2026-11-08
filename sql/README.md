@@ -14,6 +14,20 @@
 - `-- @when-column 表.列` / `-- @when-table 表` 到 `-- @end-when`：条件还成立才执行这一组，方便迁移重跑。
 - `ALTER TABLE ... DROP COLUMN` 在列已经不存在时跳过。
 
+## 记分迁移验证
+
+`2026-11-04-score.sql` 从权威 schema 创建记分表；`2026-11-08-score-transfer.sql` 为已有历史表补转出方快照字段，旧历史保留空来源字段，不回填或删除分数。启动时也会由 `ensureMigrated` 幂等补列。先备份，再执行 `npm run db:migrate`，检查旧记录数量和以下结果：
+
+```sql
+SELECT COUNT(*) FROM score_rooms;
+SELECT COUNT(*) FROM score_entries;
+SELECT COUNT(*) FROM score_entries e LEFT JOIN score_rooms r ON r.id=e.room_id WHERE r.id IS NULL;
+EXPLAIN QUERY PLAN SELECT * FROM score_entries WHERE room_id=1 AND id<100 ORDER BY id DESC LIMIT 20;
+EXPLAIN QUERY PLAN SELECT id FROM score_rooms WHERE ended_at<=0;
+```
+
+孤儿计数应为 0；历史走 `idx_score_entries_room_id`，清理走 `idx_score_rooms_ended`。不新增成员索引（JSON 成员，临时小房间查询），生命周期及清理详见 [记分](../docs/score.md)。
+
 ## 常用命令
 
 ```bash
@@ -59,6 +73,8 @@ npm run db:migrate
 新环境只用 `schema.sql`。线上已有数据只追加 `sql/migrations/`，不要对生产库重跑全量 schema。
 
 ## 联系人归属迁移
+
+线上库已于 2026-10-26 执行这次迁移，备份为容器内 `/data/ledger.db.bak-20261026`。下面的步骤仍适用于其它尚未切换的库。
 
 `2026-10-21-contact-owner.sql` 把旧联系人及日子按原账本的 `owner_id` 归入主人账号，并把联系人日子标签从账本范围转为账号范围。联系人 ID、日子和礼金记录保留；同一主人多个旧账本的同名日子标签合并。礼金仍保留原账本，不迁到主人私有范围。
 

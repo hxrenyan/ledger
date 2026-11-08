@@ -1,4 +1,4 @@
-export type Stmt = { sql: string; params?: unknown[] }
+export type Stmt = { sql: string; params?: unknown[]; expectChanges?: number }
 
 export type BatchResult = { lastId: number | null }
 
@@ -9,6 +9,9 @@ export type Db = {
   exec(sql: string): Promise<void>
   batch(stmts: Stmt[]): Promise<BatchResult[]>
 }
+
+/** 乐观锁及条件写入未命中，必须回滚整个 batch。 */
+export class BatchConflict extends Error {}
 
 /** INSERT 语句的自增主键。非 INSERT 或没插进行返回 null。 */
 export function insertedId(sql: string, changes: number, lastRowId: number): number | null {

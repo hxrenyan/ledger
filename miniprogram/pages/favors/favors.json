@@ -2,6 +2,7 @@
   "navigationBarTitleText": "人情",
   "enablePullDownRefresh": true,
   "usingComponents": {
-    "month-nav": "/components/month-nav/month-nav"
+    "month-nav": "/components/month-nav/month-nav",
+    "floating-actions": "/components/floating-actions/floating-actions"
   }
 }

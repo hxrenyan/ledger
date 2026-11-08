@@ -133,6 +133,7 @@
             <text class="tx-badge brand" wx:if="{{tx.hasReceipt}}">收据</text>
           </view>
           <view class="muted tx-sub">{{tx.account}}<text wx:if="{{tx.toAccount}}"> → {{tx.toAccount}}</text> · {{tx.clock}}<text wx:if="{{tx.note}}"> · {{tx.note}}</text></view>
+          <view class="muted tx-sub" wx:if="{{showRecorder}}">记录人：{{tx.recorder}}</view>
         </view>
         <view class="tx-right">
           <view class="amount {{tx.kind === 'income' ? 'income' : (tx.kind === 'expense' ? 'expense' : '')}}">{{tx.amountText}}</view>
@@ -190,6 +191,7 @@
             <text class="tx-badge brand" wx:if="{{tx.hasReceipt}}">收据</text>
           </view>
           <view class="muted tx-sub">{{tx.account}}<text wx:if="{{tx.toAccount}}"> → {{tx.toAccount}}</text> · {{tx.clock}}<text wx:if="{{tx.note}}"> · {{tx.note}}</text></view>
+          <view class="muted tx-sub" wx:if="{{showRecorder}}">记录人：{{tx.recorder}}</view>
         </view>
         <view class="tx-right">
           <view class="amount {{tx.kind === 'income' ? 'income' : (tx.kind === 'expense' ? 'expense' : '')}}">{{tx.amountText}}</view>
@@ -259,9 +261,9 @@
   </block>
 </view>
 
-<view class="fab" bindtap="openAdd">+</view>
+<floating-actions id="floatingActions" bind:add="openAdd" />
 
-<add-sheet show="{{showAdd}}" canAi="{{canAi}}" canSpeak="{{canSpeak}}" bind:close="closeAdd" bind:select="onAddSelect" />
+<add-sheet id="addSheet" show="{{showAdd}}" items="{{addItems}}" bind:close="closeAdd" bind:select="onAddSelect" />
 <ai-panel
   show="{{showVoice}}"
   scope="tx"

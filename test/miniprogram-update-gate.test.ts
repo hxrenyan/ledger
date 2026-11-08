@@ -40,6 +40,8 @@ function runtime(env = 'release') {
   const cache = new Map<string, Value>([
     [resolve(root, 'config.js'), config],
     [resolve(root, 'utils/transport.js'), { send, usingCloud: () => false }],
+    // 此套聚焦更新门槛；心跳调度在独立测试中执行真实实现。
+    [resolve(root, 'utils/heartbeat.js'), { createHeartbeat: () => ({ subscribe: vi.fn(), start: vi.fn(), stop: vi.fn(), contextChanged: vi.fn() }) }],
     [resolve(root, 'utils/ui.js'), { confirm: vi.fn().mockResolvedValue(true) }],
   ])
   let app: Value

@@ -5,10 +5,10 @@
  * 2. 当天记事卡（前一天/日期/后一天 + 记一条按钮 → 紧接着输入框与当天记事列表，中间不再夹月历）
  * 3. 记事一览卡（默认展开，支持「本月全部 / 今起待办」一键切换、近一年关键词搜索，以及直接点记一条/编辑/删除）
  */
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { addDays, addMonth, daysInShanghaiMonth, shanghaiDate, shanghaiMonth } from '@server/time.ts'
-import { api } from '../../tools/session.ts'
+import { api, authHeaders } from '../../tools/session.ts'
 
 type Note = {
   id: number
@@ -93,6 +93,200 @@ let searchKey = ''
 let pendingKey = ''
 let touchStartX = 0
 let touchStartY = 0
+
+type HistoryMonth = { month: string; count: number; recorded_days: number; first_day: string; last_day: string }
+type HistorySummary = { as_of: string; total_count: number; recorded_days: number;
+  years: { year: number; count: number; recorded_days: number; months: HistoryMonth[] }[] }
+const history = reactive({
+  open: false, loading: false, previewLoading: false, navigating: false,
+  summary: { as_of: '', total_count: 0, recorded_days: 0, years: [] } as HistorySummary,
+  year: 0, month: '', items: [] as Note[], shown: 30, total: 0,
+  error: '', previewError: '', notice: '', older: '', newer: '',
+})
+const historyDialog = ref<HTMLElement | null>(null)
+const historyScroll = ref<HTMLElement | null>(null)
+const historyEntry = ref<HTMLButtonElement | null>(null)
+const highlightedId = ref(0)
+let historyTicket = 0
+let previewTicket = 0
+let historyAccount = ''
+let historyAnchor = ''
+let historyShown = 30
+let savedBodyOverflow = ''
+let highlightTimer: ReturnType<typeof setTimeout> | undefined
+const historyGroups = computed(() => {
+  const groups: { day: string; label: string; count: number; items: Note[] }[] = []
+  const counts = new Map<string, number>()
+  for (const item of history.items) counts.set(item.day, (counts.get(item.day) || 0) + 1)
+  for (const item of history.items.slice(0, history.shown)) {
+    let group = groups[groups.length - 1]
+    if (!group || group.day !== item.day) {
+      group = { day: item.day, label: dateLabelOf(item.day), count: counts.get(item.day) || 0, items: [] }
+      groups.push(group)
+    }
+    group.items.push(item)
+  }
+  return groups
+})
+
+function historyCurrent(current: number, preview = false) {
+  if (historyAccount !== authHeaders().authorization) {
+    closeHistory(); history.items = []; history.month = ''; history.year = 0; historyAnchor = ''; historyShown = 30
+    history.summary = { as_of: '', total_count: 0, recorded_days: 0, years: [] }
+    return false
+  }
+  return history.open
+    && current === (preview ? previewTicket : historyTicket)
+}
+
+async function openHistory() {
+  const account = authHeaders().authorization
+  if (historyAccount && historyAccount !== account) {
+    history.month = ''; history.year = 0; history.items = []; historyAnchor = ''; historyShown = 30
+    history.summary = { as_of: '', total_count: 0, recorded_days: 0, years: [] }
+  }
+  historyAccount = account
+  if (!history.open) savedBodyOverflow = document.body.style.overflow
+  history.open = true
+  document.body.style.overflow = 'hidden'
+  void nextTick(() => historyDialog.value?.querySelector<HTMLButtonElement>('button')?.focus())
+  await refreshHistory()
+}
+
+function closeHistory() {
+  historyTicket++; previewTicket++
+  history.open = false; history.loading = false; history.previewLoading = false; history.navigating = false
+  document.body.style.overflow = savedBodyOverflow
+  void nextTick(() => historyEntry.value?.focus())
+}
+
+function onHistoryKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape') { e.preventDefault(); closeHistory(); return }
+  if (e.key !== 'Tab') return
+  const nodes = historyDialog.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')
+  if (!nodes?.length) return
+  const first = nodes[0]!
+  const last = nodes[nodes.length - 1]!
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+}
+
+async function refreshHistory(reconciled = false) {
+  const current = ++historyTicket
+  previewTicket++
+  history.loading = true; history.previewLoading = false; history.navigating = false; history.error = ''; history.previewError = ''; history.items = []
+  try {
+    const summary = await api<HistorySummary>('/api/v1/day-notes/history')
+    if (!historyCurrent(current)) return
+    const months = summary.years.flatMap((year) => year.months)
+    const oldMonth = history.month
+    const preferred = oldMonth || month.value
+    const target = months.find((item) => item.month === preferred)
+      || months.find((item) => item.month.slice(0, 4) === preferred.slice(0, 4)) || months[0]
+    history.summary = summary; history.loading = false
+    history.notice = oldMonth && !months.some((item) => item.month === oldMonth) ? '原月份已无历史记录，已显示最近记录' : ''
+    if (target) await selectHistoryMonth(target.month, reconciled === true, true)
+    else { history.month = ''; history.year = 0; history.total = 0; history.older = ''; history.newer = '' }
+  } catch (err) {
+    if (historyCurrent(current)) { history.loading = false; history.error = err instanceof Error ? err.message : '目录加载失败' }
+  }
+}
+
+async function selectHistoryMonth(value: string, reconciled = false, restore = false) {
+  if (history.navigating) return
+  const summary = history.summary
+  const months = summary.years.flatMap((year) => year.months)
+  const index = months.findIndex((item) => item.month === value)
+  if (index < 0 || !history.open || history.loading) return
+  const same = value === history.month
+  if (!same) { historyAnchor = ''; historyShown = 30 }
+  const current = ++previewTicket
+  history.month = value; history.year = Number(value.slice(0, 4)); history.items = []
+  history.shown = restore && same ? historyShown : 30
+  history.total = months[index]!.count; history.previewError = ''; history.previewLoading = true
+  history.older = months[index + 1]?.month || ''; history.newer = months[index - 1]?.month || ''
+  try {
+    const body = await api<{ items: Note[] }>(`/api/v1/day-notes?month=${value}`)
+    if (!historyCurrent(current, true)) return
+    const notes = (body.items || []).filter((item) => item.day.slice(0, 7) === value && item.day <= summary.as_of)
+    if (notes.length !== months[index]!.count || new Set(notes.map((item) => item.day)).size !== months[index]!.recorded_days) {
+      if (!reconciled) { await refreshHistory(true); return }
+      history.notice = '记录有更新，点击刷新目录'
+    }
+    history.items = notes.sort((a, b) => a.day === b.day ? a.created_at - b.created_at || a.id - b.id : a.day < b.day ? 1 : -1)
+    history.total = notes.length; history.previewLoading = false
+    await nextTick()
+    if (!historyCurrent(current, true)) return
+    const anchor = restore ? historyAnchor : ''
+    const node = anchor ? historyScroll.value?.querySelector<HTMLElement>(`#${anchor}`) : null
+    if (restore && !anchor) { if (historyScroll.value) historyScroll.value.scrollTop = 0 }
+    else (node || historyScroll.value?.querySelector('#history-preview'))?.scrollIntoView({ block: 'start' })
+  } catch (err) {
+    if (historyCurrent(current, true)) { history.previewLoading = false; history.previewError = err instanceof Error ? err.message : '记事加载失败' }
+  }
+}
+
+function selectHistoryYear(year: number) {
+  if (history.year === year) { history.year = 0; return }
+  const group = history.summary.years.find((item) => item.year === year)
+  if (group?.months[0]) void selectHistoryMonth(group.months[0].month)
+}
+
+function moreHistory() { history.shown += 30; historyShown = history.shown }
+
+function rememberHistoryScroll() {
+  if (history.loading || history.previewLoading) return
+  const viewport = historyScroll.value?.getBoundingClientRect()
+  const nodes = historyScroll.value?.querySelectorAll<HTMLElement>('.history-note') || []
+  historyAnchor = Array.from(nodes).find((node) => {
+    const rect = node.getBoundingClientRect()
+    return viewport && rect.bottom > viewport.top && rect.top < viewport.bottom
+  })?.id || ''
+  historyShown = history.shown
+}
+
+async function viewHistoryDay(item: Note) {
+  if (saving.value || history.navigating) { history.notice = '请等待当前保存或加载结束'; return }
+  const current = previewTicket
+  const editor = editSession
+  const submittedDraft = draft.value
+  history.navigating = true; history.previewError = ''
+  try {
+    if (submittedDraft.trim() && !window.confirm('放弃未保存的修改并查看当天？')) return
+    const body = await api<{ items: Note[] }>(`/api/v1/day-notes?day=${item.day}`)
+    if (!historyCurrent(current, true) || saving.value || editor !== editSession) return
+    if (draft.value !== submittedDraft) { history.notice = '草稿已更新，请重新确认后查看'; return }
+    if (!(body.items || []).some((note) => note.id === item.id)) {
+      const refresh = refreshHistory()
+      const refreshId = historyTicket
+      await refresh
+      if (historyCurrent(refreshId)) history.notice = '这条记事已不存在，目录已刷新'
+      return
+    }
+    historyAnchor = `history-note-${item.id}`; historyShown = history.shown
+    searchTicket++; searchKey = ''; pendingKey = ''; searchItems.value = []
+    q.value = ''; listFilter.value = 'all'; listOpen.value = true
+    cancelEdit()
+    month.value = item.day.slice(0, 7); selected.value = item.day
+    monthItems.value = body.items; dayFallbackItems.value = body.items; marks.value = {}
+    closeHistory()
+    highlightedId.value = item.id
+    void load(true)
+    await nextTick()
+    dayCardRef.value?.querySelector(`#day-note-${item.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    clearTimeout(highlightTimer)
+    highlightTimer = setTimeout(() => { highlightedId.value = 0 }, 2400)
+  } catch (err) {
+    if (historyCurrent(current, true)) history.previewError = err instanceof Error ? err.message : '当天记事加载失败，请重试'
+  } finally {
+    if (historyCurrent(current, true)) history.navigating = false
+  }
+}
+
+onUnmounted(() => {
+  historyTicket++; previewTicket++; clearTimeout(highlightTimer)
+  if (history.open) document.body.style.overflow = savedBodyOverflow
+})
 
 const monthText = computed(() => {
   const [y, m] = month.value.split('-')
@@ -481,6 +675,7 @@ async function save() {
       body: JSON.stringify(id == null ? { day: selected.value, body: text } : { body: text }),
     })
     freshNotes.set(saved.id, saved)
+    if (history.open) void refreshHistory()
     monthItems.value = [...monthItems.value.filter((item) => item.id !== saved.id), saved]
     if (editor === editSession) {
       if (draft.value === submittedDraft) {
@@ -506,6 +701,7 @@ async function remove(item: Note) {
   try {
     await api(`/api/v1/day-notes/${item.id}`, { method: 'DELETE' })
     freshNotes.delete(item.id)
+    if (history.open) void refreshHistory()
     if (editingId.value === item.id) cancelEdit()
     await load()
   } catch (err) {
@@ -529,7 +725,7 @@ async function remove(item: Note) {
   >
     <div class="cal-top">
       <div class="cal-bar">
-        <button class="nav" type="button" aria-label="上个月" @click="shiftMonth(-1)">
+        <button class="cal-month-step" type="button" aria-label="上个月" @click="shiftMonth(-1)">
           <span class="ico"></span>
         </button>
         <button class="label" type="button" @click="openMonthPicker">
@@ -545,17 +741,18 @@ async function remove(item: Note) {
             @change="onPickMonthInput"
           />
         </button>
-        <button class="nav" type="button" aria-label="下个月" @click="shiftMonth(1)">
+        <button class="cal-month-step" type="button" aria-label="下个月" @click="shiftMonth(1)">
           <span class="ico ico-next"></span>
         </button>
       </div>
 
       <div class="cal-actions">
+        <button ref="historyEntry" type="button" class="pill-btn today-btn" @click="openHistory">历史</button>
         <button v-if="showBack" type="button" class="pill-btn today-btn" @click="backToday">
           回今天
         </button>
         <button type="button" class="pill-btn fold-btn" @click="toggleCal">
-          <span>{{ calOpen ? '收起日历' : '展开日历' }}</span>
+          <span>{{ calOpen ? '收起' : '展开' }}</span>
           <span class="caret" :class="{ open: calOpen }"></span>
         </button>
       </div>
@@ -653,7 +850,7 @@ async function remove(item: Note) {
     </button>
 
     <div v-if="items.length" class="note-list">
-      <div v-for="item in items" :key="item.id" class="note" :class="{ on: editingId === item.id }">
+      <div v-for="item in items" :id="`day-note-${item.id}`" :key="item.id" class="note" :class="{ on: editingId === item.id, 'history-highlight': highlightedId === item.id }">
         <div v-if="editingId === item.id" class="editor inline">
           <textarea v-model="draft" maxlength="200" rows="2" @keydown="onKeydown"></textarea>
           <div class="editor-foot">
@@ -767,9 +964,86 @@ async function remove(item: Note) {
       </div>
     </template>
   </div>
+  <Teleport to="body">
+    <div v-if="history.open" class="history-mask" @click.self="closeHistory">
+      <section ref="historyDialog" class="history-sheet" role="dialog" aria-modal="true" aria-labelledby="history-title" @keydown="onHistoryKeydown">
+        <header class="history-head">
+          <div><h2 id="history-title">历史</h2><p v-if="history.summary.as_of" class="history-sub">截至 {{ history.summary.as_of }} · {{ history.summary.total_count }} 条 · {{ history.summary.recorded_days }} 个记录日</p></div>
+          <button class="history-link" type="button" @click="closeHistory">关闭</button>
+        </header>
+        <div ref="historyScroll" class="history-scroll" @scroll.passive="rememberHistoryScroll">
+          <div v-if="history.loading" class="history-status" role="status">正在整理历史年月…</div>
+          <div v-else-if="history.error" class="history-status" role="alert">{{ history.error }}<button class="history-link" type="button" @click="refreshHistory()">重试目录</button></div>
+          <div v-else-if="!history.summary.years.length" class="history-status">
+            <p>暂时没有历史记录</p><p class="history-sub">未来安排仍在日历中查看</p><button class="history-link" type="button" @click="closeHistory">回日历</button>
+          </div>
+          <template v-else>
+            <div v-for="year in history.summary.years" :key="year.year" class="history-year">
+              <button type="button" class="history-year-title" :aria-expanded="history.year === year.year" @click="selectHistoryYear(year.year)">
+                <span>{{ history.year === year.year ? '▾' : '▸' }} {{ year.year }} 年</span><span class="history-sub">{{ year.count }} 条 · {{ year.months.length }} 个月</span>
+              </button>
+              <div v-if="history.year === year.year" class="history-months">
+                <button v-for="entry in year.months" :key="entry.month" class="history-month" :class="{ selected: history.month === entry.month }" type="button" @click="selectHistoryMonth(entry.month)">
+                  <span>{{ entry.month }}</span><span class="history-sub">{{ entry.count }} 条 / {{ entry.recorded_days }} 天</span>
+                </button>
+              </div>
+            </div>
+            <p v-if="history.notice" class="history-notice" role="status">{{ history.notice }}</p>
+            <button class="history-link" type="button" @click="refreshHistory()">刷新目录</button>
+            <section id="history-preview" class="history-preview">
+              <h3>{{ history.month }} · {{ history.total }} 条</h3>
+              <nav class="history-nav" aria-label="浏览有记录的月份">
+                <button class="history-link" type="button" :disabled="!history.older || history.navigating" @click="selectHistoryMonth(history.older)">更早有记录的月份</button>
+                <button class="history-link" type="button" :disabled="!history.newer || history.navigating" @click="selectHistoryMonth(history.newer)">更新有记录的月份</button>
+              </nav>
+              <p v-if="history.previewLoading" class="history-status" role="status">正在加载这个月的记事…</p>
+              <div v-else-if="history.previewError" class="history-status" role="alert">{{ history.previewError }}<button class="history-link" type="button" @click="selectHistoryMonth(history.month)">重试记事</button></div>
+              <template v-else>
+                <div v-for="group in historyGroups" :key="group.day" class="history-day">
+                  <h4>{{ group.label }} · {{ group.count }} 条</h4>
+                  <article v-for="note in group.items" :id="`history-note-${note.id}`" :key="note.id" class="history-note">
+                    <p class="history-body">{{ note.body }}</p><button class="history-link history-view" type="button" :disabled="history.navigating || saving" @click="viewHistoryDay(note)">{{ history.navigating ? '正在打开…' : '查看当天' }}</button>
+                  </article>
+                </div>
+                <p class="history-sub history-status">已显示 {{ Math.min(history.shown, history.total) }} / {{ history.total }} 条</p>
+                <button v-if="history.shown < history.total" class="history-more" type="button" @click="moreHistory">继续查看本月</button>
+              </template>
+            </section>
+          </template>
+        </div>
+      </section>
+    </div>
+  </Teleport>
 </template>
 
 <style scoped>
+/* 历史：独立滚动，手机贴底，桌面限制宽度。 */
+.history-mask { position: fixed; inset: 0; z-index: 100; background: rgb(20 28 40 / 45%); display: flex; align-items: flex-end; justify-content: center; overscroll-behavior: contain; }
+.history-sheet { width: 100%; max-width: 720px; height: 88dvh; background: #fff; border-radius: 20px 20px 0 0; display: flex; flex-direction: column; overflow: hidden; padding-bottom: env(safe-area-inset-bottom); box-sizing: border-box; color: var(--text); }
+.history-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 20px; border-bottom: 1px solid var(--line); flex-shrink: 0; }
+.history-head h2 { font-size: 20px; margin: 0 0 4px; }
+.history-head p { margin: 0; }
+.history-sub { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.history-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 12px 20px 24px; }
+.history-year { border-bottom: 1px solid var(--line); }
+.history-year-title { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 0; font-size: 16px; font-weight: 600; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.history-months { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 14px; }
+.history-month { display: flex; flex-direction: column; padding: 10px 14px; min-width: 100px; font-size: 14px; line-height: 1.5; background: #f4f5f8; border: 1px solid transparent; border-radius: 10px; color: inherit; cursor: pointer; }
+.history-month.selected { background: var(--brand-soft); border-color: var(--brand); color: var(--brand); }
+.history-link { background: transparent; border: 0; color: var(--brand); font-size: 13px; line-height: 1.5; padding: 10px 4px; margin: 0; cursor: pointer; flex-shrink: 0; }
+.history-link:disabled { color: var(--muted); opacity: .55; cursor: default; }
+.history-status { text-align: center; padding: 16px 0; }
+.history-status .history-link { display: block; margin: auto; }
+.history-notice { background: var(--brand-soft); border-radius: 8px; padding: 10px; font-size: 13px; }
+.history-preview { border-top: 1px solid var(--line); padding-top: 14px; scroll-margin-top: 12px; }
+.history-preview h3 { margin: 0; font-size: 17px; }
+.history-nav { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.history-day h4 { margin: 16px 0 0; font-size: 14px; color: var(--muted); }
+.history-note { padding: 12px 0; border-bottom: 1px solid var(--line); scroll-margin-top: 12px; }
+.history-body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.7; font-size: 15px; margin: 0; }
+.history-view { display: block; margin-left: auto; }
+.history-more { width: 100%; padding: 12px; border: 0; color: var(--brand); background: var(--brand-soft); border-radius: 10px; font-size: 14px; cursor: pointer; }
+.history-highlight { background: var(--brand-soft); box-shadow: 0 0 0 2px var(--brand); }
 .tools-head {
   display: flex;
   align-items: center;
@@ -794,26 +1068,29 @@ async function remove(item: Note) {
 
 /* 1. 月历卡 */
 .cal-card {
-  padding: 12px 14px;
+  padding: 6px 8px;
 }
 .cal-top {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 .cal-bar {
   display: inline-flex;
+  flex: none;
   align-items: center;
-  gap: 2px;
+  gap: 0;
   background: #f4f5f8;
   border-radius: 999px;
   padding: 2px;
 }
-.nav {
+.cal-month-step {
   flex: none;
-  width: 32px;
-  height: 32px;
+  width: 28px;
+  height: 36px;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -821,7 +1098,7 @@ async function remove(item: Note) {
   background: transparent;
   border-radius: 999px;
 }
-.nav:hover {
+.cal-month-step:hover {
   background: #e6e8f0;
 }
 .ico {
@@ -837,18 +1114,19 @@ async function remove(item: Note) {
 .label {
   position: relative;
   overflow: hidden;
-  height: 32px;
-  padding: 0 10px;
+  height: 36px;
+  padding: 0 4px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 4px;
   border: 0;
   background: transparent;
   border-radius: 999px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 650;
   color: inherit;
+  white-space: nowrap;
 }
 .label:hover {
   background: #e6e8f0;
@@ -872,15 +1150,20 @@ async function remove(item: Note) {
 }
 .cal-actions {
   display: flex;
+  flex: none;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
 }
 .pill-btn {
   display: inline-flex;
+  flex: none;
   align-items: center;
-  gap: 5px;
-  height: 32px;
-  padding: 0 11px;
+  gap: 4px;
+  height: 36px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  white-space: nowrap;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: #fff;
@@ -907,6 +1190,18 @@ async function remove(item: Note) {
 }
 .caret.open {
   transform: rotate(180deg);
+}
+
+/* 320px 窄屏也保留完整年月和全部操作，按钮高度保持不变。 */
+@media (max-width: 380px) {
+  .cal-top { gap: 4px; }
+  .cal-bar { padding: 1px; }
+  .cal-month-step { width: 24px; }
+  .label { font-size: 12px; padding: 0 2px; gap: 3px; }
+  .bar-caret { border-right-width: 3px; border-left-width: 3px; }
+  .cal-actions { gap: 3px; }
+  .pill-btn { padding-right: 4px; padding-left: 4px; gap: 3px; }
+  .fold-btn .caret { border-right-width: 3px; border-left-width: 3px; }
 }
 
 /* 月历网格：紧凑高度，一屏能同时看到月历与下方当天记事 */

@@ -12,6 +12,8 @@
     "pages/contact-form/contact-form",
     "pages/tool-calendar/tool-calendar",
     "pages/me/me",
+    "pages/settings/settings",
+    "pages/score/score",
     "pages/force-update/force-update",
     "pages/points/points",
     "pages/feedback/feedback",

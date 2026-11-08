@@ -115,15 +115,22 @@ export function registerFavorRoutes(app: Hono<AppEnv>) {
       extra = ' AND g.contact_id = ?'
       params.push(routeId(contactId, '联系人'))
     }
-    const rows = await c.get('db').all<GiftRow & { contact_name: string }>(
+    const membership = await c.get('db').first<{ count: number }>(
+      `SELECT COUNT(*) AS count FROM members WHERE ledger_id = ?`, [c.get('ledgerId')],
+    )
+    const rows = await c.get('db').all<GiftRow & { contact_name: string; created_by_name: string }>(
       `SELECT g.id, g.contact_id, g.kind, g.amount_cents, g.occasion, g.occurred_at, g.note, g.created_at, g.updated_at,
-              c.name AS contact_name
+              c.name AS contact_name,
+              (SELECT COALESCE(NULLIF(TRIM(u.nickname), ''), u.username) FROM users u WHERE u.id = g.created_by) AS created_by_name
        FROM gifts g JOIN contacts c ON c.id = g.contact_id
        WHERE g.ledger_id = ? AND c.${scope.column} = ? ${extra}
        ORDER BY g.occurred_at DESC, g.created_at DESC`,
       params,
     )
-    return c.json({ items: rows.map(shapeGift) })
+    return c.json({
+      member_count: Number(membership?.count) || 0,
+      items: rows.map((row) => ({ ...shapeGift(row), created_by_name: row.created_by_name || '未知记录人' })),
+    })
   })
 
   app.get('/api/v1/gifts/:id', async (c) => {

@@ -8,10 +8,11 @@ import AdminOcr from './AdminOcr.vue'
 import AdminWechat from './AdminWechat.vue'
 import AdminTools from './AdminTools.vue'
 import AdminMiniprogram from './AdminMiniprogram.vue'
+import AdminAnnouncements from './AdminAnnouncements.vue'
 import AdminPoints from './AdminPoints.vue'
 import AdminFeedback from './AdminFeedback.vue'
 
-type Tab = 'users' | 'ledgers' | 'points' | 'feedback' | 'ai' | 'asr' | 'ocr' | 'wechat' | 'tools' | 'miniprogram'
+type Tab = 'users' | 'ledgers' | 'points' | 'feedback' | 'ai' | 'asr' | 'ocr' | 'wechat' | 'tools' | 'miniprogram' | 'announcements'
 type UserStatus = 'all' | 'active' | 'disabled'
 type TimeSort = 'created' | 'seen'
 type TimeOrder = 'asc' | 'desc'
@@ -47,6 +48,7 @@ const ocrPanel = ref<Reloadable | null>(null)
 const wechatPanel = ref<Reloadable | null>(null)
 const toolsPanel = ref<Reloadable | null>(null)
 const miniprogramPanel = ref<Reloadable | null>(null)
+const announcementsPanel = ref<Reloadable | null>(null)
 let userReq = 0
 let ledgerReq = 0
 let userTimer = 0
@@ -55,7 +57,7 @@ let ledgerTimer = 0
 const navGroups = [
   { title: '概览', items: [{ key: 'users', label: '用户' }, { key: 'ledgers', label: '账本' }, { key: 'points', label: '积分' }, { key: 'feedback', label: '反馈' }] },
   { title: '能力配置', items: [{ key: 'ai', label: 'AI 解析' }, { key: 'asr', label: '语音识别' }, { key: 'ocr', label: '图片识别' }] },
-  { title: '产品配置', items: [{ key: 'wechat', label: '微信登录' }, { key: 'tools', label: '工具页' }, { key: 'miniprogram', label: '小程序' }] },
+  { title: '产品配置', items: [{ key: 'wechat', label: '微信登录' }, { key: 'tools', label: '工具页' }, { key: 'miniprogram', label: '小程序' }, { key: 'announcements', label: '公告' }] },
 ] as const
 const navItems: { key: Tab; label: string }[] = []
 for (const group of navGroups) {
@@ -211,6 +213,7 @@ function currentPanel() {
   if (tab.value === 'wechat') return wechatPanel.value
   if (tab.value === 'tools') return toolsPanel.value
   if (tab.value === 'miniprogram') return miniprogramPanel.value
+  if (tab.value === 'announcements') return announcementsPanel.value
   return null
 }
 
@@ -427,6 +430,7 @@ onMounted(() => {
         <AdminWechat v-else-if="tab === 'wechat'" ref="wechatPanel" />
         <AdminTools v-else-if="tab === 'tools'" ref="toolsPanel" />
         <AdminMiniprogram v-else-if="tab === 'miniprogram'" ref="miniprogramPanel" />
+        <AdminAnnouncements v-else-if="tab === 'announcements'" ref="announcementsPanel" />
       </section>
     </main>
   </div>

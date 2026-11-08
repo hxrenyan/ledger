@@ -71,9 +71,9 @@ function harness(platform: '小程序' | 'H5') {
     }).outputText
     const component = { exports: {} as Record<string, any> }
     const modules: Record<string, unknown> = {
-      vue: { ...vue, watch: vi.fn(), onMounted: vi.fn(), nextTick: vi.fn(() => Promise.resolve()) },
+      vue: { ...vue, watch: vi.fn(), onMounted: vi.fn(), onUnmounted: vi.fn(), nextTick: vi.fn(() => Promise.resolve()) },
       'vue-router': { useRouter: () => ({ push: vi.fn() }) }, '@server/time.ts': serverTime,
-      '../../tools/session.ts': { api: (path: string, init: RequestInit = {}) => request({ path, method: init.method }) },
+      '../../tools/session.ts': { api: (path: string, init: RequestInit = {}) => request({ path, method: init.method }), authHeaders: () => ({ authorization: 'test' }) },
     }
     new Function('module', 'exports', 'require', 'window', source)(component, component.exports,
       (id: string) => { if (!(id in modules)) throw new Error(`未配置依赖：${id}`); return modules[id] },

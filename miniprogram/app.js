@@ -1,6 +1,7 @@
 const config = require('./config')
 const session = require('./utils/session')
 const request = require('./utils/request')
+const { createHeartbeat } = require('./utils/heartbeat')
 
 let cloudReady = false
 
@@ -42,6 +43,7 @@ App({
     updateRequired: false,
     updateReady: false,
     updateFailed: false,
+    announcements: [],
   },
 
   onLaunch() {
@@ -57,8 +59,10 @@ App({
    * 同一天再进来 granted_daily 是 0，不再提示。
    */
   onShow() {
+    this._foreground = true
     return this.checkClient()
       .then(() => {
+        if (this._foreground && !this.globalData.updateRequired) this.startHeartbeat()
         if (this.globalData.updateRequired || !session.getToken()) return null
         return request.post('/api/v1/points/check-in', {}, { withLedger: false })
       })
@@ -71,6 +75,37 @@ App({
         wx.showToast({ title: '今日进入 +1', icon: 'none' })
       })
       .catch(() => {})
+  },
+
+  onHide() {
+    this._foreground = false
+    if (this.heartbeat) this.heartbeat.stop()
+  },
+
+  startHeartbeat() {
+    if (!this.heartbeat) {
+      this.heartbeat = createHeartbeat()
+      this.heartbeat.subscribe('ann', {
+        refresh: async ({ isCurrent }) => {
+          const body = await request.get('/api/v1/app/announcements', null, { withLedger: false, silentAuth: true })
+          if (isCurrent()) {
+            this.globalData.announcements = body.items || []
+            const pages = getCurrentPages()
+            const top = pages[pages.length - 1]
+            if (top && top.route === 'pages/tools/tools') top.setData({ announcements: this.globalData.announcements })
+          }
+          return body.rev
+        },
+      })
+      if (typeof wx.onNetworkStatusChange === 'function') wx.onNetworkStatusChange((event) => {
+        if (event.isConnected && this._foreground) this.heartbeat.checkNow()
+      })
+    }
+    this.heartbeat.start()
+  },
+
+  heartbeatContextChanged() {
+    if (this.heartbeat) this.heartbeat.contextChanged()
   },
 
   /** 新版本下好后先记着。必须更新时直接重新进入，不等用户再点一次。 */
@@ -128,6 +163,7 @@ App({
   },
 
   openForceUpdate() {
+    if (this.heartbeat) this.heartbeat.stop()
     const pages = getCurrentPages()
     const top = pages[pages.length - 1]
     if (top && top.route === FORCE_PAGE) return

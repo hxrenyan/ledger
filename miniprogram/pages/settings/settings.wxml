@@ -1,0 +1,30 @@
+<view class="page settings-page">
+  <view class="section-title">显示偏好</view>
+  <view class="card preference-card">
+    <view class="setting-row">
+      <view class="setting-copy">
+        <view class="setting-title">展示记录人</view>
+        <view class="setting-desc">仅在多人账本展示</view>
+      </view>
+      <switch class="compact-switch" checked="{{showRecorder}}" bindchange="toggleRecorder" color="#3b5bdb" aria-label="展示记录人" />
+    </view>
+  </view>
+
+  <view class="section-heading">
+    <view class="section-title">明细「＋」入口</view>
+    <text class="drag-tip">拖动右侧手柄排序</text>
+  </view>
+  <view class="card action-card">
+    <view class="action-row {{dragType === item.type ? 'dragging' : ''}}" wx:for="{{actions}}" wx:key="type" style="transform: translateY({{dragType === item.type ? dragOffset : 0}}px);">
+      <view class="action-icon {{item.color}}">{{item.icon}}</view>
+      <view class="setting-copy setting-title {{item.enabled ? '' : 'action-hidden'}}">{{item.label}}</view>
+      <switch class="compact-switch" checked="{{item.enabled}}" disabled="{{dragType !== ''}}" data-type="{{item.type}}" bindchange="toggleAction" color="#3b5bdb" aria-label="显示{{item.label}}" />
+      <view class="drag-handle" data-type="{{item.type}}" catchtouchstart="startDrag" catchtouchmove="moveDrag" catchtouchend="endDrag" catchtouchcancel="cancelDrag" aria-label="拖动{{item.label}}排序">
+        <view class="handle-line"></view>
+        <view class="handle-line"></view>
+        <view class="handle-line"></view>
+      </view>
+    </view>
+  </view>
+  <view class="setting-hint">仅开启一项时，点「＋」直接进入。至少保留一项，修改自动保存。</view>
+</view>

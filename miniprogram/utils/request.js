@@ -132,7 +132,7 @@ function request(options) {
       // 响应回来时可能已经登录过（或换过账号）了。这种迟到的 401 若照样
       // 清会话跳登录，现象就是「刚登录进去又被踢回登录页」，极难定位。
       // 因此只有 token 与当前存储的一致，才认定这条会话真的失效。
-      expireSession(token, path)
+      if (!opts.silentAuth) expireSession(token, path)
       throw toError(res, '登录已过期')
     }
     if (res.statusCode >= 200 && res.statusCode < 300) {
